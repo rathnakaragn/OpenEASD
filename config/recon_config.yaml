@@ -1,0 +1,65 @@
+# OpenEASD Recon Layer Configuration (Simplified)
+# Focused on subdomain enumeration and port scanning only
+
+# Global Settings
+log_level: INFO
+log_file: logs/recon.log
+temp_directory: /tmp/openeasd
+
+# Workflow Configuration
+workflow:
+  max_concurrent_tools: 2              # Maximum number of tools running simultaneously
+  enable_rate_limiting: true           # Enable rate limiting between tool executions
+  default_timeout: 1800                # Default timeout in seconds (30 minutes)
+  auto_expand_targets: true            # Automatically scan discovered subdomains
+  store_raw_output: true               # Store raw tool output for analysis
+  parallel_execution: false            # Execute tools sequentially (subfinder first, then naabu)
+  fail_fast: false                     # Continue on tool failure
+
+# Database Configuration
+database:
+  database_path: data/openeasd.db      # Path to DuckDB database file
+  max_connections: 10                  # Maximum database connections
+  connection_timeout: 30.0             # Connection timeout in seconds
+  query_timeout: 60.0                  # Query timeout in seconds
+  enable_metrics: true                 # Enable performance metrics collection
+
+# Tool-Specific Configurations
+
+# Subfinder - Subdomain Discovery
+subfinder:
+  enabled: true
+  timeout: 600                         # Tool execution timeout (10 minutes)
+  retries: 3                           # Number of retry attempts
+  all_sources: true                    # Use all available sources
+  active: false                        # Disable active enumeration
+  verbose: false                       # Verbose output
+  max_time: 10                         # Maximum time per source (minutes)
+  threads: 10                          # Number of concurrent threads
+  recursive: false                     # Recursive subdomain enumeration
+  # Uncomment to specify custom sources
+  # sources:
+  #   - crtsh
+  #   - virustotal
+  #   - censys
+  #   - shodan
+
+# Naabu - Port Scanner
+naabu:
+  enabled: true
+  timeout: 900                         # Tool execution timeout (15 minutes)
+  retries: 2                           # Number of retry attempts
+  top_ports: 1000                      # Scan top N ports
+  verify: true                         # Verify open ports
+  ping: false                          # Skip host discovery
+  scan_type: syn                       # Scan type (syn or connect)
+  threads: 25                          # Number of concurrent threads
+  # Uncomment to specify custom port ranges
+  # ports: "80,443,8080,8443,22,21,25,3306,5432,6379,27017,9200"
+  # exclude_ports: "25,110"
+
+# Tool-specific rate limiting (requests per second)
+# Uncomment and adjust as needed for your environment
+# rate_limits:
+#   subfinder: 5
+#   naabu: 10

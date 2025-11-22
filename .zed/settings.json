@@ -1,0 +1,67 @@
+{
+  "lsp": {
+    "pyright": {
+      "settings": {
+        "python": {
+          "pythonPath": "./venv/bin/python",
+          "venvPath": ".",
+          "venv": "venv",
+          "analysis": {
+            "typeCheckingMode": "strict",
+            "autoImportCompletions": true,
+            "autoSearchPaths": true,
+            "useLibraryCodeForTypes": true,
+            "diagnosticMode": "workspace",
+            "extraPaths": ["./src"],
+            "ignore": ["**/venv", "**/__pycache__", "**/tests"],
+            "reportMissingImports": true,
+            "reportMissingTypeStubs": false,
+            "reportUnusedImport": true,
+            "reportUnusedVariable": true,
+            "reportDuplicateImport": true,
+            "reportOptionalMemberAccess": true,
+            "reportGeneralTypeIssues": true,
+            "reportIncompatibleMethodOverride": true
+          }
+        }
+      }
+    },
+    "ruff": {
+      "enabled": true,
+      "args": ["--ignore", "E501,W503"]
+    }
+  },
+  "format_on_save": "on",
+  "formatter": {
+    "language_server": {
+      "name": "ruff"
+    }
+  },
+  "file_scan_exclusions": [
+    "**/.git",
+    "**/.DS_Store",
+    "**/venv",
+    "**/__pycache__",
+    "**/*.pyc",
+    "**/.pytest_cache",
+    "**/node_modules",
+    "**/.venv",
+    "**/dist",
+    "**/build",
+    "**/*.egg-info"
+  ],
+  "languages": {
+    "Python": {
+      "tab_size": 4,
+      "hard_tabs": false,
+      "preferred_line_length": 88
+    }
+  },
+  "terminal": {
+    "env": {
+      "PYTHONPATH": "${workspace_root}/src:${PYTHONPATH}",
+      "PROJECT_ROOT": "${workspace_root}"
+    },
+    "working_directory": "${workspace_root}"
+  }
+}
