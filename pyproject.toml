@@ -1,6 +1,6 @@
 [project]
 name = "openeasd"
-version = "1.0.0"
+version = "2.0.0"
 description = "Automated External Attack Surface Detection"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -9,6 +9,13 @@ dependencies = [
     "duckdb==1.4.1",
     "pytz",
     "pyyaml==6.0.1",
+    # API dependencies
+    "fastapi>=0.109.0",
+    "uvicorn[standard]>=0.27.0",
+    "pydantic>=2.5.0",
+    "python-multipart>=0.0.6",
+    # HTTP client for CLI
+    "httpx>=0.26.0",
 ]
 
 [project.optional-dependencies]

@@ -286,20 +286,13 @@ def domain_list(limit, domain_type, primary, output):
               help='Update notes')
 @click.option('--tags',
               help='Update tags (comma-separated)')
-@click.option('--contact',
-              help='Update contact email')
-@click.option('--frequency',
-              type=click.Choice(['hourly', 'daily', 'weekly', 'monthly']),
-              help='Update scan frequency')
-@click.option('--active-scan', type=bool,
-              help='Enable/disable active scanning (true/false)')
-def domain_update(domain, primary, notes, tags, contact, frequency, active_scan):
+def domain_update(domain, primary, notes, tags):
     """Update domain metadata
 
     Examples:
         openeasd domain update example.com --notes "Updated notes"
         openeasd domain update example.com --primary true
-        openeasd domain update example.com --tags "prod,critical" --frequency daily
+        openeasd domain update example.com --tags "prod,critical"
     """
     try:
         result = domain_update_command(locals())

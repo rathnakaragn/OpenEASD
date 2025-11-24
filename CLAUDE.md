@@ -261,3 +261,4 @@ uv run python openeasd.py results <scan-id>
 ### Running Commands
 - **With uv**: `uv run python openeasd.py <command>`
 - **Direct python**: `/Users/rathnakara/projects/OpenEASD/.venv/bin/python openeasd.py <command>`
+- use python venv .venv/bin/activate

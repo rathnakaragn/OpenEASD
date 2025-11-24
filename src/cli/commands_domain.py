@@ -130,19 +130,10 @@ def domain_update_command(args) -> Dict[str, Any]:
         if args.get('tags'):
             update_fields['tags'] = [tag.strip() for tag in args['tags'].split(',')]
 
-        if args.get('contact'):
-            update_fields['contact_email'] = args['contact']
-
-        if args.get('frequency'):
-            update_fields['scan_frequency'] = args['frequency']
-
-        if args.get('active_scan') is not None:
-            update_fields['active_scan_enabled'] = args['active_scan']
-
         if not update_fields:
             return {
                 'success': False,
-                'message': 'No fields provided to update'
+                'message': 'No fields provided to update. Use --primary, --notes, or --tags'
             }
 
         # Update domain
