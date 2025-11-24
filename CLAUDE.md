@@ -14,130 +14,107 @@ This project is organized across multiple documentation files. When assisting wi
 ### Architecture Overview
 - **[DESIGN.md](./DESIGN.md)** - System architecture overview
   - Target audience: System Architects, Technical Leads
-  - Contains: 5-layer architecture diagram, technology stack, design principles
-
-### Layer Documentation
-- **[docs/00-CLI.md](./docs/00-CLI.md)** - CLI Layer implementation guide
-  - Target audience: CLI Developers, DevOps Engineers
-  - Contains: Commands, formatters, output formats, user interface
-
-- **[docs/01-RECON.md](./docs/01-RECON.md)** - Recon Layer implementation guide
-  - Target audience: Security Engineers, Tool Developers
-  - Contains: Security tool modules, data collection, parsing logic
-
-- **[docs/02-ANALYSIS.md](./docs/02-ANALYSIS.md)** - Analysis Layer implementation guide
-  - Target audience: Security Analysts, Detection Engineers
-  - Contains: Vulnerability detection, risk scoring, analysis engines
-
-- **[docs/03-NOTIFICATION.md](./docs/03-NOTIFICATION.md)** - Notification Layer implementation guide
-  - Target audience: Integration Engineers, DevOps Engineers
-  - Contains: Alert generation, multi-channel routing, templates
-
-- **[docs/04-DATABASE.md](./docs/04-DATABASE.md)** - Database Layer implementation guide
-  - Target audience: Database Engineers, Analytics Engineers
-  - Contains: Schema design, query patterns, DuckDB optimization
+  - Contains: 3-layer architecture diagram, technology stack, design principles
 
 ## Quick Reference
 
 ### Current Implementation Status
-- **Architecture**: 5-layer design (CLI → Recon → Analysis → Notification → Database)
-- **Implementation**: 3 layers complete (CLI, Recon, Database), 2 layers planned (Analysis, Notification)
-- **Tech Stack**: Click CLI, Python Asyncio, DuckDB, Security Tools
-- **Security Tools**: Subfinder, Amass, Nmap, Naabu (subprocess execution)
-- **Status**: Production-ready CLI with planned expansion
+- **Architecture**: 3-layer design (CLI → Tools → Database)
+- **Model**: Single-organization architecture (simplified from multi-org)
+- **Tech Stack**: Click CLI, Python 3.11+, DuckDB, Subprocess
+- **Security Tools**: Subfinder, Amass, Nmap, Naabu (direct subprocess execution)
+- **Status**: Production-ready with full CLI and database functionality
 
-### 5-Layer Architecture
+### 3-Layer Architecture
 
-1. **CLI Layer** ✅ - User interface and command handling
-2. **Recon Layer** ✅ - Data collection and tool execution
-3. **Analysis Layer** ⏳ - Security analysis and vulnerability detection (Planned)
-4. **Notification Layer** ⏳ - Alert generation and notification routing (Planned)
-5. **Database Layer** ✅ - Data persistence and analytics
+1. **CLI Layer** ✅ - User interface, commands, and tool orchestration
+2. **Tools Layer** ✅ - Security tool execution (Subfinder, Amass, Nmap, Naabu)
+3. **Database Layer** ✅ - Data persistence and analytics (DuckDB)
 
 ## Implementation Progress
 
-| Layer | Status | Progress | Priority |
-|-------|--------|----------|----------|
-| CLI Layer | ✅ Complete | 100% | - |
-| Recon Layer | ✅ Complete | 100% | - |
-| Analysis Layer | ⏳ Planned | 0% | Medium |
-| Notification Layer | ⏳ Planned | 0% | Low |
-| Database Layer | ✅ Complete | 100% | - |
+| Layer | Status | Progress | Notes |
+|-------|--------|----------|-------|
+| CLI Layer | ✅ Complete | 100% | Scan & domain commands, batch operations |
+| Tools Layer | ✅ Complete | 100% | Direct subprocess calls, JSON parsing |
+| Database Layer | ✅ Complete | 100% | Single-org model, IST timezone support |
 
 ## Key Implementation Notes
 
-1. **5-layer separation** with single responsibility per layer
-2. **Modular architecture** with interface-based design patterns
-3. **Async-first** implementation using Python asyncio
-4. **Security tools** in `src/recon/modules/{tool}/` with standardized interfaces
-5. **Clean data flow**: CLI → Recon → Analysis → Notification → Database
-6. **DuckDB analytics** for high-performance queries and reporting
+1. **3-layer separation** with clear responsibilities
+2. **Single organization** model (no multi-tenancy)
+3. **Direct tool execution** via subprocess (no orchestration layer)
+4. **Security tools** in `src/tools/{tool}/` modules
+5. **Simple data flow**: CLI → Tools → Database → CLI
+6. **DuckDB analytics** for efficient querying and aggregations
+7. **IST timezone** support for all timestamps
 
 ## Current Features
 
-### ✅ Implemented (Layers 1, 2, 5)
+### ✅ Fully Implemented (All 3 Layers)
 
 **CLI Layer**:
-- Multiple commands: scan, history, results, delete, scans
+- Scan commands: `scan domain`, `scan subfinder` (batch mode)
+- Domain management: `add`, `list`, `update`, `remove`, `show`
+- History & results: `history`, `scans`, `results`
 - Output formats: table, json, csv, txt
-- Organization-based domain grouping
+- Single-organization model (simplified)
 - UUID-based scan tracking
+- Batch scanning for multiple domains
 - Interactive deletion with preview
 
-**Recon Layer**:
-- **Subfinder**: Passive subdomain discovery
-- **Amass**: Comprehensive subdomain enumeration
-- **Nmap**: Service detection and port scanning
-- **Naabu**: Fast port scanning
-- ReconTool interface for consistent tool integration
+**Tools Layer**:
+- **Subfinder**: Passive subdomain discovery (actively used)
+- **Amass**: Comprehensive subdomain enumeration (module available)
+- **Nmap**: Service detection and port scanning (module available)
+- **Naabu**: Fast port scanning (module available)
+- Direct subprocess execution
+- JSON output parsing
 
 **Database Layer**:
-- DuckDB storage engine
-- Organization tracking
-- Scan session management
+- DuckDB embedded database
+- Domain registry with metadata (notes, tags, scan frequency)
+- Scan session tracking with status management
+- Subdomain history tracking (new/existing/removed)
+- Security alerts generation
+- Tool-specific result tables
 - Timezone-aware timestamps (IST)
-- Efficient querying and aggregation
-
-### ⏳ Planned (Layers 3, 4)
-
-**Analysis Layer** (Planned):
-- Vulnerability detection
-- Risk scoring
-- Pattern recognition
-- Threat classification
-
-**Notification Layer** (Planned):
-- Alert generation
-- Multi-channel routing (Email, Slack, Webhooks)
-- Severity filtering
-- Template rendering
+- Efficient JOINs and aggregations
+- Single-organization model (no multi-tenancy)
 
 ## Data Flow
 
-### Current Flow (3 Layers)
-```
-CLI Layer (user command)
-    ↓
-Recon Layer (tool execution)
-    ↓
-Database Layer (storage)
-    ↓
-CLI Layer (results display)
-```
+### 3-Layer Workflow
 
-### Future Flow (5 Layers)
 ```
-CLI Layer (user command)
+User Command: openeasd scan domain example.com
     ↓
-Recon Layer (tool execution)
+┌──────────────────────────────┐
+│ CLI Layer                    │
+│ - Parse & validate args      │
+│ - Create scan session (UUID) │
+└──────────────────────────────┘
     ↓
-Analysis Layer (vulnerability detection)
+┌──────────────────────────────┐
+│ Tools Layer                  │
+│ - Execute subfinder          │
+│ - Parse JSON output          │
+│ - Return subdomains list     │
+└──────────────────────────────┘
     ↓
-Notification Layer (alerts)
+┌──────────────────────────────┐
+│ Database Layer               │
+│ - Store scan session         │
+│ - Store subfinder results    │
+│ - Track subdomain changes    │
+│ - Generate security alerts   │
+└──────────────────────────────┘
     ↓
-Database Layer (storage)
-    ↓
-CLI Layer (results display)
+┌──────────────────────────────┐
+│ CLI Layer                    │
+│ - Format output (table/json) │
+│ - Display to user            │
+└──────────────────────────────┘
 ```
 
 ## For AI Assistants
@@ -145,109 +122,142 @@ CLI Layer (results display)
 When helping with this project:
 
 ### General Guidelines
-- **Check layer docs**: Reference specific `docs/{layer}.md` for implementation details
 - **Follow DESIGN.md**: For overall architecture and system design principles
 - **Respect layer boundaries**: Keep layer responsibilities clean and focused
-- **Use interfaces**: Follow abstract interface patterns defined in each layer
-- **Maintain separation**: Don't mix layer concerns
+- **Single organization**: No multi-tenancy complexity
+- **Direct tool execution**: Tools called via subprocess, no orchestration layer
+- **Simple data flow**: CLI → Tools → Database → CLI
 
 ### Current State Awareness
-- **CLI Layer**: Fully functional, use as reference for user interaction patterns
-- **Recon Layer**: All tools implemented, follow ReconTool interface for new tools
-- **Database Layer**: DuckDB fully implemented, extend schema carefully
-- **Analysis Layer**: Not implemented yet, plan carefully before starting
-- **Notification Layer**: Not implemented yet, design integration points first
+- **CLI Layer**: Production-ready with all commands implemented
+- **Tools Layer**: Subfinder actively used, other tools available as modules
+- **Database Layer**: DuckDB fully implemented with single-org schema
+- **No orchestration layer**: Tools are called directly from CLI commands
 
 ### File Organization
 ```
 src/
-├── cli/           # Layer 1 ✅ - Commands and formatters
-├── recon/         # Layer 2 ✅ - Tool runners and parsers
-├── analysis/      # Layer 3 ⏳ - To be implemented
-├── notification/  # Layer 4 ⏳ - To be implemented
-└── data/          # Layer 5 ✅ - DuckDB manager
+├── cli/           # Layer 1 ✅ - Commands, formatters, tool orchestration
+│   ├── main.py
+│   ├── commands.py
+│   ├── commands_domain.py
+│   └── formatters.py
+├── tools/         # Layer 2 ✅ - Security tool modules
+│   ├── subfinder/
+│   ├── amass/
+│   ├── nmap/
+│   └── naabu/
+├── data/          # Layer 3 ✅ - DuckDB manager
+│   └── database/
+│       └── duckdb_manager.py
+├── core/          # Core infrastructure
+└── utils/         # Utilities (config, logging, timezone)
 ```
 
 ### Common Tasks
 
-**Adding a new recon tool**:
-1. Create `src/recon/modules/{tool}/runner.py`
-2. Implement `ReconTool` interface
-3. Add to module `__init__.py`
-4. Update `docs/01-RECON.md`
+**Adding a new security tool**:
+1. Create `src/tools/{tool}/` directory
+2. Add `__init__.py` and `runner.py`
+3. Implement subprocess execution and JSON parsing
+4. Add CLI command in `src/cli/commands.py`
+5. Test tool execution and data storage
 
 **Adding a new CLI command**:
 1. Add Click command in `src/cli/main.py`
-2. Implement logic in `src/cli/commands.py`
+2. Implement logic in `src/cli/commands.py` or `commands_domain.py`
 3. Add formatter support in `src/cli/formatters.py`
-4. Update `docs/00-CLI.md`
+4. Update DESIGN.md documentation
 
 **Database schema changes**:
 1. Review `src/data/database/duckdb_manager.py`
-2. Test schema changes carefully
-3. Consider migration strategy
-4. Update `docs/04-DATABASE.md`
+2. Update table creation in `_initialize_sync()`
+3. Test schema changes carefully
+4. Update DESIGN.md with schema documentation
+5. **Note**: Avoid adding indexes on scan_sessions (DuckDB limitation)
 
 ## Technology Stack
 
-### Implemented Layers
+### All Layers (Fully Implemented)
 - **CLI**: Click 8.1.7, Python 3.11+
-- **Recon**: Subprocess, Asyncio, JSON/XML parsing
-- **Database**: DuckDB 1.4.1, SQL
+- **Tools**: Subprocess execution, JSON parsing, Asyncio
+- **Database**: DuckDB 1.4.1, SQL, Python asyncio wrapper
 
-### Tool Dependencies
-- **Subfinder**: https://github.com/projectdiscovery/subfinder
-- **Amass**: https://github.com/owasp-amass/amass
-- **Nmap**: https://nmap.org/
-- **Naabu**: https://github.com/projectdiscovery/naabu
+### Security Tool Dependencies
+- **Subfinder**: https://github.com/projectdiscovery/subfinder (actively used)
+- **Amass**: https://github.com/owasp-amass/amass (module available)
+- **Nmap**: https://nmap.org/ (module available)
+- **Naabu**: https://github.com/projectdiscovery/naabu (module available)
 
-### Planned Layers
-- **Analysis**: Python, Pattern Matching, ML libraries (future)
-- **Notification**: Email (SMTP), Slack API, Webhooks
+### Python Dependencies
+- **Package Manager**: uv (fast Python package installer)
+- Click 8.1.7 - CLI framework
+- DuckDB 1.4.1 - Embedded database
+- pytz - Timezone support (IST)
+- PyYAML 6.0.1 - Configuration files
+- pytest 8.2.2 - Testing framework (dev dependency)
 
 ## Best Practices
 
-1. **Layer Isolation**: Never bypass layers in data flow
-2. **Interface Contracts**: Always implement defined interfaces
-3. **Error Handling**: Use proper try/except and logging
-4. **Async Patterns**: Use `async/await` for I/O operations
-5. **Testing**: Write tests for each layer independently
-6. **Documentation**: Update layer docs when adding features
+1. **Layer Separation**: CLI → Tools → Database → CLI
+2. **Single Organization**: No multi-tenancy complexity
+3. **Direct Execution**: Call tools via subprocess, no orchestration layer
+4. **Error Handling**: Use proper try/except and logging
+5. **Async Patterns**: Use `async/await` for database operations
+6. **IST Timezone**: All timestamps in Indian Standard Time
+7. **No scan_sessions indexes**: Avoid due to DuckDB UPDATE limitation
 
 ## Quick Start for Development
 
 ```bash
-# Install dependencies
-pip install -r requirements.txt
+# Install dependencies using uv
+uv sync
 
-# Run a scan
-python openeasd.py scan example.com --org "Example"
+# Add a domain
+uv run python openeasd.py domain add example.com --primary
 
-# View history
-python openeasd.py history
+# Run a single domain scan
+uv run python openeasd.py scan domain example.com
 
-# View results
-python openeasd.py results <scan-id>
+# Run batch scan (all domains)
+uv run python openeasd.py scan subfinder
 
-# List all scans
-python openeasd.py scans
+# View domain list
+uv run python openeasd.py domain list
+
+# View scan history
+uv run python openeasd.py history
+
+# View all scans
+uv run python openeasd.py scans
+
+# View specific scan results
+uv run python openeasd.py results <scan-id>
 ```
 
 ## Architecture Evolution
 
 ### Version History
-- **v6.0** (October 2025): 5-layer architecture, 3 implemented + 2 planned
-- **v5.0** (January 2025): 4-layer simplified design (outdated)
+- **v7.0** (November 2025): 3-layer architecture, single-organization, production-ready
+- **v6.0** (October 2025): 5-layer architecture, 3 implemented + 2 planned (deprecated)
+- **v5.0** (January 2025): 4-layer simplified design (deprecated)
 - **Earlier**: 6-layer design with API/Scheduler (outdated)
 
 ### Current Focus
-- ✅ Stabilize CLI, Recon, Database layers
-- ⏳ Plan Analysis layer implementation
-- ⏳ Design Notification layer integration
+- ✅ Production-ready 3-layer architecture
+- ✅ Single-organization model (simplified from multi-org)
+- ✅ All core features implemented and tested
+- ✅ Direct subprocess tool execution
+- ✅ DuckDB with optimized queries
 
 ---
 
-*This guide helps AI assistants understand the project structure. For detailed information, refer to the specific documents listed above.*
+*This guide helps AI assistants understand the project structure. For detailed information, refer to DESIGN.md.*
 
-**Last Updated**: October 2025
-**Architecture Version**: 5-Layer (3 Implemented, 2 Planned)
+**Last Updated**: November 2025
+**Architecture Version**: 3-Layer (All Layers Complete)
+**Package Manager**: uv (migrated from pip)
+
+### Running Commands
+- **With uv**: `uv run python openeasd.py <command>`
+- **Direct python**: `/Users/rathnakara/projects/OpenEASD/.venv/bin/python openeasd.py <command>`

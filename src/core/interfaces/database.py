@@ -14,73 +14,83 @@ class DatabaseManager(ABC):
     """Abstract database manager interface."""
     
     @abstractmethod
-    async def initialize(self) -> None:
+    def initialize(self) -> None:
         """Initialize the database connection and create tables if needed."""
         pass
     
     @abstractmethod
-    async def close(self) -> None:
+    def close(self) -> None:
         """Close the database connection."""
         pass
     
     # Domain Management
     @abstractmethod
-    async def add_domain(self, domain: str, is_primary: bool = False) -> Dict[str, Any]:
-        """Add a domain to tracking."""
+    def add_domain(self, domain: str, is_primary: bool = False,
+                   domain_type: str = 'apex',
+                   notes: Optional[str] = None,
+                   tags: Optional[List[str]] = None,
+                   contact_email: Optional[str] = None,
+                   scan_frequency: Optional[str] = None,
+                   active_scan_enabled: bool = True) -> Dict[str, Any]:
+        """Add a domain to tracking with optional metadata."""
         pass
     
     @abstractmethod
-    async def get_domains(self, limit: int = 20, offset: int = 0) -> Dict[str, Any]:
-        """Get paginated list of domains."""
+    def get_domains(self, limit: int = 20, offset: int = 0,
+                    domain_type: Optional[str] = None,
+                    primary_only: bool = False,
+                    domain_name: Optional[str] = None) -> Dict[str, Any]:
+        """Get paginated list of domains with optional filters."""
         pass
     
     @abstractmethod
-    async def delete_domain(self, domain: str) -> bool:
+    def delete_domain(self, domain: str) -> bool:
         """Remove a domain from tracking."""
         pass
     
     @abstractmethod
-    async def domain_exists(self, domain: str) -> bool:
+    def domain_exists(self, domain: str) -> bool:
         """Check if domain exists in database."""
         pass
     
     # Scan Management
     @abstractmethod
-    async def create_scan_session(self, scan_type: str, domains: List[str]) -> str:
+    def create_scan_session(self, scan_type: str, domains: List[str],
+                           tool_name: Optional[str] = None) -> str:
         """Create a new scan session and return scan_id."""
         pass
     
     @abstractmethod
-    async def update_scan_status(self, scan_id: str, status: str, 
+    def update_scan_status(self, scan_id: str, status: str, 
                                 end_time: Optional[datetime] = None,
                                 findings_count: Optional[int] = None) -> None:
         """Update scan session status."""
         pass
     
     @abstractmethod
-    async def get_scan_status(self, scan_id: str) -> Optional[Dict[str, Any]]:
+    def get_scan_status(self, scan_id: str) -> Optional[Dict[str, Any]]:
         """Get scan session information."""
         pass
     
     # Security Alerts
     @abstractmethod
-    async def store_alerts(self, alerts: List[Dict[str, Any]]) -> None:
+    def store_alerts(self, alerts: List[Dict[str, Any]]) -> None:
         """Store security alerts from scan results."""
         pass
     
     @abstractmethod
-    async def get_alerts(self, limit: int = 50, offset: int = 0, 
+    def get_alerts(self, limit: int = 50, offset: int = 0, 
                         severity_filter: Optional[List[str]] = None) -> Dict[str, Any]:
         """Get paginated security alerts with optional severity filtering."""
         pass
     
     # System Metrics
     @abstractmethod
-    async def get_system_metrics(self) -> Dict[str, Any]:
+    def get_system_metrics(self) -> Dict[str, Any]:
         """Get system metrics and performance data."""
         pass
     
     @abstractmethod
-    async def get_health_status(self) -> Dict[str, bool]:
+    def get_health_status(self) -> Dict[str, bool]:
         """Get database health status."""
         pass

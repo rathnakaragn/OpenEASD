@@ -139,14 +139,58 @@ def format_table(data: Dict[str, Any]) -> str:
         if end_time != 'N/A':
             output.append(f"End Time:   {end_time}")
         output.append("")
+
+        # Summary from enhanced scan
+        summary = data.get('summary', {})
+        active_count = summary.get('active_subdomains', 0)
+        ports_count = summary.get('open_ports', 0)
+
         output.append(f"Total Subdomains Discovered: {total_subdomains}")
+        if active_count > 0:
+            output.append(f"Active Subdomains:           {active_count}")
+        if ports_count > 0:
+            output.append(f"Open Ports Found:            {ports_count}")
         output.append("")
 
-        # Subdomains
+        # Active Subdomains with IPs (if available)
+        active_subdomains = data.get('active_subdomains', [])
+        subdomain_ips = data.get('subdomain_ips', {})
+
+        if active_subdomains:
+            output.append("-" * 80)
+            output.append(f"Active Subdomains ({len(active_subdomains)}):")
+            output.append("-" * 80)
+            for i, subdomain in enumerate(active_subdomains, 1):
+                ips = subdomain_ips.get(subdomain, [])
+                ip_str = ', '.join(ips[:3]) if ips else 'N/A'
+                if len(ips) > 3:
+                    ip_str += f' (+{len(ips) - 3} more)'
+                output.append(f"  {i:3d}. {subdomain:<50} {ip_str}")
+            output.append("")
+
+        # Open Ports (if available)
+        open_ports = data.get('open_ports', [])
+        if open_ports:
+            output.append("-" * 80)
+            output.append(f"Open Ports ({len(open_ports)}):")
+            output.append("-" * 80)
+            output.append(f"  {'#':<5} {'Subdomain':<40} {'Port':<8} {'Proto':<8} {'IP':<15}")
+            output.append("  " + "-" * 76)
+            for i, port_info in enumerate(open_ports, 1):
+                output.append(
+                    f"  {i:<5} "
+                    f"{port_info.get('subdomain', 'N/A'):<40} "
+                    f"{port_info.get('port', 'N/A'):<8} "
+                    f"{port_info.get('protocol', 'N/A'):<8} "
+                    f"{port_info.get('ip', 'N/A'):<15}"
+                )
+            output.append("")
+
+        # All Subdomains (collapsed view)
         subdomains = data.get('subdomains', [])
         if subdomains:
             output.append("-" * 80)
-            output.append("Discovered Subdomains:")
+            output.append(f"All Discovered Subdomains ({len(subdomains)}):")
             output.append("-" * 80)
             # Handle both list of strings and list of dicts
             for i, subdomain in enumerate(subdomains, 1):
@@ -173,22 +217,21 @@ def format_table(data: Dict[str, Any]) -> str:
             output.append(data.get('message', ''))
         else:
             output.append("")
-            output.append(f"{'Scan ID':<32} {'Organization':<20} {'Tool':<12} {'Domain':<30} {'Status':<12} {'Findings':<10} {'Start Time':<20} {'End Time':<20} {'Duration':<10}")
-            output.append("-" * 191)
+            output.append(f"{'Scan ID':<32} {'Tool':<12} {'Domain':<30} {'Status':<12} {'Findings':<10} {'Start Time':<20} {'End Time':<20} {'Duration':<10}")
+            output.append("-" * 171)
 
             for scan in scans:
                 scan_id = scan.get('scan_id', '')
-                org = scan.get('organization', 'Unknown')
-                tool = scan.get('tool_name', '-')
+                tool = scan.get('tool_name') or '-'
                 domain = scan.get('domain', '')
                 status = scan.get('status', '')
                 findings = scan.get('findings_count', 0)
-                start_time_raw = scan.get('start_time', 'N/A')
-                end_time_raw = scan.get('end_time', 'N/A')
+                start_time_raw = scan.get('start_time')
+                end_time_raw = scan.get('end_time')
 
                 # Calculate duration
                 duration_str = 'N/A'
-                if start_time_raw != 'N/A' and end_time_raw != 'N/A':
+                if start_time_raw and end_time_raw:
                     try:
                         start_dt = datetime.fromisoformat(start_time_raw)
                         end_dt = datetime.fromisoformat(end_time_raw)
@@ -198,8 +241,8 @@ def format_table(data: Dict[str, Any]) -> str:
                         duration_str = 'N/A'
 
                 # Format timestamps for display
-                start_time = start_time_raw
-                end_time = end_time_raw
+                start_time = start_time_raw or 'N/A'
+                end_time = end_time_raw or 'N/A'
                 if start_time != 'N/A' and 'T' in start_time:
                     start_time = start_time.split('.')[0].replace('T', ' ')
                 if end_time != 'N/A' and 'T' in end_time:
@@ -207,7 +250,6 @@ def format_table(data: Dict[str, Any]) -> str:
 
                 output.append(
                     f"{scan_id:<32} "
-                    f"{org:<20} "
                     f"{tool:<12} "
                     f"{domain:<30} "
                     f"{status:<12} "
@@ -230,13 +272,12 @@ def format_table(data: Dict[str, Any]) -> str:
             output.append(data.get('message', ''))
         else:
             output.append("")
-            output.append(f"{'Organization':<20} {'Domain':<30} {'Status':<12} {'Scans':<8} {'Subdomains':<12} {'FirstScan':<20} {'LastScan':<20}")
-            output.append("-" * 150)
+            output.append(f"{'Domain':<30} {'Status':<12} {'Scans':<8} {'Subdomains':<12} {'First Scan':<20} {'Last Scan':<20}")
+            output.append("-" * 130)
 
             for scan in scans:
                 # Get subdomain count from findings_count for passive scans
                 subdomain_count = scan.get('total_subdomains', 0)
-                org = scan.get('organization', 'Unknown')
                 scan_count = scan.get('scan_count', 1)
                 first_scan = scan.get('first_scan', 'N/A')
                 last_scan = scan.get('last_scan', 'N/A')
@@ -248,7 +289,6 @@ def format_table(data: Dict[str, Any]) -> str:
                     last_scan = last_scan.split('.')[0].replace('T', ' ')
 
                 output.append(
-                    f"{org:<20} "
                     f"{scan.get('domain', ''):<30} "
                     f"{scan.get('status', ''):<12} "
                     f"{scan_count:<8} "
@@ -260,8 +300,7 @@ def format_table(data: Dict[str, Any]) -> str:
     elif data.get('domains') is not None:
         # Domain list formatting
         output.append("=" * 150)
-        org_name = data.get('organization', 'Unknown')
-        output.append(f"Domains - {org_name}")
+        output.append("Domains")
         output.append("=" * 150)
 
         domains = data.get('domains', [])
@@ -297,12 +336,10 @@ def format_table(data: Dict[str, Any]) -> str:
     elif data.get('domain') is not None and not isinstance(data.get('domain'), str):
         # Single domain detail view
         domain = data.get('domain', {})
-        org_name = data.get('organization', 'Unknown')
 
         output.append("=" * 80)
         output.append(f"Domain Details - {domain.get('domain', 'Unknown')}")
         output.append("=" * 80)
-        output.append(f"Organization:       {org_name}")
         output.append(f"Domain:             {domain.get('domain', 'N/A')}")
         output.append(f"Type:               {domain.get('domain_type', 'N/A')}")
         output.append(f"Primary:            {'Yes' if domain.get('is_primary') else 'No'}")

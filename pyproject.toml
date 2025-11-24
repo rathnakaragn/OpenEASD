@@ -1,0 +1,29 @@
+[project]
+name = "openeasd"
+version = "1.0.0"
+description = "Automated External Attack Surface Detection"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "click==8.1.7",
+    "duckdb==1.4.1",
+    "pytz",
+    "pyyaml==6.0.1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest==8.2.2",
+]
+
+[project.scripts]
+openeasd = "openeasd:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.uv]
+dev-dependencies = [
+    "pytest==8.2.2",
+]
