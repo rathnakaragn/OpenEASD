@@ -19,7 +19,7 @@ def domain_add_command(args) -> Dict[str, Any]:
     Add an apex domain.
 
     Args:
-        args: Command arguments with domain, primary, notes, tags, contact, frequency
+        args: Command arguments with domain, primary, contact, frequency
     """
     db_manager = SQLModelManager()
     db_manager.initialize()
@@ -36,18 +36,11 @@ def domain_add_command(args) -> Dict[str, Any]:
                 'message': f'Domain {domain} already exists'
             }
 
-        # Parse tags if provided
-        tags = None
-        if args.get('tags'):
-            tags = [tag.strip() for tag in args['tags'].split(',')]
-
         # Add domain
         result = db_manager.add_domain(
             domain=domain,
             domain_type='apex',
             is_primary=args.get('primary', False),
-            notes=args.get('notes'),
-            tags=tags,
             contact_email=args.get('contact'),
             scan_frequency=args.get('frequency'),
             active_scan_enabled=True
@@ -135,16 +128,10 @@ def domain_update_command(args) -> Dict[str, Any]:
         if args.get('primary') is not None:
             update_fields['is_primary'] = args['primary']
 
-        if args.get('notes'):
-            update_fields['notes'] = args['notes']
-
-        if args.get('tags'):
-            update_fields['tags'] = [tag.strip() for tag in args['tags'].split(',')]
-
         if not update_fields:
             return {
                 'success': False,
-                'message': 'No fields provided to update. Use --primary, --notes, or --tags'
+                'message': 'No fields provided to update. Use --primary'
             }
 
         # Update domain

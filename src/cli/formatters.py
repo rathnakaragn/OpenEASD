@@ -328,15 +328,6 @@ def format_table(data: Dict[str, Any]) -> str:
                 output.append(f"Last Scanned:       {domain.get('last_scanned_at') or 'Never'}")
                 output.append("")
 
-                if domain.get('notes'):
-                    output.append(f"Notes:")
-                    output.append(f"  {domain.get('notes')}")
-                    output.append("")
-
-                if domain.get('tags'):
-                    output.append(f"Tags: {', '.join(domain.get('tags'))}")
-                    output.append("")
-
                 subdomain_count = domain.get('subdomain_count', 0)
                 output.append(f"Total Subdomains: {subdomain_count}")
 
@@ -355,28 +346,31 @@ def format_table(data: Dict[str, Any]) -> str:
             output.append(f"Total: {total_count} domain(s)")
         else:
             # Table view (compact)
-            output.append("=" * 150)
+            output.append("=" * 100)
             output.append("Domains")
-            output.append("=" * 150)
+            output.append("=" * 100)
             output.append("")
-            output.append(f"{'Domain':<30} {'Type':<12} {'Primary':<10} {'Scans':<8} {'Notes':<40} {'Tags':<20}")
-            output.append("-" * 150)
+            output.append(f"{'Domain':<35} {'Primary':<10} {'Scans':<8} {'Last Scanned':<30}")
+            output.append("-" * 100)
 
             for domain in domains:
                 domain_name = domain.get('domain', '')
-                domain_type = domain.get('domain_type', 'apex')
                 is_primary = '✓' if domain.get('is_primary') else ''
                 scan_count = domain.get('scan_count', 0)
-                notes = (domain.get('notes') or '')[:38]  # Truncate long notes
-                tags = ', '.join(domain.get('tags') or [])[:18]  # Truncate long tag lists
+                last_scanned = domain.get('last_scanned_at')
+
+                # Format last scanned date
+                if last_scanned:
+                    if isinstance(last_scanned, str) and 'T' in last_scanned:
+                        last_scanned = last_scanned.split('.')[0].replace('T', ' ')
+                else:
+                    last_scanned = 'Never'
 
                 output.append(
-                    f"{domain_name:<30} "
-                    f"{domain_type:<12} "
+                    f"{domain_name:<35} "
                     f"{is_primary:<10} "
                     f"{scan_count:<8} "
-                    f"{notes:<40} "
-                    f"{tags:<20}"
+                    f"{last_scanned:<30}"
                 )
 
             output.append("")
@@ -399,15 +393,6 @@ def format_table(data: Dict[str, Any]) -> str:
         output.append(f"Created:            {domain.get('created_at', 'N/A')}")
         output.append(f"Last Scanned:       {domain.get('last_scanned_at') or 'Never'}")
         output.append("")
-
-        if domain.get('notes'):
-            output.append(f"Notes:")
-            output.append(f"  {domain.get('notes')}")
-            output.append("")
-
-        if domain.get('tags'):
-            output.append(f"Tags: {', '.join(domain.get('tags'))}")
-            output.append("")
 
         subdomain_count = data.get('subdomain_count', 0)
         output.append(f"Total Subdomains: {subdomain_count}")

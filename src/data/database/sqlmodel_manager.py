@@ -74,8 +74,6 @@ class SQLModelManager(DatabaseManager):
         domain: str,
         is_primary: bool = False,
         domain_type: str = 'apex',
-        notes: Optional[str] = None,
-        tags: Optional[List[str]] = None,
         contact_email: Optional[str] = None,
         scan_frequency: Optional[str] = None,
         active_scan_enabled: bool = True
@@ -87,8 +85,6 @@ class SQLModelManager(DatabaseManager):
             domain: Domain name (e.g., example.com)
             is_primary: Whether this is a primary domain
             domain_type: Type of domain (apex, subdomain, wildcard)
-            notes: Optional notes about the domain
-            tags: Optional list of tags
             contact_email: Optional contact email
             scan_frequency: Optional scan frequency (daily, weekly, monthly)
             active_scan_enabled: Whether active scanning is enabled
@@ -99,9 +95,6 @@ class SQLModelManager(DatabaseManager):
         with Session(self.engine) as session:
             now = get_ist_now()
 
-            # Convert tags list to JSON string for storage
-            tags_json = json.dumps(tags) if tags else None
-
             domain_obj = Domain(
                 domain=domain,
                 domain_type=domain_type,
@@ -110,8 +103,6 @@ class SQLModelManager(DatabaseManager):
                 updated_at=now,
                 last_scanned_at=None,
                 scan_count=0,
-                notes=notes,
-                tags=tags_json,
                 contact_email=contact_email,
                 scan_frequency=scan_frequency,
                 active_scan_enabled=active_scan_enabled
@@ -188,7 +179,7 @@ class SQLModelManager(DatabaseManager):
 
         Args:
             domain: Domain name to update
-            **kwargs: Fields to update (is_primary, notes, tags, contact_email, etc.)
+            **kwargs: Fields to update (is_primary, contact_email, scan_frequency, etc.)
 
         Returns:
             Dictionary with success status and updated domain
@@ -201,10 +192,7 @@ class SQLModelManager(DatabaseManager):
 
             # Update fields
             for key, value in kwargs.items():
-                if key == 'tags' and isinstance(value, list):
-                    # Convert tags list to JSON string
-                    setattr(domain_obj, key, json.dumps(value))
-                elif hasattr(domain_obj, key):
+                if hasattr(domain_obj, key):
                     setattr(domain_obj, key, value)
 
             # Update timestamp
@@ -1159,9 +1147,6 @@ class SQLModelManager(DatabaseManager):
 
     def _domain_to_dict(self, domain: Domain) -> Dict[str, Any]:
         """Convert Domain object to dictionary."""
-        # Parse tags JSON string to list
-        tags = json.loads(domain.tags) if domain.tags else []
-
         return {
             'domain': domain.domain,
             'domain_type': domain.domain_type,
@@ -1170,8 +1155,6 @@ class SQLModelManager(DatabaseManager):
             'updated_at': domain.updated_at,
             'last_scanned_at': domain.last_scanned_at,
             'scan_count': domain.scan_count,
-            'notes': domain.notes,
-            'tags': tags,
             'contact_email': domain.contact_email,
             'scan_frequency': domain.scan_frequency,
             'active_scan_enabled': domain.active_scan_enabled

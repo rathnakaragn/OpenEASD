@@ -216,21 +216,17 @@ def domain():
 @click.argument('domain')
 @click.option('--primary', is_flag=True,
               help='Mark as primary domain')
-@click.option('--notes',
-              help='Notes about the domain')
-@click.option('--tags',
-              help='Comma-separated tags (e.g., "production,critical"')
 @click.option('--contact',
               help='Contact email for this domain')
 @click.option('--frequency',
               type=click.Choice(['hourly', 'daily', 'weekly', 'monthly']),
               help='Scan frequency preference')
-def domain_add(domain, primary, notes, tags, contact, frequency):
+def domain_add(domain, primary, contact, frequency):
     """Add an apex domain
 
     Examples:
         openeasd domain add example.com --primary
-        openeasd domain add example.io --notes "Secondary domain" --tags "staging,test"
+        openeasd domain add example.io --contact admin@example.io --frequency daily
     """
     try:
         result = domain_add_command(locals())
@@ -285,17 +281,12 @@ def domain_list(limit, domain_type, primary, details, output):
 @click.argument('domain')
 @click.option('--primary', type=bool,
               help='Set primary status (true/false)')
-@click.option('--notes',
-              help='Update notes')
-@click.option('--tags',
-              help='Update tags (comma-separated)')
-def domain_update(domain, primary, notes, tags):
+def domain_update(domain, primary):
     """Update domain metadata
 
     Examples:
-        openeasd domain update example.com --notes "Updated notes"
         openeasd domain update example.com --primary true
-        openeasd domain update example.com --tags "prod,critical"
+        openeasd domain update example.com --primary false
     """
     try:
         result = domain_update_command(locals())
