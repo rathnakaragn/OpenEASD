@@ -76,7 +76,6 @@ class DomainService:
     def list_domains(
         self,
         limit: int = 20,
-        domain_type: Optional[str] = None,
         primary_only: bool = False
     ) -> Dict[str, Any]:
         """
@@ -84,7 +83,6 @@ class DomainService:
 
         Args:
             limit: Maximum number of domains to return
-            domain_type: Filter by domain type ('apex' or 'subdomain')
             primary_only: Only return primary domains
 
         Returns:
@@ -92,7 +90,6 @@ class DomainService:
         """
         result = self.db.get_domains(
             limit=limit,
-            domain_type=domain_type,
             primary_only=primary_only
         )
 

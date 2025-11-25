@@ -28,7 +28,6 @@ router = APIRouter(redirect_slashes=False)
 @router.get("", response_model=DomainListResponse)
 async def list_domains(
     limit: int = Query(20, ge=1, le=100),
-    domain_type: Optional[str] = Query(None, regex="^(apex|subdomain)$"),
     primary_only: bool = False,
     db: SQLModelManager = Depends(get_db_manager)
 ):
@@ -36,14 +35,13 @@ async def list_domains(
     List domains with optional filtering.
 
     Returns a paginated list of domains with optional filters
-    for domain type and primary status.
+    for primary status.
     """
     service = get_domain_service(db)
 
     try:
         result = service.list_domains(
             limit=limit,
-            domain_type=domain_type,
             primary_only=primary_only
         )
 

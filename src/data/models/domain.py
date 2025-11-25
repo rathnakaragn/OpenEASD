@@ -13,7 +13,6 @@ class Domain(SQLModel, table=True):
     __tablename__ = "domains"
 
     domain: str = Field(primary_key=True, max_length=255)
-    domain_type: str = Field(default="apex", max_length=50)
     is_primary: bool = Field(default=False)
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)

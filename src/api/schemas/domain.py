@@ -11,8 +11,6 @@ class DomainCreate(BaseModel):
     """Schema for creating a new domain."""
     domain: str = Field(..., description="Domain name (e.g., example.com)")
     is_primary: bool = Field(default=False, description="Mark as primary domain")
-    notes: Optional[str] = Field(None, description="Optional notes about the domain")
-    tags: Optional[List[str]] = Field(None, description="List of tags")
     contact_email: Optional[str] = Field(None, description="Contact email")
     scan_frequency: Optional[str] = Field(None, description="Scan frequency (hourly, daily, weekly, monthly)")
 
@@ -27,8 +25,6 @@ class DomainCreate(BaseModel):
             "example": {
                 "domain": "example.com",
                 "is_primary": True,
-                "notes": "Production domain",
-                "tags": ["prod", "critical"],
                 "scan_frequency": "daily"
             }
         }
@@ -37,14 +33,11 @@ class DomainCreate(BaseModel):
 class DomainUpdate(BaseModel):
     """Schema for updating domain metadata."""
     is_primary: Optional[bool] = Field(None, description="Update primary status")
-    notes: Optional[str] = Field(None, description="Update notes")
-    tags: Optional[List[str]] = Field(None, description="Update tags")
 
     class Config:
         json_schema_extra = {
             "example": {
-                "notes": "Updated production domain",
-                "tags": ["prod", "critical", "monitored"]
+                "is_primary": True
             }
         }
 
@@ -52,11 +45,8 @@ class DomainUpdate(BaseModel):
 class DomainResponse(BaseModel):
     """Schema for domain response."""
     domain: str
-    domain_type: str
     is_primary: bool
     scan_count: int
-    notes: Optional[str] = None
-    tags: Optional[List[str]] = None
     contact_email: Optional[str] = None
     scan_frequency: Optional[str] = None
     created_at: Optional[datetime] = None
@@ -78,11 +68,8 @@ class DomainListResponse(BaseModel):
                 "domains": [
                     {
                         "domain": "example.com",
-                        "domain_type": "apex",
                         "is_primary": True,
                         "scan_count": 5,
-                        "notes": "Production domain",
-                        "tags": ["prod", "critical"],
                         "scan_frequency": "daily",
                         "created_at": "2025-01-15T10:30:00",
                         "last_scan_at": "2025-01-20T15:45:00"
@@ -103,15 +90,12 @@ class DomainDetailResponse(DomainResponse):
         json_schema_extra = {
             "example": {
                 "domain": "example.com",
-                "domain_type": "apex",
                 "is_primary": True,
                 "scan_count": 5,
                 "subdomain_count": 42,
                 "recent_subdomains": [
                     {"subdomain": "api.example.com", "discovered_at": "2025-01-20T15:45:00"}
                 ],
-                "notes": "Production domain",
-                "tags": ["prod"],
                 "scan_frequency": "daily"
             }
         }

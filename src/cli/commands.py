@@ -702,13 +702,11 @@ def batch_scan_subfinder_command(args) -> Dict[str, Any]:
     db_manager.initialize()
 
     try:
-        # Get all apex domains (optionally filter by primary)
+        # Get all domains (optionally filter by primary)
         primary_only = args.get('primary', False)
-        domain_type = 'apex'
 
         result = db_manager.get_domains(
             limit=1000,  # Large limit to get all domains
-            domain_type=domain_type,
             primary_only=primary_only
         )
 

@@ -243,9 +243,6 @@ def domain_add(domain, primary, contact, frequency):
 @domain.command('list')
 @click.option('--limit', default=20, type=int,
               help='Number of domains to show (default: 20)')
-@click.option('--type', 'domain_type',
-              type=click.Choice(['apex', 'subdomain']),
-              help='Filter by domain type')
 @click.option('--primary', is_flag=True,
               help='Show only primary domains')
 @click.option('--details', is_flag=True,
@@ -253,14 +250,14 @@ def domain_add(domain, primary, contact, frequency):
 @click.option('--output', type=click.Choice(['table', 'json']),
               default='table',
               help='Output format (default: table)')
-def domain_list(limit, domain_type, primary, details, output):
+def domain_list(limit, primary, details, output):
     """List all domains
 
     Examples:
         openeasd domain list
         openeasd domain list --primary
         openeasd domain list --details
-        openeasd domain list --type apex --output json
+        openeasd domain list --output json
     """
     try:
         result = domain_list_command(locals())

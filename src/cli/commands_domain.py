@@ -39,7 +39,6 @@ def domain_add_command(args) -> Dict[str, Any]:
         # Add domain
         result = db_manager.add_domain(
             domain=domain,
-            domain_type='apex',
             is_primary=args.get('primary', False),
             contact_email=args.get('contact'),
             scan_frequency=args.get('frequency'),
@@ -68,14 +67,12 @@ def domain_list_command(args) -> Dict[str, Any]:
 
     try:
         # Get domains with filters
-        domain_type = args.get('domain_type')
         primary_only = args.get('primary', False)
         limit = args.get('limit', 20)
         show_details = args.get('details', False)
 
         result = db_manager.get_domains(
             limit=limit,
-            domain_type=domain_type,
             primary_only=primary_only
         )
 

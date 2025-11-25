@@ -73,7 +73,6 @@ class SQLModelManager(DatabaseManager):
         self,
         domain: str,
         is_primary: bool = False,
-        domain_type: str = 'apex',
         contact_email: Optional[str] = None,
         scan_frequency: Optional[str] = None,
         active_scan_enabled: bool = True
@@ -84,7 +83,6 @@ class SQLModelManager(DatabaseManager):
         Args:
             domain: Domain name (e.g., example.com)
             is_primary: Whether this is a primary domain
-            domain_type: Type of domain (apex, subdomain, wildcard)
             contact_email: Optional contact email
             scan_frequency: Optional scan frequency (daily, weekly, monthly)
             active_scan_enabled: Whether active scanning is enabled
@@ -97,7 +95,6 @@ class SQLModelManager(DatabaseManager):
 
             domain_obj = Domain(
                 domain=domain,
-                domain_type=domain_type,
                 is_primary=is_primary,
                 created_at=now,
                 updated_at=now,
@@ -118,7 +115,6 @@ class SQLModelManager(DatabaseManager):
         self,
         limit: int = 20,
         offset: int = 0,
-        domain_type: Optional[str] = None,
         primary_only: bool = False,
         domain_name: Optional[str] = None
     ) -> Dict[str, Any]:
@@ -128,7 +124,6 @@ class SQLModelManager(DatabaseManager):
         Args:
             limit: Maximum number of domains to return
             offset: Number of domains to skip
-            domain_type: Filter by domain type
             primary_only: Only return primary domains
             domain_name: Filter by specific domain name
 
@@ -142,8 +137,6 @@ class SQLModelManager(DatabaseManager):
             # Apply filters
             if domain_name:
                 query = query.where(Domain.domain == domain_name)
-            if domain_type:
-                query = query.where(Domain.domain_type == domain_type)
             if primary_only:
                 query = query.where(Domain.is_primary == True)
 
@@ -151,8 +144,6 @@ class SQLModelManager(DatabaseManager):
             count_query = select(func.count()).select_from(Domain)
             if domain_name:
                 count_query = count_query.where(Domain.domain == domain_name)
-            if domain_type:
-                count_query = count_query.where(Domain.domain_type == domain_type)
             if primary_only:
                 count_query = count_query.where(Domain.is_primary == True)
 
@@ -1149,7 +1140,6 @@ class SQLModelManager(DatabaseManager):
         """Convert Domain object to dictionary."""
         return {
             'domain': domain.domain,
-            'domain_type': domain.domain_type,
             'is_primary': domain.is_primary,
             'created_at': domain.created_at,
             'updated_at': domain.updated_at,
