@@ -19,7 +19,7 @@ from src.cli.commands import (
 )
 from src.cli.commands_domain import (
     domain_add_command, domain_list_command, domain_update_command,
-    domain_remove_command, domain_show_command
+    domain_remove_command
 )
 from src.cli.formatters import format_output
 from src.data.database.sqlmodel_manager import SQLModelManager
@@ -252,15 +252,18 @@ def domain_add(domain, primary, notes, tags, contact, frequency):
               help='Filter by domain type')
 @click.option('--primary', is_flag=True,
               help='Show only primary domains')
+@click.option('--details', is_flag=True,
+              help='Show detailed information for each domain')
 @click.option('--output', type=click.Choice(['table', 'json']),
               default='table',
               help='Output format (default: table)')
-def domain_list(limit, domain_type, primary, output):
+def domain_list(limit, domain_type, primary, details, output):
     """List all domains
 
     Examples:
         openeasd domain list
         openeasd domain list --primary
+        openeasd domain list --details
         openeasd domain list --type apex --output json
     """
     try:
@@ -348,28 +351,6 @@ def domain_remove(domain, force):
         sys.exit(1)
 
 
-@domain.command('show')
-@click.argument('domain')
-@click.option('--output', type=click.Choice(['table', 'json']),
-              default='table',
-              help='Output format (default: table)')
-def domain_show(domain, output):
-    """Show detailed information about a domain
-
-    Examples:
-        openeasd domain show example.com
-        openeasd domain show example.com --output json
-    """
-    try:
-        result = domain_show_command(locals())
-        if result.get('success'):
-            click.echo(format_output(result, output))
-        else:
-            click.echo(f"Error: {result['message']}", err=True)
-            sys.exit(1)
-    except Exception as e:
-        click.echo(f"Error: {e}", err=True)
-        sys.exit(1)
 
 
 @cli.group()

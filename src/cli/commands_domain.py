@@ -68,7 +68,7 @@ def domain_list_command(args) -> Dict[str, Any]:
     List all apex domains.
 
     Args:
-        args: Command arguments with limit, type, primary filters
+        args: Command arguments with limit, type, primary, details filters
     """
     db_manager = SQLModelManager()
     db_manager.initialize()
@@ -78,6 +78,7 @@ def domain_list_command(args) -> Dict[str, Any]:
         domain_type = args.get('domain_type')
         primary_only = args.get('primary', False)
         limit = args.get('limit', 20)
+        show_details = args.get('details', False)
 
         result = db_manager.get_domains(
             limit=limit,
@@ -85,11 +86,21 @@ def domain_list_command(args) -> Dict[str, Any]:
             primary_only=primary_only
         )
 
+        # If details flag is set, enrich each domain with additional info
+        if show_details and result['domains']:
+            for domain_info in result['domains']:
+                domain = domain_info['domain']
+                # Get subdomain history
+                history = db_manager.get_subdomain_history(domain, limit=10)
+                domain_info['subdomain_count'] = history['total_count']
+                domain_info['recent_subdomains'] = history['history'][:5]  # Top 5 recent
+
         return {
             'success': True,
             'domains': result['domains'],
             'total_count': result['total_count'],
-            'has_more': result['has_more']
+            'has_more': result['has_more'],
+            'show_details': show_details
         }
 
     finally:
@@ -226,52 +237,3 @@ def domain_remove_command(args) -> Dict[str, Any]:
         db_manager.close()
 
 
-def domain_show_command(args) -> Dict[str, Any]:
-    """
-    Show detailed information about a specific domain.
-
-    Args:
-        args: Command arguments with domain name
-    """
-    db_manager = SQLModelManager()
-    db_manager.initialize()
-
-    try:
-        # Validate domain to prevent injection attacks
-        domain = validate_domain(args['domain'])
-
-        # Check if domain exists
-        exists = db_manager.domain_exists(domain)
-        if not exists:
-            return {
-                'success': False,
-                'message': f'Domain {domain} not found'
-            }
-
-        # Get domain details
-        result = db_manager.get_domains(domain_name=domain, limit=1)
-
-        if not result['domains']:
-            return {
-                'success': False,
-                'message': f'Could not retrieve details for {domain}'
-            }
-
-        domain_info = result['domains'][0]
-
-        # Get subdomain history
-        history = db_manager.get_subdomain_history(domain, limit=10)
-
-        # Get recent scans
-        # Note: This would require additional database query
-        # For now, we'll use the scan_count from domain info
-
-        return {
-            'success': True,
-            'domain': domain_info,
-            'subdomain_count': history['total_count'],
-            'recent_subdomains': history['history'][:5]  # Top 5 recent
-        }
-
-    finally:
-        db_manager.close()
