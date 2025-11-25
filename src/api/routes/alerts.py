@@ -11,7 +11,7 @@ from src.api.schemas.alert import (
 )
 from src.services.alert_service import AlertService
 from src.api.dependencies import get_alert_service, get_db_manager
-from src.data.database.duckdb_manager import DuckDBManager
+from src.data.database.sqlmodel_manager import SQLModelManager
 
 router = APIRouter(redirect_slashes=False)
 
@@ -21,7 +21,7 @@ async def list_alerts(
     limit: int = Query(50, ge=1, le=200),
     severity: Optional[str] = Query(None, regex="^(info|low|medium|high|critical)$"),
     domain: Optional[str] = None,
-    db: DuckDBManager = Depends(get_db_manager)
+    db: SQLModelManager = Depends(get_db_manager)
 ):
     """
     List security alerts with optional filtering.
@@ -48,7 +48,7 @@ async def list_alerts(
 
 @router.get("/statistics", response_model=AlertStatisticsResponse)
 async def get_alert_statistics(
-    db: DuckDBManager = Depends(get_db_manager)
+    db: SQLModelManager = Depends(get_db_manager)
 ):
     """
     Get alert statistics.
@@ -69,7 +69,7 @@ async def get_alert_statistics(
 @router.get("/{alert_id}", response_model=AlertResponse)
 async def get_alert(
     alert_id: str,
-    db: DuckDBManager = Depends(get_db_manager)
+    db: SQLModelManager = Depends(get_db_manager)
 ):
     """
     Get alert details.

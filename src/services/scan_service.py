@@ -6,7 +6,7 @@ creation, execution, status tracking, and results retrieval.
 """
 
 from typing import List, Dict, Any, Optional
-from src.data.database.duckdb_manager import DuckDBManager
+from src.data.database.sqlmodel_manager import SQLModelManager
 from src.utils.validation import validate_domain
 from src.cli.commands import run_subfinder, run_naabu, run_dnsx
 from src.utils.timezone import get_ist_now
@@ -15,7 +15,7 @@ from src.utils.timezone import get_ist_now
 class ScanService:
     """Service for managing scans."""
 
-    def __init__(self, db_manager: DuckDBManager):
+    def __init__(self, db_manager: SQLModelManager):
         """
         Initialize scan service.
 
@@ -207,23 +207,21 @@ class ScanService:
             raise ValueError(f'Scan ID not found: {scan_id}')
 
         # Get alerts (subdomains/ports) for this scan
-        result = self.db.connection.execute("""
-            SELECT domain, vulnerability_type, severity, description, tool_source, discovered_at
-            FROM security_alerts
-            WHERE scan_id = ?
-            ORDER BY domain, description
-        """, [scan_id]).fetchall()
+        alerts_result = self.db.get_alerts(scan_id=scan_id, limit=10000)
+        alerts = alerts_result.get('alerts', [])
 
         ports = []
         subdomains = set()
-        for row in result:
-            subdomain = row[0]
+
+        for alert in alerts:
+            subdomain = alert.get('domain', '')
             subdomains.add(subdomain)
 
             # Parse port from description
             port_num = 0
             protocol = 'tcp'
-            desc = row[3] or ''
+            desc = alert.get('description', '')
+
             if 'Open port' in desc:
                 parts = desc.replace('Open port ', '').split(' ')
                 try:
@@ -233,27 +231,32 @@ class ScanService:
                 except:
                     pass
 
-            ports.append({
-                'subdomain': subdomain,
-                'port': port_num,
-                'protocol': protocol,
-                'ip': '',
-                'discovered_at': row[5].isoformat() if row[5] else ''
-            })
+            if port_num > 0:  # Only add if we found a port
+                ports.append({
+                    'subdomain': subdomain,
+                    'port': port_num,
+                    'protocol': protocol,
+                    'ip': '',
+                    'discovered_at': alert.get('discovered_at', '')
+                })
+
+        # Extract domains from scan info
+        domains_scanned = scan_info.get('domains_scanned', [])
+        first_domain = domains_scanned[0] if domains_scanned else ''
 
         return {
             'success': True,
             'scan': {
                 'scan_id': scan_info['scan_id'],
-                'domain': scan_info['domains'][0] if scan_info['domains'] else '',
+                'domain': first_domain,
                 'scan_type': scan_info.get('scan_type', 'passive_subdomain_enum'),
                 'tool_name': scan_info.get('tool_name', 'subfinder'),
                 'status': scan_info['status'],
-                'start_time': scan_info['start_time'],
-                'end_time': scan_info['end_time'],
-                'findings_count': scan_info['findings_count'],
+                'start_time': scan_info.get('start_time', ''),
+                'end_time': scan_info.get('end_time', ''),
+                'findings_count': scan_info.get('findings_count', 0),
                 'total_subdomains': len(subdomains),
-                'total_ports': scan_info['findings_count']
+                'total_ports': len(ports)
             },
             'subdomains': [{'subdomain': s, 'ip_address': '', 'discovered_at': ''} for s in sorted(subdomains)],
             'ports': ports
@@ -269,36 +272,28 @@ class ScanService:
         Returns:
             Dictionary containing list of scans
         """
-        result = self.db.connection.execute("""
-            SELECT
-                s.scan_id,
-                s.scan_type,
-                s.tool_name,
-                s.domains_scanned[1] as domain,
-                s.status,
-                s.findings_count,
-                s.start_time,
-                s.end_time
-            FROM scan_sessions s
-            ORDER BY s.start_time DESC
-            LIMIT ?
-        """, [limit]).fetchall()
+        # Use database manager method instead of raw SQL
+        result = self.db.get_scan_history(limit=limit)
 
         scans = []
-        for row in result:
+        for scan in result.get('scans', []):
+            # Extract first domain from domains_scanned
+            domains = scan.get('domains_scanned', [])
+            domain = domains[0] if domains else 'N/A'
+
             scans.append({
-                'scan_id': row[0],
-                'scan_type': row[1],
-                'tool_name': row[2],
-                'domain': row[3],
-                'status': row[4],
-                'findings_count': row[5] if row[5] else 0,
-                'start_time': row[6].isoformat() if row[6] else 'N/A',
-                'end_time': row[7].isoformat() if row[7] else 'N/A'
+                'scan_id': scan.get('scan_id'),
+                'scan_type': scan.get('scan_type'),
+                'tool_name': scan.get('tool_name'),
+                'domain': domain,
+                'status': scan.get('status'),
+                'findings_count': scan.get('findings_count', 0),
+                'start_time': scan.get('start_time', 'N/A'),
+                'end_time': scan.get('end_time', 'N/A')
             })
 
         return {
             'success': True,
             'scans': scans,
-            'total': len(scans)
+            'total': result.get('total_count', len(scans))
         }

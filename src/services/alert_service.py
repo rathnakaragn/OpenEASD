@@ -5,13 +5,13 @@ Handles business logic for security alert operations.
 """
 
 from typing import List, Dict, Any, Optional
-from src.data.database.duckdb_manager import DuckDBManager
+from src.data.database.sqlmodel_manager import SQLModelManager
 
 
 class AlertService:
     """Service for managing security alerts."""
 
-    def __init__(self, db_manager: DuckDBManager):
+    def __init__(self, db_manager: SQLModelManager):
         """
         Initialize alert service.
 
@@ -39,15 +39,14 @@ class AlertService:
         """
         query = """
             SELECT
-                alert_id,
+                id,
                 scan_id,
                 domain,
                 vulnerability_type,
                 severity,
                 description,
                 tool_source,
-                discovered_at,
-                status
+                discovered_at
             FROM security_alerts
             WHERE 1=1
         """
@@ -74,10 +73,10 @@ class AlertService:
                 'domain': row[2],
                 'vulnerability_type': row[3],
                 'severity': row[4],
-                'description': row[5],
-                'tool_source': row[6],
+                'description': row[5] if row[5] else '',
+                'tool_source': row[6] if row[6] else '',
                 'discovered_at': row[7].isoformat() if row[7] else '',
-                'status': row[8] if len(row) > 8 else 'open'
+                'status': 'open'  # Default status as column doesn't exist
             })
 
         return {
@@ -101,17 +100,16 @@ class AlertService:
         """
         result = self.db.connection.execute("""
             SELECT
-                alert_id,
+                id,
                 scan_id,
                 domain,
                 vulnerability_type,
                 severity,
                 description,
                 tool_source,
-                discovered_at,
-                status
+                discovered_at
             FROM security_alerts
-            WHERE alert_id = ?
+            WHERE id = ?
         """, [alert_id]).fetchone()
 
         if not result:
@@ -123,10 +121,10 @@ class AlertService:
             'domain': result[2],
             'vulnerability_type': result[3],
             'severity': result[4],
-            'description': result[5],
-            'tool_source': result[6],
+            'description': result[5] if result[5] else '',
+            'tool_source': result[6] if result[6] else '',
             'discovered_at': result[7].isoformat() if result[7] else '',
-            'status': result[8] if len(result) > 8 else 'open'
+            'status': 'open'  # Default status as column doesn't exist
         }
 
         return {

@@ -6,7 +6,7 @@ readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "click==8.1.7",
-    "duckdb==1.4.1",
+    "sqlmodel>=0.0.14",
     "pytz",
     "pyyaml==6.0.1",
     # API dependencies

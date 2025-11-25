@@ -10,7 +10,7 @@ Created: October 2025
 
 from typing import Optional, List, Dict, Any
 
-from src.data.database.duckdb_manager import DuckDBManager
+from src.data.database.sqlmodel_manager import SQLModelManager
 from src.utils.validation import validate_domain
 
 
@@ -21,7 +21,7 @@ def domain_add_command(args) -> Dict[str, Any]:
     Args:
         args: Command arguments with domain, primary, notes, tags, contact, frequency
     """
-    db_manager = DuckDBManager()
+    db_manager = SQLModelManager()
     db_manager.initialize()
 
     try:
@@ -70,7 +70,7 @@ def domain_list_command(args) -> Dict[str, Any]:
     Args:
         args: Command arguments with limit, type, primary filters
     """
-    db_manager = DuckDBManager()
+    db_manager = SQLModelManager()
     db_manager.initialize()
 
     try:
@@ -103,7 +103,7 @@ def domain_update_command(args) -> Dict[str, Any]:
     Args:
         args: Command arguments with domain and fields to update
     """
-    db_manager = DuckDBManager()
+    db_manager = SQLModelManager()
     db_manager.initialize()
 
     try:
@@ -156,7 +156,7 @@ def domain_remove_command(args) -> Dict[str, Any]:
     Args:
         args: Command arguments with domain and force flag
     """
-    db_manager = DuckDBManager()
+    db_manager = SQLModelManager()
     db_manager.initialize()
 
     try:
@@ -233,7 +233,7 @@ def domain_show_command(args) -> Dict[str, Any]:
     Args:
         args: Command arguments with domain name
     """
-    db_manager = DuckDBManager()
+    db_manager = SQLModelManager()
     db_manager.initialize()
 
     try:

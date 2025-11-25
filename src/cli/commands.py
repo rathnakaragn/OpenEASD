@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import List, Dict, Any
 from datetime import datetime
 
-from src.data.database.duckdb_manager import DuckDBManager
+from src.data.database.sqlmodel_manager import SQLModelManager
 from src.utils.timezone import get_ist_now
 from src.utils.config import Config
 from src.utils.validation import validate_domain, validate_domains
@@ -350,7 +350,7 @@ def scan_command(args) -> Dict[str, Any]:
 
     if save:
         # Initialize database manager
-        db_manager = DuckDBManager()
+        db_manager = SQLModelManager()
         db_manager.initialize()
 
         scan_id = db_manager.create_scan_session('passive_subdomain_enum', [domain])
@@ -480,38 +480,78 @@ def history_command(args) -> Dict[str, Any]:
     Returns:
         Scan history dictionary
     """
-    db_manager = DuckDBManager()
+    db_manager = SQLModelManager()
     db_manager.initialize()
 
     try:
-        # Get domain scan summary
-        result = db_manager.connection.execute("""
-            SELECT
-                d.domain,
-                COUNT(DISTINCT s.scan_id) as scan_count,
-                MAX(CASE WHEN s.status = 'completed' THEN s.findings_count ELSE 0 END) as subdomains,
-                MIN(s.start_time) as first_scan,
-                MAX(s.start_time) as last_scan,
-                ARG_MAX(s.status, s.start_time) as status
-            FROM domains d
-            LEFT JOIN scan_sessions s ON s.domains_scanned[1] = d.domain
-            GROUP BY d.domain
-            ORDER BY MAX(s.start_time) DESC
-            LIMIT ?
-        """, [args['limit']]).fetchall()
+        # Get all domains
+        domains_result = db_manager.get_domains(limit=1000)
 
-        scans = []
-        for row in result:
-            scans.append({
-                'domain': row[0],
-                'scan_count': row[1] or 0,
-                'total_subdomains': row[2] or 0,
-                'first_scan': row[3].isoformat() if row[3] else 'N/A',
-                'last_scan': row[4].isoformat() if row[4] else 'N/A',
-                'status': row[5] if row[5] else 'pending',
-                'total_ports': row[2] or 0  # For compatibility
-            })
-        
+        # Get scan history
+        scans_result = db_manager.get_scan_history(limit=1000)
+
+        # Build summary per domain
+        domain_summary = {}
+        for domain_info in domains_result.get('domains', []):
+            domain = domain_info['domain']
+            domain_summary[domain] = {
+                'domain': domain,
+                'scan_count': 0,
+                'total_subdomains': 0,
+                'first_scan': None,
+                'last_scan': None,
+                'status': 'pending'
+            }
+
+        # Aggregate scan data
+        for scan in scans_result.get('scans', []):
+            domains_scanned = scan.get('domains_scanned', [])
+            for domain in domains_scanned:
+                if domain not in domain_summary:
+                    domain_summary[domain] = {
+                        'domain': domain,
+                        'scan_count': 0,
+                        'total_subdomains': 0,
+                        'first_scan': None,
+                        'last_scan': None,
+                        'status': 'pending'
+                    }
+
+                summary = domain_summary[domain]
+                summary['scan_count'] += 1
+
+                if scan.get('status') == 'completed':
+                    summary['total_subdomains'] = max(summary['total_subdomains'], scan.get('findings_count', 0))
+
+                scan_time = scan.get('start_time')
+                if scan_time is not None:
+                    if summary['first_scan'] is None or scan_time < summary['first_scan']:
+                        summary['first_scan'] = scan_time
+                    if summary['last_scan'] is None or scan_time > summary['last_scan']:
+                        summary['last_scan'] = scan_time
+                        summary['status'] = scan.get('status', 'pending')
+
+        # Convert to list and sort
+        scans = list(domain_summary.values())
+        # Sort by last_scan datetime, putting None values at the end
+        scans.sort(key=lambda x: x['last_scan'] if x['last_scan'] else datetime.min, reverse=True)
+
+        # Limit results
+        scans = scans[:args['limit']]
+
+        # Format for output
+        for scan in scans:
+            scan['total_ports'] = scan['total_subdomains']  # For compatibility
+            # Convert datetime objects to strings
+            if scan['first_scan'] is not None:
+                scan['first_scan'] = scan['first_scan'].isoformat()
+            else:
+                scan['first_scan'] = 'N/A'
+            if scan['last_scan'] is not None:
+                scan['last_scan'] = scan['last_scan'].isoformat()
+            else:
+                scan['last_scan'] = 'N/A'
+
         return {
             'type': 'history',
             'scans': scans
@@ -531,7 +571,7 @@ def results_command(args) -> Dict[str, Any]:
     Returns:
         Scan results dictionary
     """
-    db_manager = DuckDBManager()
+    db_manager = SQLModelManager()
     db_manager.initialize()
 
     try:
@@ -542,23 +582,19 @@ def results_command(args) -> Dict[str, Any]:
             raise Exception(f"Scan ID not found: {args['scan_id']}")
 
         # Get alerts (subdomains/ports) for this scan
-        result = db_manager.connection.execute("""
-            SELECT domain, vulnerability_type, severity, description, tool_source, discovered_at
-            FROM security_alerts
-            WHERE scan_id = ?
-            ORDER BY domain, description
-        """, [args['scan_id']]).fetchall()
+        alerts_result = db_manager.get_alerts(scan_id=args['scan_id'], limit=10000)
+        alerts = alerts_result.get('alerts', [])
 
         ports = []
         subdomains = set()
-        for row in result:
-            subdomain = row[0]
+        for alert in alerts:
+            subdomain = alert.get('domain', '')
             subdomains.add(subdomain)
 
             # Parse port from description (e.g., "Open port 80 (tcp)")
             port_num = 0
             protocol = 'tcp'
-            desc = row[3] or ''
+            desc = alert.get('description', '')
             if 'Open port' in desc:
                 parts = desc.replace('Open port ', '').split(' ')
                 try:
@@ -568,24 +604,29 @@ def results_command(args) -> Dict[str, Any]:
                 except:
                     pass
 
-            ports.append({
-                'subdomain': subdomain,
-                'port': port_num,
-                'protocol': protocol,
-                'ip': '',
-                'discovered_at': row[5].isoformat() if row[5] else ''
-            })
+            if port_num > 0:  # Only add if we found a valid port
+                ports.append({
+                    'subdomain': subdomain,
+                    'port': port_num,
+                    'protocol': protocol,
+                    'ip': '',
+                    'discovered_at': alert.get('discovered_at', '')
+                })
 
         scan_data = {
             'subdomains': [{'subdomain': s, 'ip_address': '', 'discovered_at': ''} for s in sorted(subdomains)],
             'ports': ports
         }
 
+        # Extract first domain from domains_scanned
+        domains_scanned = scan_info.get('domains_scanned', [])
+        domain = domains_scanned[0] if domains_scanned else ''
+
         return {
             'type': 'scan_results',
             'scan': {
                 'scan_id': scan_info['scan_id'],
-                'domain': scan_info['domains'][0] if scan_info['domains'] else '',
+                'domain': domain,
                 'start_time': scan_info['start_time'].isoformat() if scan_info['start_time'] else '',
                 'end_time': scan_info['end_time'].isoformat() if scan_info['end_time'] else '',
                 'status': scan_info['status'],
@@ -610,36 +651,32 @@ def view_scans_command(args) -> Dict[str, Any]:
     Returns:
         Scan list dictionary
     """
-    db_manager = DuckDBManager()
+    db_manager = SQLModelManager()
     db_manager.initialize()
 
     try:
-        result = db_manager.connection.execute("""
-            SELECT
-                s.scan_id,
-                s.scan_type,
-                s.tool_name,
-                s.domains_scanned[1] as domain,
-                s.status,
-                s.findings_count,
-                s.start_time,
-                s.end_time
-            FROM scan_sessions s
-            ORDER BY s.start_time DESC
-            LIMIT ?
-        """, [args['limit']]).fetchall()
+        # Use database manager method instead of raw SQL
+        result = db_manager.get_scan_history(limit=args['limit'])
 
         scans = []
-        for row in result:
+        for scan in result.get('scans', []):
+            # Extract first domain from domains_scanned
+            domains = scan.get('domains_scanned', [])
+            domain = domains[0] if domains else 'N/A'
+
+            # Convert datetime objects to strings
+            start_time = scan.get('start_time')
+            end_time = scan.get('end_time')
+
             scans.append({
-                'scan_id': row[0],
-                'scan_type': row[1],
-                'tool_name': row[2],
-                'domain': row[3],
-                'status': row[4],
-                'findings_count': row[5] if row[5] else 0,
-                'start_time': row[6].isoformat() if row[6] else 'N/A',
-                'end_time': row[7].isoformat() if row[7] else 'N/A'
+                'scan_id': scan.get('scan_id'),
+                'scan_type': scan.get('scan_type'),
+                'tool_name': scan.get('tool_name'),
+                'domain': domain,
+                'status': scan.get('status'),
+                'findings_count': scan.get('findings_count', 0),
+                'start_time': start_time.isoformat() if start_time else 'N/A',
+                'end_time': end_time.isoformat() if end_time else 'N/A'
             })
 
         return {
@@ -661,7 +698,7 @@ def batch_scan_subfinder_command(args) -> Dict[str, Any]:
     Returns:
         Batch scan results dictionary
     """
-    db_manager = DuckDBManager()
+    db_manager = SQLModelManager()
     db_manager.initialize()
 
     try:

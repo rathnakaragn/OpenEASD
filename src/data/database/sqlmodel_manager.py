@@ -1,0 +1,1275 @@
+"""
+SQLModel Database Manager for OpenEASD.
+
+Implements DatabaseManager interface using SQLModel with SQLite backend.
+Provides complete CRUD operations for domains, scans, alerts, subdomains, and tool results.
+
+Author: Rathnakara G N
+Company: Cybersecify
+Created: November 2025
+"""
+
+import json
+import uuid
+from datetime import datetime
+from pathlib import Path
+from typing import List, Dict, Optional, Any
+
+from sqlmodel import SQLModel, Session, create_engine, select, func, and_, or_, delete
+
+from src.core.interfaces.database import DatabaseManager
+from src.data.models.domain import Domain
+from src.data.models.scan import ScanSession
+from src.data.models.alert import SecurityAlert
+from src.data.models.subdomain import SubdomainHistory
+from src.data.models.tool_results import (
+    SubfinderResult,
+    AmassResult,
+    NmapResult,
+    NaabuResult
+)
+from src.utils.timezone import get_ist_now, to_ist
+
+
+class SQLModelManager(DatabaseManager):
+    """SQLModel implementation of DatabaseManager using SQLite."""
+
+    def __init__(self, db_path: Optional[str] = None):
+        """
+        Initialize SQLModel database manager.
+
+        Args:
+            db_path: Path to SQLite database file (default: data/openeasd.sqlite)
+        """
+        if db_path is None:
+            db_path = "data/openeasd.sqlite"
+
+        # Create parent directory if needed
+        Path(db_path).parent.mkdir(parents=True, exist_ok=True)
+
+        # Create SQLite engine
+        self.db_url = f"sqlite:///{db_path}"
+        self.engine = create_engine(
+            self.db_url,
+            echo=False,
+            connect_args={"check_same_thread": False}
+        )
+        self.db_path = db_path
+
+    def initialize(self) -> None:
+        """Initialize database and create all tables."""
+        SQLModel.metadata.create_all(self.engine)
+
+    def close(self) -> None:
+        """Close database connection."""
+        if hasattr(self, 'engine') and self.engine:
+            self.engine.dispose()
+
+    # ============================================================================
+    # Domain Management
+    # ============================================================================
+
+    def add_domain(
+        self,
+        domain: str,
+        is_primary: bool = False,
+        domain_type: str = 'apex',
+        notes: Optional[str] = None,
+        tags: Optional[List[str]] = None,
+        contact_email: Optional[str] = None,
+        scan_frequency: Optional[str] = None,
+        active_scan_enabled: bool = True
+    ) -> Dict[str, Any]:
+        """
+        Add a domain to tracking with optional metadata.
+
+        Args:
+            domain: Domain name (e.g., example.com)
+            is_primary: Whether this is a primary domain
+            domain_type: Type of domain (apex, subdomain, wildcard)
+            notes: Optional notes about the domain
+            tags: Optional list of tags
+            contact_email: Optional contact email
+            scan_frequency: Optional scan frequency (daily, weekly, monthly)
+            active_scan_enabled: Whether active scanning is enabled
+
+        Returns:
+            Dictionary with domain information
+        """
+        with Session(self.engine) as session:
+            now = get_ist_now()
+
+            # Convert tags list to JSON string for storage
+            tags_json = json.dumps(tags) if tags else None
+
+            domain_obj = Domain(
+                domain=domain,
+                domain_type=domain_type,
+                is_primary=is_primary,
+                created_at=now,
+                updated_at=now,
+                last_scanned_at=None,
+                scan_count=0,
+                notes=notes,
+                tags=tags_json,
+                contact_email=contact_email,
+                scan_frequency=scan_frequency,
+                active_scan_enabled=active_scan_enabled
+            )
+
+            session.add(domain_obj)
+            session.commit()
+            session.refresh(domain_obj)
+
+            return self._domain_to_dict(domain_obj)
+
+    def get_domains(
+        self,
+        limit: int = 20,
+        offset: int = 0,
+        domain_type: Optional[str] = None,
+        primary_only: bool = False,
+        domain_name: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Get paginated list of domains with optional filters.
+
+        Args:
+            limit: Maximum number of domains to return
+            offset: Number of domains to skip
+            domain_type: Filter by domain type
+            primary_only: Only return primary domains
+            domain_name: Filter by specific domain name
+
+        Returns:
+            Dictionary with domains list, total count, and pagination info
+        """
+        with Session(self.engine) as session:
+            # Build query
+            query = select(Domain)
+
+            # Apply filters
+            if domain_name:
+                query = query.where(Domain.domain == domain_name)
+            if domain_type:
+                query = query.where(Domain.domain_type == domain_type)
+            if primary_only:
+                query = query.where(Domain.is_primary == True)
+
+            # Get total count
+            count_query = select(func.count()).select_from(Domain)
+            if domain_name:
+                count_query = count_query.where(Domain.domain == domain_name)
+            if domain_type:
+                count_query = count_query.where(Domain.domain_type == domain_type)
+            if primary_only:
+                count_query = count_query.where(Domain.is_primary == True)
+
+            total_count = session.exec(count_query).one()
+
+            # Apply pagination and ordering
+            query = query.order_by(Domain.created_at.desc())
+            query = query.offset(offset).limit(limit)
+
+            # Execute query
+            domains = session.exec(query).all()
+
+            return {
+                'domains': [self._domain_to_dict(d) for d in domains],
+                'total_count': total_count,
+                'has_more': (offset + len(domains)) < total_count,
+                'limit': limit,
+                'offset': offset
+            }
+
+    def update_domain(self, domain: str, **kwargs) -> Dict[str, Any]:
+        """
+        Update domain metadata.
+
+        Args:
+            domain: Domain name to update
+            **kwargs: Fields to update (is_primary, notes, tags, contact_email, etc.)
+
+        Returns:
+            Dictionary with success status and updated domain
+        """
+        with Session(self.engine) as session:
+            domain_obj = session.get(Domain, domain)
+
+            if not domain_obj:
+                return {'success': False, 'message': 'Domain not found'}
+
+            # Update fields
+            for key, value in kwargs.items():
+                if key == 'tags' and isinstance(value, list):
+                    # Convert tags list to JSON string
+                    setattr(domain_obj, key, json.dumps(value))
+                elif hasattr(domain_obj, key):
+                    setattr(domain_obj, key, value)
+
+            # Update timestamp
+            domain_obj.updated_at = get_ist_now()
+
+            session.add(domain_obj)
+            session.commit()
+            session.refresh(domain_obj)
+
+            return {
+                'success': True,
+                'domain': self._domain_to_dict(domain_obj)
+            }
+
+    def delete_domain(self, domain: str) -> bool:
+        """
+        Remove a domain from tracking (simple deletion without cascade).
+
+        Args:
+            domain: Domain name to delete
+
+        Returns:
+            True if deleted successfully, False otherwise
+        """
+        with Session(self.engine) as session:
+            domain_obj = session.get(Domain, domain)
+
+            if not domain_obj:
+                return False
+
+            session.delete(domain_obj)
+            session.commit()
+
+            return True
+
+    def domain_exists(self, domain: str) -> bool:
+        """
+        Check if domain exists in database.
+
+        Args:
+            domain: Domain name to check
+
+        Returns:
+            True if domain exists, False otherwise
+        """
+        with Session(self.engine) as session:
+            query = select(Domain).where(Domain.domain == domain)
+            result = session.exec(query).first()
+            return result is not None
+
+    # ============================================================================
+    # Scan Management
+    # ============================================================================
+
+    def create_scan_session(
+        self,
+        scan_type: str,
+        domains: List[str],
+        tool_name: Optional[str] = None
+    ) -> str:
+        """
+        Create a new scan session and return scan_id.
+
+        Args:
+            scan_type: Type of scan (passive_subdomain_enum, active_port_scan, etc.)
+            domains: List of domains being scanned
+            tool_name: Optional tool name (subfinder, amass, nmap, naabu)
+
+        Returns:
+            Scan ID (UUID)
+        """
+        with Session(self.engine) as session:
+            scan_id = str(uuid.uuid4())
+            now = get_ist_now()
+
+            # Convert domains list to JSON string
+            domains_json = json.dumps(domains)
+
+            scan = ScanSession(
+                scan_id=scan_id,
+                scan_type=scan_type,
+                tool_name=tool_name,
+                domains_scanned=domains_json,
+                start_time=now,
+                end_time=None,
+                status='running',
+                findings_count=0
+            )
+
+            session.add(scan)
+            session.commit()
+
+            return scan_id
+
+    def update_scan_status(
+        self,
+        scan_id: str,
+        status: str,
+        end_time: Optional[datetime] = None,
+        findings_count: Optional[int] = None
+    ) -> None:
+        """
+        Update scan session status.
+
+        Args:
+            scan_id: Scan ID to update
+            status: New status (running, completed, failed)
+            end_time: Optional end time
+            findings_count: Optional number of findings
+        """
+        with Session(self.engine) as session:
+            scan = session.get(ScanSession, scan_id)
+
+            if not scan:
+                raise ValueError(f"Scan {scan_id} not found")
+
+            scan.status = status
+
+            if end_time:
+                scan.end_time = end_time
+            elif status in ['completed', 'failed']:
+                scan.end_time = get_ist_now()
+
+            if findings_count is not None:
+                scan.findings_count = findings_count
+
+            session.add(scan)
+            session.commit()
+
+    def get_scan_status(self, scan_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Get scan session information.
+
+        Args:
+            scan_id: Scan ID to retrieve
+
+        Returns:
+            Dictionary with scan information or None if not found
+        """
+        with Session(self.engine) as session:
+            scan = session.get(ScanSession, scan_id)
+
+            if not scan:
+                return None
+
+            return self._scan_to_dict(scan)
+
+    def get_scan_history(
+        self,
+        limit: int = 50,
+        offset: int = 0,
+        domain: Optional[str] = None,
+        scan_type: Optional[str] = None,
+        tool_name: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Get scan history with optional filters.
+
+        Args:
+            limit: Maximum number of scans to return
+            offset: Number of scans to skip
+            domain: Filter by domain
+            scan_type: Filter by scan type
+            tool_name: Filter by tool name
+
+        Returns:
+            Dictionary with scans list, total count, and pagination info
+        """
+        with Session(self.engine) as session:
+            # Build query
+            query = select(ScanSession)
+
+            # Apply filters
+            if domain:
+                # Search in domains_scanned JSON array
+                query = query.where(ScanSession.domains_scanned.contains(domain))
+            if scan_type:
+                query = query.where(ScanSession.scan_type == scan_type)
+            if tool_name:
+                query = query.where(ScanSession.tool_name == tool_name)
+
+            # Get total count
+            count_query = select(func.count()).select_from(ScanSession)
+            if domain:
+                count_query = count_query.where(ScanSession.domains_scanned.contains(domain))
+            if scan_type:
+                count_query = count_query.where(ScanSession.scan_type == scan_type)
+            if tool_name:
+                count_query = count_query.where(ScanSession.tool_name == tool_name)
+
+            total_count = session.exec(count_query).one()
+
+            # Apply pagination and ordering
+            query = query.order_by(ScanSession.start_time.desc())
+            query = query.offset(offset).limit(limit)
+
+            # Execute query
+            scans = session.exec(query).all()
+
+            return {
+                'scans': [self._scan_to_dict(s) for s in scans],
+                'total_count': total_count,
+                'has_more': (offset + len(scans)) < total_count,
+                'limit': limit,
+                'offset': offset
+            }
+
+    # ============================================================================
+    # Security Alerts
+    # ============================================================================
+
+    def store_alerts(self, alerts: List[Dict[str, Any]]) -> None:
+        """
+        Store security alerts from scan results.
+
+        Args:
+            alerts: List of alert dictionaries with fields:
+                - domain: Domain name
+                - scan_id: Associated scan ID
+                - vulnerability_type: Type of vulnerability
+                - severity: Severity level (critical, high, medium, low, info)
+                - description: Alert description
+                - remediation: Optional remediation steps
+                - tool_source: Tool that generated the alert
+                - discovered_at: Discovery timestamp
+        """
+        with Session(self.engine) as session:
+            for alert_data in alerts:
+                alert_id = str(uuid.uuid4())
+
+                alert = SecurityAlert(
+                    id=alert_id,
+                    domain=alert_data.get('domain'),
+                    scan_id=alert_data.get('scan_id'),
+                    vulnerability_type=alert_data.get('vulnerability_type'),
+                    severity=alert_data.get('severity', 'info'),
+                    description=alert_data.get('description'),
+                    remediation=alert_data.get('remediation'),
+                    tool_source=alert_data.get('tool_source'),
+                    discovered_at=alert_data.get('discovered_at', get_ist_now())
+                )
+
+                session.add(alert)
+
+            session.commit()
+
+    def get_alerts(
+        self,
+        limit: int = 50,
+        offset: int = 0,
+        severity_filter: Optional[List[str]] = None,
+        domain: Optional[str] = None,
+        scan_id: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Get paginated security alerts with optional filtering.
+
+        Args:
+            limit: Maximum number of alerts to return
+            offset: Number of alerts to skip
+            severity_filter: List of severity levels to filter by
+            domain: Filter by domain
+            scan_id: Filter by scan ID
+
+        Returns:
+            Dictionary with alerts list, total count, and pagination info
+        """
+        with Session(self.engine) as session:
+            # Build query
+            query = select(SecurityAlert)
+
+            # Apply filters
+            filters = []
+            if severity_filter:
+                filters.append(SecurityAlert.severity.in_(severity_filter))
+            if domain:
+                filters.append(SecurityAlert.domain == domain)
+            if scan_id:
+                filters.append(SecurityAlert.scan_id == scan_id)
+
+            if filters:
+                query = query.where(and_(*filters))
+
+            # Get total count
+            count_query = select(func.count()).select_from(SecurityAlert)
+            if filters:
+                count_query = count_query.where(and_(*filters))
+
+            total_count = session.exec(count_query).one()
+
+            # Apply pagination and ordering
+            query = query.order_by(SecurityAlert.discovered_at.desc())
+            query = query.offset(offset).limit(limit)
+
+            # Execute query
+            alerts = session.exec(query).all()
+
+            return {
+                'alerts': [self._alert_to_dict(a) for a in alerts],
+                'total_count': total_count,
+                'has_more': (offset + len(alerts)) < total_count,
+                'limit': limit,
+                'offset': offset
+            }
+
+    # ============================================================================
+    # Subdomain History
+    # ============================================================================
+
+    def add_subdomain_to_history(
+        self,
+        apex_domain: str,
+        subdomain: str,
+        scan_id: str,
+        status: str = 'new',
+        tool_source: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None
+    ) -> None:
+        """
+        Add subdomain to history tracking.
+
+        Args:
+            apex_domain: Apex domain (e.g., example.com)
+            subdomain: Full subdomain (e.g., sub.example.com)
+            scan_id: Associated scan ID
+            status: Status (new, existing, removed)
+            tool_source: Tool that discovered the subdomain
+            metadata: Optional metadata dictionary
+        """
+        with Session(self.engine) as session:
+            now = get_ist_now()
+            history_id = str(uuid.uuid4())
+
+            # Convert metadata to JSON string
+            metadata_json = json.dumps(metadata) if metadata else None
+
+            history = SubdomainHistory(
+                id=history_id,
+                apex_domain=apex_domain,
+                subdomain=subdomain,
+                scan_id=scan_id,
+                status=status,
+                first_seen=now,
+                last_seen=now,
+                tool_source=tool_source,
+                meta_data=metadata_json
+            )
+
+            session.add(history)
+            session.commit()
+
+    def get_subdomain_history(
+        self,
+        domain: str,
+        limit: int = 100,
+        offset: int = 0,
+        status_filter: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Get subdomain history for a domain.
+
+        Args:
+            domain: Apex domain
+            limit: Maximum number of records to return
+            offset: Number of records to skip
+            status_filter: Filter by status (new, existing, removed)
+
+        Returns:
+            Dictionary with history list, total count, and pagination info
+        """
+        with Session(self.engine) as session:
+            # Build query
+            query = select(SubdomainHistory).where(
+                SubdomainHistory.apex_domain == domain
+            )
+
+            # Apply status filter
+            if status_filter:
+                query = query.where(SubdomainHistory.status == status_filter)
+
+            # Get total count
+            count_query = select(func.count()).select_from(SubdomainHistory).where(
+                SubdomainHistory.apex_domain == domain
+            )
+            if status_filter:
+                count_query = count_query.where(SubdomainHistory.status == status_filter)
+
+            total_count = session.exec(count_query).one()
+
+            # Apply pagination and ordering
+            query = query.order_by(SubdomainHistory.last_seen.desc())
+            query = query.offset(offset).limit(limit)
+
+            # Execute query
+            history = session.exec(query).all()
+
+            return {
+                'history': [self._subdomain_history_to_dict(h) for h in history],
+                'total_count': total_count,
+                'has_more': (offset + len(history)) < total_count,
+                'limit': limit,
+                'offset': offset
+            }
+
+    def get_subdomain_changes(
+        self,
+        domain: str,
+        scan_id: str
+    ) -> Dict[str, List[str]]:
+        """
+        Get subdomain changes from a specific scan.
+
+        Args:
+            domain: Apex domain
+            scan_id: Scan ID
+
+        Returns:
+            Dictionary with 'new', 'existing', and 'removed' subdomain lists
+        """
+        with Session(self.engine) as session:
+            # Get all subdomains from this scan
+            query = select(SubdomainHistory).where(
+                and_(
+                    SubdomainHistory.apex_domain == domain,
+                    SubdomainHistory.scan_id == scan_id
+                )
+            )
+
+            history = session.exec(query).all()
+
+            changes = {
+                'new': [],
+                'existing': [],
+                'removed': []
+            }
+
+            for record in history:
+                if record.status in changes:
+                    changes[record.status].append(record.subdomain)
+
+            return changes
+
+    # ============================================================================
+    # Tool Results Storage
+    # ============================================================================
+
+    def store_subfinder_results(self, results: List[Dict[str, Any]]) -> None:
+        """
+        Store Subfinder scan results.
+
+        Args:
+            results: List of result dictionaries with fields:
+                - scan_id: Scan ID
+                - apex_domain: Apex domain
+                - subdomain: Discovered subdomain
+                - source: Optional source
+                - discovered_at: Discovery timestamp
+                - raw_json: Optional raw JSON data
+        """
+        with Session(self.engine) as session:
+            for result_data in results:
+                result_id = str(uuid.uuid4())
+
+                result = SubfinderResult(
+                    id=result_id,
+                    scan_id=result_data.get('scan_id'),
+                    apex_domain=result_data.get('apex_domain'),
+                    subdomain=result_data.get('subdomain'),
+                    source=result_data.get('source'),
+                    discovered_at=result_data.get('discovered_at', get_ist_now()),
+                    raw_json=result_data.get('raw_json')
+                )
+
+                session.add(result)
+
+            session.commit()
+
+    def store_amass_results(self, results: List[Dict[str, Any]]) -> None:
+        """
+        Store Amass scan results.
+
+        Args:
+            results: List of result dictionaries (same format as Subfinder)
+        """
+        with Session(self.engine) as session:
+            for result_data in results:
+                result_id = str(uuid.uuid4())
+
+                result = AmassResult(
+                    id=result_id,
+                    scan_id=result_data.get('scan_id'),
+                    apex_domain=result_data.get('apex_domain'),
+                    subdomain=result_data.get('subdomain'),
+                    source=result_data.get('source'),
+                    discovered_at=result_data.get('discovered_at', get_ist_now()),
+                    raw_json=result_data.get('raw_json')
+                )
+
+                session.add(result)
+
+            session.commit()
+
+    def store_nmap_results(self, results: List[Dict[str, Any]]) -> None:
+        """
+        Store Nmap scan results.
+
+        Args:
+            results: List of result dictionaries with fields:
+                - scan_id: Scan ID
+                - target_host: Target host
+                - port: Port number
+                - protocol: Protocol (tcp, udp)
+                - service_name: Optional service name
+                - service_version: Optional service version
+                - discovered_at: Discovery timestamp
+                - raw_json: Optional raw JSON data
+        """
+        with Session(self.engine) as session:
+            for result_data in results:
+                result_id = str(uuid.uuid4())
+
+                result = NmapResult(
+                    id=result_id,
+                    scan_id=result_data.get('scan_id'),
+                    target_host=result_data.get('target_host'),
+                    port=result_data.get('port'),
+                    protocol=result_data.get('protocol', 'tcp'),
+                    service_name=result_data.get('service_name'),
+                    service_version=result_data.get('service_version'),
+                    discovered_at=result_data.get('discovered_at', get_ist_now()),
+                    raw_json=result_data.get('raw_json')
+                )
+
+                session.add(result)
+
+            session.commit()
+
+    def store_naabu_results(self, results: List[Dict[str, Any]]) -> None:
+        """
+        Store Naabu scan results.
+
+        Args:
+            results: List of result dictionaries with fields:
+                - scan_id: Scan ID
+                - target_host: Target host
+                - port: Port number
+                - protocol: Protocol (tcp, udp)
+                - discovered_at: Discovery timestamp
+                - raw_json: Optional raw JSON data
+        """
+        with Session(self.engine) as session:
+            for result_data in results:
+                result_id = str(uuid.uuid4())
+
+                result = NaabuResult(
+                    id=result_id,
+                    scan_id=result_data.get('scan_id'),
+                    target_host=result_data.get('target_host'),
+                    port=result_data.get('port'),
+                    protocol=result_data.get('protocol', 'tcp'),
+                    discovered_at=result_data.get('discovered_at', get_ist_now()),
+                    raw_json=result_data.get('raw_json')
+                )
+
+                session.add(result)
+
+            session.commit()
+
+    def get_tool_results(
+        self,
+        scan_id: str,
+        tool_name: str,
+        limit: int = 100,
+        offset: int = 0
+    ) -> Dict[str, Any]:
+        """
+        Get tool-specific results for a scan.
+
+        Args:
+            scan_id: Scan ID
+            tool_name: Tool name (subfinder, amass, nmap, naabu)
+            limit: Maximum number of results to return
+            offset: Number of results to skip
+
+        Returns:
+            Dictionary with results list, total count, and pagination info
+        """
+        with Session(self.engine) as session:
+            # Select appropriate model based on tool name
+            model_map = {
+                'subfinder': SubfinderResult,
+                'amass': AmassResult,
+                'nmap': NmapResult,
+                'naabu': NaabuResult
+            }
+
+            model = model_map.get(tool_name.lower())
+            if not model:
+                raise ValueError(f"Unknown tool: {tool_name}")
+
+            # Build query
+            query = select(model).where(model.scan_id == scan_id)
+
+            # Get total count
+            count_query = select(func.count()).select_from(model).where(
+                model.scan_id == scan_id
+            )
+            total_count = session.exec(count_query).one()
+
+            # Apply pagination and ordering
+            query = query.order_by(model.discovered_at.desc())
+            query = query.offset(offset).limit(limit)
+
+            # Execute query
+            results = session.exec(query).all()
+
+            # Convert to dicts
+            converter_map = {
+                'subfinder': self._subfinder_result_to_dict,
+                'amass': self._amass_result_to_dict,
+                'nmap': self._nmap_result_to_dict,
+                'naabu': self._naabu_result_to_dict
+            }
+
+            converter = converter_map[tool_name.lower()]
+
+            return {
+                'results': [converter(r) for r in results],
+                'total_count': total_count,
+                'has_more': (offset + len(results)) < total_count,
+                'limit': limit,
+                'offset': offset
+            }
+
+    # ============================================================================
+    # Deletion Operations
+    # ============================================================================
+
+    def get_deletion_preview(self, domain: str) -> Dict[str, Any]:
+        """
+        Get preview of data that would be deleted with a domain.
+
+        Args:
+            domain: Domain to preview deletion for
+
+        Returns:
+            Dictionary with counts of associated data
+        """
+        with Session(self.engine) as session:
+            preview = {
+                'domain': domain,
+                'totals': {}
+            }
+
+            # Count scan sessions
+            scan_count = session.exec(
+                select(func.count()).select_from(ScanSession).where(
+                    ScanSession.domains_scanned.contains(domain)
+                )
+            ).one()
+            preview['totals']['scan_sessions'] = scan_count
+
+            # Count security alerts
+            alert_count = session.exec(
+                select(func.count()).select_from(SecurityAlert).where(
+                    SecurityAlert.domain == domain
+                )
+            ).one()
+            preview['totals']['security_alerts'] = alert_count
+
+            # Count subdomain history
+            subdomain_history_count = session.exec(
+                select(func.count()).select_from(SubdomainHistory).where(
+                    SubdomainHistory.apex_domain == domain
+                )
+            ).one()
+            preview['totals']['subdomain_history'] = subdomain_history_count
+
+            # Count tool results
+            subfinder_count = session.exec(
+                select(func.count()).select_from(SubfinderResult).where(
+                    SubfinderResult.apex_domain == domain
+                )
+            ).one()
+            preview['totals']['subfinder_results'] = subfinder_count
+
+            amass_count = session.exec(
+                select(func.count()).select_from(AmassResult).where(
+                    AmassResult.apex_domain == domain
+                )
+            ).one()
+            preview['totals']['amass_results'] = amass_count
+
+            # Nmap and Naabu counts
+            nmap_count = session.exec(
+                select(func.count()).select_from(NmapResult).where(
+                    NmapResult.target_host.contains(domain)
+                )
+            ).one()
+            preview['totals']['nmap_results'] = nmap_count
+
+            naabu_count = session.exec(
+                select(func.count()).select_from(NaabuResult).where(
+                    NaabuResult.target_host.contains(domain)
+                )
+            ).one()
+            preview['totals']['naabu_results'] = naabu_count
+
+            # Calculate total
+            total = sum([
+                scan_count,
+                alert_count,
+                subdomain_history_count,
+                subfinder_count,
+                amass_count,
+                nmap_count,
+                naabu_count
+            ])
+            preview['totals']['total_records'] = total
+
+            # Add placeholder counts for tool-specific history (for UI compatibility)
+            preview['totals']['subfinder_history'] = 0
+            preview['totals']['amass_history'] = 0
+            preview['totals']['nmap_history'] = 0
+            preview['totals']['naabu_history'] = 0
+
+            return preview
+
+    def delete_domain_with_data(self, domain: str) -> Dict[str, int]:
+        """
+        Delete domain and all associated data.
+
+        Args:
+            domain: Domain to delete
+
+        Returns:
+            Dictionary with counts of deleted records by category
+        """
+        with Session(self.engine) as session:
+            deleted = {}
+
+            # Delete subdomain history
+            result = session.exec(
+                delete(SubdomainHistory).where(
+                    SubdomainHistory.apex_domain == domain
+                )
+            )
+            deleted['subdomain_history'] = result.rowcount
+            session.commit()
+
+            # Delete security alerts
+            result = session.exec(
+                delete(SecurityAlert).where(
+                    SecurityAlert.domain == domain
+                )
+            )
+            deleted['security_alerts'] = result.rowcount
+            session.commit()
+
+            # Delete tool results
+            result = session.exec(
+                delete(SubfinderResult).where(
+                    SubfinderResult.apex_domain == domain
+                )
+            )
+            deleted['subfinder_results'] = result.rowcount
+            session.commit()
+
+            result = session.exec(
+                delete(AmassResult).where(
+                    AmassResult.apex_domain == domain
+                )
+            )
+            deleted['amass_results'] = result.rowcount
+            session.commit()
+
+            result = session.exec(
+                delete(NmapResult).where(
+                    NmapResult.target_host.contains(domain)
+                )
+            )
+            deleted['nmap_results'] = result.rowcount
+            session.commit()
+
+            result = session.exec(
+                delete(NaabuResult).where(
+                    NaabuResult.target_host.contains(domain)
+                )
+            )
+            deleted['naabu_results'] = result.rowcount
+            session.commit()
+
+            # Delete scan sessions
+            result = session.exec(
+                delete(ScanSession).where(
+                    ScanSession.domains_scanned.contains(domain)
+                )
+            )
+            deleted['scan_sessions'] = result.rowcount
+            session.commit()
+
+            # Finally, delete the domain itself
+            domain_obj = session.get(Domain, domain)
+            if domain_obj:
+                session.delete(domain_obj)
+                session.commit()
+                deleted['domain'] = 1
+            else:
+                deleted['domain'] = 0
+
+            return deleted
+
+    # ============================================================================
+    # System Metrics
+    # ============================================================================
+
+    def get_system_metrics(self) -> Dict[str, Any]:
+        """
+        Get system metrics and performance data.
+
+        Returns:
+            Dictionary with system metrics
+        """
+        with Session(self.engine) as session:
+            metrics = {}
+
+            # Domain metrics
+            metrics['total_domains'] = session.exec(
+                select(func.count()).select_from(Domain)
+            ).one()
+
+            metrics['primary_domains'] = session.exec(
+                select(func.count()).select_from(Domain).where(
+                    Domain.is_primary == True
+                )
+            ).one()
+
+            # Scan metrics
+            metrics['total_scans'] = session.exec(
+                select(func.count()).select_from(ScanSession)
+            ).one()
+
+            metrics['completed_scans'] = session.exec(
+                select(func.count()).select_from(ScanSession).where(
+                    ScanSession.status == 'completed'
+                )
+            ).one()
+
+            metrics['failed_scans'] = session.exec(
+                select(func.count()).select_from(ScanSession).where(
+                    ScanSession.status == 'failed'
+                )
+            ).one()
+
+            metrics['running_scans'] = session.exec(
+                select(func.count()).select_from(ScanSession).where(
+                    ScanSession.status == 'running'
+                )
+            ).one()
+
+            # Alert metrics
+            metrics['total_alerts'] = session.exec(
+                select(func.count()).select_from(SecurityAlert)
+            ).one()
+
+            # Alert breakdown by severity
+            for severity in ['critical', 'high', 'medium', 'low', 'info']:
+                count = session.exec(
+                    select(func.count()).select_from(SecurityAlert).where(
+                        SecurityAlert.severity == severity
+                    )
+                ).one()
+                metrics[f'{severity}_alerts'] = count
+
+            # Subdomain metrics
+            metrics['total_subdomains'] = session.exec(
+                select(func.count()).select_from(SubdomainHistory)
+            ).one()
+
+            metrics['new_subdomains'] = session.exec(
+                select(func.count()).select_from(SubdomainHistory).where(
+                    SubdomainHistory.status == 'new'
+                )
+            ).one()
+
+            return metrics
+
+    def get_health_status(self) -> Dict[str, bool]:
+        """
+        Get database health status.
+
+        Returns:
+            Dictionary with health check results
+        """
+        try:
+            with Session(self.engine) as session:
+                # Test database connectivity
+                session.exec(select(func.count()).select_from(Domain))
+
+                return {
+                    'database_connected': True,
+                    'tables_exist': True,
+                    'healthy': True
+                }
+        except Exception as e:
+            return {
+                'database_connected': False,
+                'tables_exist': False,
+                'healthy': False,
+                'error': str(e)
+            }
+
+    def get_domain_count(self) -> int:
+        """
+        Get total count of domains.
+
+        Returns:
+            Number of domains
+        """
+        with Session(self.engine) as session:
+            return session.exec(
+                select(func.count()).select_from(Domain)
+            ).one()
+
+    def get_scan_count(self) -> int:
+        """
+        Get total count of scans.
+
+        Returns:
+            Number of scans
+        """
+        with Session(self.engine) as session:
+            return session.exec(
+                select(func.count()).select_from(ScanSession)
+            ).one()
+
+    def get_alert_count(self) -> int:
+        """
+        Get total count of security alerts.
+
+        Returns:
+            Number of alerts
+        """
+        with Session(self.engine) as session:
+            return session.exec(
+                select(func.count()).select_from(SecurityAlert)
+            ).one()
+
+    # ============================================================================
+    # Helper Methods (Internal)
+    # ============================================================================
+
+    def _domain_to_dict(self, domain: Domain) -> Dict[str, Any]:
+        """Convert Domain object to dictionary."""
+        # Parse tags JSON string to list
+        tags = json.loads(domain.tags) if domain.tags else []
+
+        return {
+            'domain': domain.domain,
+            'domain_type': domain.domain_type,
+            'is_primary': domain.is_primary,
+            'created_at': domain.created_at,
+            'updated_at': domain.updated_at,
+            'last_scanned_at': domain.last_scanned_at,
+            'scan_count': domain.scan_count,
+            'notes': domain.notes,
+            'tags': tags,
+            'contact_email': domain.contact_email,
+            'scan_frequency': domain.scan_frequency,
+            'active_scan_enabled': domain.active_scan_enabled
+        }
+
+    def _scan_to_dict(self, scan: ScanSession) -> Dict[str, Any]:
+        """Convert ScanSession object to dictionary."""
+        # Parse domains_scanned JSON string to list
+        domains = json.loads(scan.domains_scanned) if scan.domains_scanned else []
+
+        return {
+            'scan_id': scan.scan_id,
+            'scan_type': scan.scan_type,
+            'tool_name': scan.tool_name,
+            'domains_scanned': domains,
+            'start_time': scan.start_time,
+            'end_time': scan.end_time,
+            'status': scan.status,
+            'findings_count': scan.findings_count
+        }
+
+    def _alert_to_dict(self, alert: SecurityAlert) -> Dict[str, Any]:
+        """Convert SecurityAlert object to dictionary."""
+        return {
+            'id': alert.id,
+            'domain': alert.domain,
+            'scan_id': alert.scan_id,
+            'vulnerability_type': alert.vulnerability_type,
+            'severity': alert.severity,
+            'description': alert.description,
+            'remediation': alert.remediation,
+            'tool_source': alert.tool_source,
+            'discovered_at': alert.discovered_at
+        }
+
+    def _subdomain_history_to_dict(self, history: SubdomainHistory) -> Dict[str, Any]:
+        """Convert SubdomainHistory object to dictionary."""
+        # Parse metadata JSON string to dict
+        metadata = json.loads(history.meta_data) if history.meta_data else {}
+
+        return {
+            'id': history.id,
+            'apex_domain': history.apex_domain,
+            'subdomain': history.subdomain,
+            'scan_id': history.scan_id,
+            'status': history.status,
+            'first_seen': history.first_seen,
+            'last_seen': history.last_seen,
+            'tool_source': history.tool_source,
+            'metadata': metadata
+        }
+
+    def _subfinder_result_to_dict(self, result: SubfinderResult) -> Dict[str, Any]:
+        """Convert SubfinderResult object to dictionary."""
+        return {
+            'id': result.id,
+            'scan_id': result.scan_id,
+            'apex_domain': result.apex_domain,
+            'subdomain': result.subdomain,
+            'source': result.source,
+            'discovered_at': result.discovered_at,
+            'raw_json': result.raw_json
+        }
+
+    def _amass_result_to_dict(self, result: AmassResult) -> Dict[str, Any]:
+        """Convert AmassResult object to dictionary."""
+        return {
+            'id': result.id,
+            'scan_id': result.scan_id,
+            'apex_domain': result.apex_domain,
+            'subdomain': result.subdomain,
+            'source': result.source,
+            'discovered_at': result.discovered_at,
+            'raw_json': result.raw_json
+        }
+
+    def _nmap_result_to_dict(self, result: NmapResult) -> Dict[str, Any]:
+        """Convert NmapResult object to dictionary."""
+        return {
+            'id': result.id,
+            'scan_id': result.scan_id,
+            'target_host': result.target_host,
+            'port': result.port,
+            'protocol': result.protocol,
+            'service_name': result.service_name,
+            'service_version': result.service_version,
+            'discovered_at': result.discovered_at,
+            'raw_json': result.raw_json
+        }
+
+    def _naabu_result_to_dict(self, result: NaabuResult) -> Dict[str, Any]:
+        """Convert NaabuResult object to dictionary."""
+        return {
+            'id': result.id,
+            'scan_id': result.scan_id,
+            'target_host': result.target_host,
+            'port': result.port,
+            'protocol': result.protocol,
+            'discovered_at': result.discovered_at,
+            'raw_json': result.raw_json
+        }

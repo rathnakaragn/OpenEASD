@@ -6,14 +6,14 @@ creation, updates, listing, and deletion.
 """
 
 from typing import List, Dict, Any, Optional
-from src.data.database.duckdb_manager import DuckDBManager
+from src.data.database.sqlmodel_manager import SQLModelManager
 from src.utils.validation import validate_domain
 
 
 class DomainService:
     """Service for managing domains."""
 
-    def __init__(self, db_manager: DuckDBManager):
+    def __init__(self, db_manager: SQLModelManager):
         """
         Initialize domain service.
 

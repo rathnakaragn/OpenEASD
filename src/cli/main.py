@@ -22,7 +22,7 @@ from src.cli.commands_domain import (
     domain_remove_command, domain_show_command
 )
 from src.cli.formatters import format_output
-from src.data.database.duckdb_manager import DuckDBManager
+from src.data.database.sqlmodel_manager import SQLModelManager
 
 
 @click.group(invoke_without_command=True)
