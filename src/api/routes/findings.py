@@ -17,7 +17,7 @@ from src.api.dependencies import get_db_manager
 from src.data.database.sqlmodel_manager import SQLModelManager
 
 
-router = APIRouter(prefix="/findings", tags=["findings"])
+router = APIRouter(tags=["findings"])
 
 
 @router.get("/", response_model=FindingListResponse)
