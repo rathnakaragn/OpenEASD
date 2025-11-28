@@ -8,6 +8,8 @@ creation, updates, listing, and deletion.
 from typing import List, Dict, Any, Optional
 from src.data.database.sqlmodel_manager import SQLModelManager
 from src.utils.validation import validate_domain
+from src.services.exceptions import DomainNotFound, DomainAlreadyExists, InvalidDomainFormat
+from src.data.models.domain import Domain
 
 
 class DomainService:
@@ -26,52 +28,39 @@ class DomainService:
         self,
         domain: str,
         is_primary: bool = False,
-        notes: Optional[str] = None,
-        tags: Optional[List[str]] = None,
         contact_email: Optional[str] = None,
         scan_frequency: Optional[str] = None
-    ) -> Dict[str, Any]:
+    ) -> Domain:
         """
         Create a new domain.
 
         Args:
             domain: Domain name to add
             is_primary: Whether this is a primary domain
-            notes: Optional notes about the domain
-            tags: Optional list of tags
             contact_email: Optional contact email
             scan_frequency: Optional scan frequency (hourly, daily, weekly, monthly)
 
         Returns:
-            Dictionary containing success status and domain data
+            The created domain object.
 
         Raises:
-            ValueError: If domain format is invalid or domain already exists
+            InvalidDomainFormat: If domain format is invalid.
+            DomainAlreadyExists: If domain already exists.
         """
-        # Validate domain format
-        domain = validate_domain(domain)
+        try:
+            domain = validate_domain(domain)
+        except ValueError as e:
+            raise InvalidDomainFormat(str(e))
 
-        # Check if domain already exists
         if self.db.domain_exists(domain):
-            raise ValueError(f'Domain {domain} already exists')
+            raise DomainAlreadyExists(f'Domain {domain} already exists')
 
-        # Add domain to database
-        self.db.add_domain(
+        return self.db.add_domain(
             domain=domain,
             is_primary=is_primary,
-            notes=notes,
-            tags=tags,
             contact_email=contact_email,
             scan_frequency=scan_frequency
         )
-
-        # Get the created domain
-        result = self.db.get_domains(domain_name=domain, limit=1)
-
-        return {
-            'success': True,
-            'domain': result['domains'][0] if result['domains'] else None
-        }
 
     def list_domains(
         self,
@@ -100,7 +89,7 @@ class DomainService:
             'has_more': result['has_more']
         }
 
-    def get_domain(self, domain: str) -> Dict[str, Any]:
+    def get_domain(self, domain: str) -> Domain:
         """
         Get detailed information about a specific domain.
 
@@ -108,119 +97,87 @@ class DomainService:
             domain: Domain name to retrieve
 
         Returns:
-            Dictionary containing domain details
+            The domain object.
 
         Raises:
-            ValueError: If domain doesn't exist
+            DomainNotFound: If domain doesn't exist
         """
-        # Validate domain format
-        domain = validate_domain(domain)
+        try:
+            domain = validate_domain(domain)
+        except ValueError as e:
+            raise InvalidDomainFormat(str(e))
 
-        # Check if domain exists
         if not self.db.domain_exists(domain):
-            raise ValueError(f'Domain {domain} not found')
+            raise DomainNotFound(f'Domain {domain} not found')
 
-        # Get domain details
         result = self.db.get_domains(domain_name=domain, limit=1)
 
         if not result['domains']:
-            raise ValueError(f'Could not retrieve details for {domain}')
+            raise DomainNotFound(f'Could not retrieve details for {domain}')
 
-        domain_info = result['domains'][0]
-
-        # Get subdomain history
-        history = self.db.get_subdomain_history(domain, limit=10)
-
-        return {
-            'success': True,
-            'domain': domain_info,
-            'subdomain_count': history['total_count'],
-            'recent_subdomains': history['history'][:5]
-        }
+        return result['domains'][0]
 
     def update_domain(
         self,
         domain: str,
-        is_primary: Optional[bool] = None,
-        notes: Optional[str] = None,
-        tags: Optional[List[str]] = None
-    ) -> Dict[str, Any]:
+        is_primary: Optional[bool] = None
+    ) -> Domain:
         """
         Update domain metadata.
 
         Args:
             domain: Domain name to update
             is_primary: New primary status
-            notes: New notes
-            tags: New tags list
 
         Returns:
-            Dictionary containing success status
+            The updated domain object.
 
         Raises:
-            ValueError: If domain doesn't exist or no fields to update
+            DomainNotFound: If domain doesn't exist or no fields to update
         """
-        # Validate domain format
-        domain = validate_domain(domain)
+        try:
+            domain = validate_domain(domain)
+        except ValueError as e:
+            raise InvalidDomainFormat(str(e))
 
-        # Check if domain exists
         if not self.db.domain_exists(domain):
-            raise ValueError(f'Domain {domain} not found')
+            raise DomainNotFound(f'Domain {domain} not found')
 
-        # Build update kwargs
         update_fields = {}
 
         if is_primary is not None:
             update_fields['is_primary'] = is_primary
 
-        if notes is not None:
-            update_fields['notes'] = notes
-
-        if tags is not None:
-            update_fields['tags'] = tags
-
         if not update_fields:
-            raise ValueError('No fields provided to update. Use is_primary, notes, or tags')
+            raise ValueError('No fields provided to update. Use is_primary')
 
-        # Update domain
-        result = self.db.update_domain(domain, **update_fields)
+        return self.db.update_domain(domain, **update_fields)
 
-        return {
-            'success': True,
-            'updated': result
-        }
-
-    def delete_domain(self, domain: str, force: bool = False) -> Dict[str, Any]:
+    def delete_domain(self, domain: str) -> Dict[str, Any]:
         """
         Delete a domain and all associated data.
 
         Args:
             domain: Domain name to delete
-            force: Skip confirmation (for API use)
 
         Returns:
             Dictionary containing deletion results
 
         Raises:
-            ValueError: If domain doesn't exist
+            DomainNotFound: If domain doesn't exist
         """
-        # Validate domain format
-        domain = validate_domain(domain)
+        try:
+            domain = validate_domain(domain)
+        except ValueError as e:
+            raise InvalidDomainFormat(str(e))
 
-        # Check if domain exists
         if not self.db.domain_exists(domain):
-            raise ValueError(f'Domain {domain} not found')
+            raise DomainNotFound(f'Domain {domain} not found')
 
-        # Get totals for reporting (if not force)
-        totals = None
-        if not force:
-            totals = self.db.get_domain_data_totals(domain)
-
-        # Delete domain and all associated data
-        deleted = self.db.delete_domain_with_data(domain)
+        deleted_counts = self.db.delete_domain_with_data(domain)
 
         return {
             'success': True,
-            'deleted': deleted,
-            'totals': totals
+            'message': f'Successfully deleted domain {domain}',
+            'deleted': deleted_counts
         }

@@ -12,10 +12,13 @@ import sys
 import json
 from pathlib import Path
 
-from src.cli.commands import (
-    scan_command, history_command, results_command, view_scans_command,
-    batch_scan_subfinder_command, run_tool_subfinder_command, run_tool_naabu_command,
-    run_tool_dnsx_command, run_tool_httpx_command
+from src.cli.commands_scan import batch_scan_subfinder_command
+from src.cli.commands_subfinder import run_tool_subfinder_command
+from src.cli.commands_naabu import run_tool_naabu_command
+from src.cli.commands_dnsx import run_tool_dnsx_command
+from src.cli.commands_httpx import run_tool_httpx_command
+from src.cli.commands_results import (
+    history_command, view_scans_command, results_command
 )
 from src.cli.commands_domain import (
     domain_add_command, domain_list_command, domain_update_command,
@@ -55,7 +58,7 @@ def _run_tool(tool_func, **kwargs):
         if not result.get('success'):
             click.echo(f"Error: {result.get('error', 'Unknown error')}", err=True)
             sys.exit(1)
-        
+
         # Format and print the output
         output = kwargs.get('output', 'table')
         if output == 'json':
@@ -374,7 +377,7 @@ def run_subfinder(domains, timeout, output):
             all_subdomains.extend(result['subdomains'])
         else:
             click.echo(f"  - No subdomains found")
-    
+
     click.echo()
     click.echo(f"{ '=' * 80}")
     click.echo(f"Total Subdomains Discovered: {len(all_subdomains)}")

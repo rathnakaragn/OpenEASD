@@ -2,49 +2,72 @@
 
 **Company**: Cybersecify
 **Author**: Rathnakara G N
-**Document Type**: Architecture Overview (3-Layer Design)
-**Version**: 7.0 - Simplified Single-Organization Architecture
-**Last Updated**: November 2025
+**Document Type**: Architecture Overview (6-Layer Design with Analysis)
+**Version**: 9.0 - Production-ready with Analysis Layer
+**Last Updated**: November 26, 2025
 **Target Audience**: Architects, Technical Leads, Engineering Teams
+
+---
+
+## Documentation
+
+For detailed information about what each layer does, their responsibilities, and code examples, see:
+- **[LAYER_ARCHITECTURE.md](./LAYER_ARCHITECTURE.md)** - Comprehensive layer-by-layer guide with code examples, data flows, and best practices
+
+This document provides a high-level architecture overview. For in-depth layer explanations, refer to LAYER_ARCHITECTURE.md.
 
 ---
 
 ## Architecture Overview
 
-OpenEASD implements automated subdomain enumeration and port scanning through a streamlined 3-layer architecture focused on simplicity, performance, and single-organization workflows.
+OpenEASD implements enterprise-grade external attack surface detection through a comprehensive 6-layer architecture combining automated subdomain enumeration, port scanning, vulnerability detection, and risk analysis with both REST API and CLI interfaces.
 
-### System Architecture (3-Layer Design)
+### System Architecture (6-Layer Design)
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│              OpenEASD - 3-Layer Architecture                │
+│  Layer 1: API Layer (FastAPI) - Read-Only Monitoring ✅    │
+│    • 24 REST endpoints for data access (GET only)          │
+│    • Swagger/OpenAPI documentation                         │
+│    • CORS support for integrations                         │
 ├─────────────────────────────────────────────────────────────┤
-│  Layer 1: CLI Layer (Interface & Orchestration) ✅          │
-│    • User Commands: scan | history | results | scans       │
-│    • Domain Management: add | list | update | remove       │
-│    • Output Formats: table | json | csv | txt              │
-│    • Tool Orchestration: Direct subprocess execution       │
+│  Layer 2: Service Layer - Shared Business Logic ✅         │
+│    • Domain, Scan, Alert, Analysis services                │
+│    • Dependency injection and service composition          │
 ├─────────────────────────────────────────────────────────────┤
-│  Layer 2: Tools Layer (Security Tools) ✅                   │
-│    • Subfinder - Passive subdomain discovery               │
-│    • Amass - Comprehensive subdomain enumeration           │
-│    • Nmap - Service detection and port scanning            │
-│    • Naabu - Fast port scanning                            │
+│  Layer 3: CLI Layer (Click) - Full Operations ✅           │
+│    • Domain management (add/list/update/remove)            │
+│    • Scan execution and orchestration                      │
+│    • Analysis commands and findings management             │
 ├─────────────────────────────────────────────────────────────┤
-│  Layer 3: Database Layer (Storage & Analytics) ✅           │
-│    • DuckDB - Embedded analytics database                  │
-│    • Schema Management - Domains, scans, findings          │
-│    • Query Optimization - Efficient aggregations           │
+│  Layer 4: Analysis Layer - Vulnerability Detection ✅      │
+│    • Risk scoring (0-100 deterministic)                    │
+│    • Port vulnerability analysis                           │
+│    • Finding deduplication and management                  │
+├─────────────────────────────────────────────────────────────┤
+│  Layer 5: Tools Layer (Security Tools) ✅                  │
+│    • Subfinder, Amass, Naabu, Dnsx, Nmap                  │
+│    • Direct subprocess execution with JSON parsing         │
+├─────────────────────────────────────────────────────────────┤
+│  Layer 6: Database Layer (SQLite) ✅                       │
+│    • SQLModel ORM with SQLite backend                      │
+│    • Findings, vulnerabilities, CVE mappings               │
+│    • Scan history and audit trails                         │
 └─────────────────────────────────────────────────────────────┘
 ```
 
 ## Implementation Status
 
-| Layer | Status | Components | Notes |
-|-------|--------|------------|-------|
-| **Layer 1: CLI** | ✅ Complete | Commands, formatters, tool execution | Production ready |
-| **Layer 2: Tools** | ✅ Complete | Subfinder, Amass, Nmap, Naabu | Direct subprocess calls |
-| **Layer 3: Database** | ✅ Complete | DuckDB, schema, queries | Single organization model |
+| Layer | Status | Components | Coverage | Notes |
+|-------|--------|------------|----------|-------|
+| **Layer 1: API** | ✅ Complete | FastAPI, Pydantic schemas, CORS | 77% | 24 endpoints, read-only |
+| **Layer 2: Service** | ✅ Complete | Domain, Scan, Alert, Analysis services | 85% | Shared business logic |
+| **Layer 3: CLI** | ✅ Complete | Click commands, domain/scan/analysis | 92% | Full operations access |
+| **Layer 4: Analysis** | ✅ Complete | Risk scorer, detectors, findings | 95% | Vulnerability detection |
+| **Layer 5: Tools** | ✅ Complete | Subfinder, Amass, Naabu, etc. | 93% | Direct subprocess calls |
+| **Layer 6: Database** | ✅ Complete | SQLite, SQLModel, findings schema | 77% | Data persistence |
+
+**Test Coverage**: 79% overall (367/378 tests passing, 2,928/3,696 statements)
 
 ---
 

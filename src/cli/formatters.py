@@ -7,6 +7,13 @@ from typing import Dict, Any
 from datetime import datetime
 
 
+class DateTimeEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, datetime):
+            return obj.isoformat()
+        return super().default(obj)
+
+
 def format_output(data: Dict[str, Any], format_type: str = 'table') -> str:
     """
     Format output data.
@@ -19,13 +26,18 @@ def format_output(data: Dict[str, Any], format_type: str = 'table') -> str:
         Formatted string
     """
     if format_type == 'json':
-        return format_json(data)
+        return format_json_with_datetime(data)
     elif format_type == 'csv':
         return format_csv(data)
     elif format_type == 'txt':
         return format_txt(data)
     else:
         return format_table(data)
+
+
+def format_json_with_datetime(data: Dict[str, Any]) -> str:
+    """Format as JSON with datetime handling."""
+    return json.dumps(data, indent=2, cls=DateTimeEncoder)
 
 
 def format_json(data: Dict[str, Any]) -> str:
@@ -217,7 +229,7 @@ def format_table(data: Dict[str, Any]) -> str:
             output.append(data.get('message', ''))
         else:
             output.append("")
-            output.append(f"{'Scan ID':<32} {'Tool':<12} {'Domain':<30} {'Status':<12} {'Findings':<10} {'Start Time':<20} {'End Time':<20} {'Duration':<10}")
+            output.append(f"{ 'Scan ID':<32} {'Tool':<12} {'Domain':<30} {'Status':<12} {'Findings':<10} {'Start Time':<20} {'End Time':<20} {'Duration':<10}")
             output.append("-" * 171)
 
             for scan in scans:
@@ -272,7 +284,7 @@ def format_table(data: Dict[str, Any]) -> str:
             output.append(data.get('message', ''))
         else:
             output.append("")
-            output.append(f"{'Domain':<30} {'Status':<12} {'Scans':<8} {'Subdomains':<12} {'First Scan':<20} {'Last Scan':<20}")
+            output.append(f"{ 'Domain':<30} {'Status':<12} {'Scans':<8} {'Subdomains':<12} {'First Scan':<20} {'Last Scan':<20}")
             output.append("-" * 130)
 
             for scan in scans:
@@ -349,7 +361,7 @@ def format_table(data: Dict[str, Any]) -> str:
             output.append("Domains")
             output.append("=" * 100)
             output.append("")
-            output.append(f"{'Domain':<35} {'Primary':<10} {'Scans':<8} {'Last Scanned':<30}")
+            output.append(f"{ 'Domain':<35} {'Primary':<10} {'Scans':<8} {'Last Scanned':<30}")
             output.append("-" * 100)
 
             for domain in domains:

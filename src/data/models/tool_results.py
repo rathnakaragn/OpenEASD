@@ -61,5 +61,6 @@ class NaabuResult(SQLModel, table=True):
     target_host: str = Field(max_length=255)
     port: int
     protocol: str = Field(max_length=20)
+    ip: Optional[str] = Field(default=None, max_length=45)  # IPv4/IPv6 address
     discovered_at: datetime = Field(default_factory=datetime.utcnow)
     raw_json: Optional[str] = None

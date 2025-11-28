@@ -2,14 +2,23 @@
 Security alert management service.
 
 Handles business logic for security alert operations.
+Now uses the Analysis Layer's AlertManagementService for unified alert/finding management.
 """
 
-from typing import List, Dict, Any, Optional
+from typing import Dict, Any, Optional, Union
+from datetime import datetime
 from src.data.database.sqlmodel_manager import SQLModelManager
+from src.analysis.alert_service import AlertManagementService
 
 
 class AlertService:
-    """Service for managing security alerts."""
+    """
+    Service for managing security alerts.
+
+    This service now delegates to the Analysis Layer's AlertManagementService
+    for all alert operations, providing a consistent interface while leveraging
+    advanced features like risk scoring and finding management.
+    """
 
     def __init__(self, db_manager: SQLModelManager):
         """
@@ -19,12 +28,29 @@ class AlertService:
             db_manager: Database manager instance
         """
         self.db = db_manager
+        # Initialize analysis layer alert service
+        self.alert_mgmt_service = AlertManagementService(db_manager)
+
+    def _format_datetime(self, dt: Optional[Union[datetime, str]]) -> str:
+        """
+        Convert datetime object to ISO format string.
+
+        Args:
+            dt: Datetime object or string
+
+        Returns:
+            ISO format datetime string
+        """
+        if isinstance(dt, datetime):
+            return dt.isoformat()
+        return str(dt) if dt else ''
 
     def list_alerts(
         self,
         limit: int = 50,
         severity: Optional[str] = None,
-        domain: Optional[str] = None
+        domain: Optional[str] = None,
+        min_severity: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         List security alerts with optional filtering.
@@ -33,56 +59,24 @@ class AlertService:
             limit: Maximum number of alerts to return
             severity: Filter by severity (info, low, medium, high, critical)
             domain: Filter by domain
+            min_severity: Minimum severity level to include
 
         Returns:
             Dictionary containing alerts list
         """
-        query = """
-            SELECT
-                id,
-                scan_id,
-                domain,
-                vulnerability_type,
-                severity,
-                description,
-                tool_source,
-                discovered_at
-            FROM security_alerts
-            WHERE 1=1
-        """
-        params = []
+        # Use analysis layer alert management service
+        result = self.alert_mgmt_service.get_alerts(
+            limit=limit,
+            severity=severity,
+            domain=domain,
+            min_severity=min_severity
+        )
 
-        if severity:
-            query += " AND severity = ?"
-            params.append(severity)
-
-        if domain:
-            query += " AND domain = ?"
-            params.append(domain)
-
-        query += " ORDER BY discovered_at DESC LIMIT ?"
-        params.append(limit)
-
-        result = self.db.connection.execute(query, params).fetchall()
-
-        alerts = []
-        for row in result:
-            alerts.append({
-                'alert_id': row[0],
-                'scan_id': row[1],
-                'domain': row[2],
-                'vulnerability_type': row[3],
-                'severity': row[4],
-                'description': row[5] if row[5] else '',
-                'tool_source': row[6] if row[6] else '',
-                'discovered_at': row[7].isoformat() if row[7] else '',
-                'status': 'open'  # Default status as column doesn't exist
-            })
-
+        # Return in expected format (already formatted by AlertManagementService)
         return {
             'success': True,
-            'alerts': alerts,
-            'total': len(alerts)
+            'alerts': result.get('alerts', []),
+            'total': result.get('total', 0)
         }
 
     def get_alert(self, alert_id: str) -> Dict[str, Any]:
@@ -98,38 +92,12 @@ class AlertService:
         Raises:
             ValueError: If alert doesn't exist
         """
-        result = self.db.connection.execute("""
-            SELECT
-                id,
-                scan_id,
-                domain,
-                vulnerability_type,
-                severity,
-                description,
-                tool_source,
-                discovered_at
-            FROM security_alerts
-            WHERE id = ?
-        """, [alert_id]).fetchone()
-
-        if not result:
-            raise ValueError(f'Alert not found: {alert_id}')
-
-        alert = {
-            'alert_id': result[0],
-            'scan_id': result[1],
-            'domain': result[2],
-            'vulnerability_type': result[3],
-            'severity': result[4],
-            'description': result[5] if result[5] else '',
-            'tool_source': result[6] if result[6] else '',
-            'discovered_at': result[7].isoformat() if result[7] else '',
-            'status': 'open'  # Default status as column doesn't exist
-        }
+        # Use analysis layer alert management service
+        result = self.alert_mgmt_service.get_alert_by_id(alert_id)
 
         return {
             'success': True,
-            'alert': alert
+            'alert': result.get('alert')
         }
 
     def get_alert_statistics(self) -> Dict[str, Any]:
@@ -137,52 +105,12 @@ class AlertService:
         Get alert statistics.
 
         Returns:
-            Dictionary containing alert statistics by severity, type, etc.
+            Dictionary containing alert statistics by severity, type, detector, etc.
         """
-        # Count by severity
-        severity_counts = self.db.connection.execute("""
-            SELECT severity, COUNT(*) as count
-            FROM security_alerts
-            GROUP BY severity
-            ORDER BY
-                CASE severity
-                    WHEN 'critical' THEN 1
-                    WHEN 'high' THEN 2
-                    WHEN 'medium' THEN 3
-                    WHEN 'low' THEN 4
-                    WHEN 'info' THEN 5
-                    ELSE 6
-                END
-        """).fetchall()
-
-        # Count by type
-        type_counts = self.db.connection.execute("""
-            SELECT vulnerability_type, COUNT(*) as count
-            FROM security_alerts
-            GROUP BY vulnerability_type
-            ORDER BY count DESC
-            LIMIT 10
-        """).fetchall()
-
-        # Count by tool
-        tool_counts = self.db.connection.execute("""
-            SELECT tool_source, COUNT(*) as count
-            FROM security_alerts
-            GROUP BY tool_source
-            ORDER BY count DESC
-        """).fetchall()
-
-        # Total alerts
-        total = self.db.connection.execute("""
-            SELECT COUNT(*) FROM security_alerts
-        """).fetchone()[0]
+        # Use analysis layer alert management service
+        stats = self.alert_mgmt_service.get_alert_statistics()
 
         return {
             'success': True,
-            'statistics': {
-                'total': total,
-                'by_severity': {row[0]: row[1] for row in severity_counts},
-                'by_type': {row[0]: row[1] for row in type_counts},
-                'by_tool': {row[0]: row[1] for row in tool_counts}
-            }
+            'statistics': stats
         }

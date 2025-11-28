@@ -15,12 +15,11 @@ from datetime import datetime
 from pathlib import Path
 from typing import List, Dict, Optional, Any
 
-from sqlmodel import SQLModel, Session, create_engine, select, func, and_, or_, delete
+from sqlmodel import SQLModel, Session, create_engine, select, func, and_, delete
 
 from src.core.interfaces.database import DatabaseManager
 from src.data.models.domain import Domain
 from src.data.models.scan import ScanSession
-from src.data.models.alert import SecurityAlert
 from src.data.models.subdomain import SubdomainHistory
 from src.data.models.tool_results import (
     SubfinderResult,
@@ -28,7 +27,17 @@ from src.data.models.tool_results import (
     NmapResult,
     NaabuResult
 )
+from src.data.models.api_key import APIKey
+from src.data.models.audit_log import AuditLog
+# Import analysis layer models instead of data models
+from src.analysis.models import (
+    Finding,
+    Vulnerability,
+    CVEMapping,
+    FindingGroup
+)
 from src.utils.timezone import get_ist_now, to_ist
+from src.utils.config import Config
 
 
 class SQLModelManager(DatabaseManager):
@@ -39,10 +48,11 @@ class SQLModelManager(DatabaseManager):
         Initialize SQLModel database manager.
 
         Args:
-            db_path: Path to SQLite database file (default: data/openeasd.sqlite)
+            db_path: Path to SQLite database file (default: from config or data/openeasd.sqlite)
         """
         if db_path is None:
-            db_path = "data/openeasd.sqlite"
+            config = Config()
+            db_path = config.get('database.database_path', 'data/openeasd.sqlite')
 
         # Create parent directory if needed
         Path(db_path).parent.mkdir(parents=True, exist_ok=True)
@@ -76,7 +86,7 @@ class SQLModelManager(DatabaseManager):
         contact_email: Optional[str] = None,
         scan_frequency: Optional[str] = None,
         active_scan_enabled: bool = True
-    ) -> Dict[str, Any]:
+    ) -> Domain:
         """
         Add a domain to tracking with optional metadata.
 
@@ -88,7 +98,7 @@ class SQLModelManager(DatabaseManager):
             active_scan_enabled: Whether active scanning is enabled
 
         Returns:
-            Dictionary with domain information
+            The created Domain object.
         """
         with Session(self.engine) as session:
             now = get_ist_now()
@@ -109,7 +119,7 @@ class SQLModelManager(DatabaseManager):
             session.commit()
             session.refresh(domain_obj)
 
-            return self._domain_to_dict(domain_obj)
+            return domain_obj
 
     def get_domains(
         self,
@@ -157,14 +167,14 @@ class SQLModelManager(DatabaseManager):
             domains = session.exec(query).all()
 
             return {
-                'domains': [self._domain_to_dict(d) for d in domains],
+                'domains': domains,
                 'total_count': total_count,
                 'has_more': (offset + len(domains)) < total_count,
                 'limit': limit,
                 'offset': offset
             }
 
-    def update_domain(self, domain: str, **kwargs) -> Dict[str, Any]:
+    def update_domain(self, domain: str, **kwargs) -> Domain:
         """
         Update domain metadata.
 
@@ -173,13 +183,13 @@ class SQLModelManager(DatabaseManager):
             **kwargs: Fields to update (is_primary, contact_email, scan_frequency, etc.)
 
         Returns:
-            Dictionary with success status and updated domain
+            The updated domain object.
         """
         with Session(self.engine) as session:
             domain_obj = session.get(Domain, domain)
 
             if not domain_obj:
-                return {'success': False, 'message': 'Domain not found'}
+                raise ValueError(f"Domain {domain} not found")
 
             # Update fields
             for key, value in kwargs.items():
@@ -193,10 +203,7 @@ class SQLModelManager(DatabaseManager):
             session.commit()
             session.refresh(domain_obj)
 
-            return {
-                'success': True,
-                'domain': self._domain_to_dict(domain_obj)
-            }
+            return domain_obj
 
     def delete_domain(self, domain: str) -> bool:
         """
@@ -284,7 +291,7 @@ class SQLModelManager(DatabaseManager):
         status: str,
         end_time: Optional[datetime] = None,
         findings_count: Optional[int] = None
-    ) -> None:
+    ) -> Dict[str, Any]:
         """
         Update scan session status.
 
@@ -293,6 +300,9 @@ class SQLModelManager(DatabaseManager):
             status: New status (running, completed, failed)
             end_time: Optional end time
             findings_count: Optional number of findings
+
+        Returns:
+            Dictionary with success status
         """
         with Session(self.engine) as session:
             scan = session.get(ScanSession, scan_id)
@@ -312,6 +322,8 @@ class SQLModelManager(DatabaseManager):
 
             session.add(scan)
             session.commit()
+
+        return {'success': True}
 
     def get_scan_status(self, scan_id: str) -> Optional[Dict[str, Any]]:
         """
@@ -395,99 +407,112 @@ class SQLModelManager(DatabaseManager):
     # Security Alerts
     # ============================================================================
 
-    def store_alerts(self, alerts: List[Dict[str, Any]]) -> None:
+    def store_alerts(self, alerts: List[Dict[str, Any]]) -> Dict[str, Any]:
         """
-        Store security alerts from scan results.
+        Store security alerts from scan results as findings.
+
+        Alerts are now stored as findings in the analysis layer for
+        unified management with risk scoring and advanced analysis features.
 
         Args:
             alerts: List of alert dictionaries with fields:
-                - domain: Domain name
+                - domain: Domain name (maps to affected_asset)
                 - scan_id: Associated scan ID
-                - vulnerability_type: Type of vulnerability
+                - vulnerability_type: Type of vulnerability (maps to finding_type)
                 - severity: Severity level (critical, high, medium, low, info)
-                - description: Alert description
+                - description: Alert description (maps to title)
                 - remediation: Optional remediation steps
-                - tool_source: Tool that generated the alert
+                - tool_source: Tool that generated the alert (maps to detector)
                 - discovered_at: Discovery timestamp
+
+        Returns:
+            Dictionary with success status and count of stored alerts
         """
-        with Session(self.engine) as session:
-            for alert_data in alerts:
-                alert_id = str(uuid.uuid4())
+        # Map old alert schema to new finding schema
+        findings = []
+        for alert in alerts:
+            finding = {
+                'scan_id': alert['scan_id'],
+                'finding_type': alert.get('vulnerability_type', 'unknown'),  # Map field name
+                'affected_asset': alert.get('domain', alert.get('affected_asset', 'unknown')),
+                'title': alert.get('description', alert.get('title', 'Alert')),
+                'description': alert.get('description'),
+                'severity': alert.get('severity', 'info'),
+                'risk_score': alert.get('risk_score', 50),
+                'detector': alert.get('tool_source', alert.get('detector')),
+                'port': alert.get('port'),
+                'protocol': alert.get('protocol'),
+                'remediation': alert.get('remediation'),
+                'discovered_at': alert.get('discovered_at')
+            }
+            findings.append(finding)
 
-                alert = SecurityAlert(
-                    id=alert_id,
-                    domain=alert_data.get('domain'),
-                    scan_id=alert_data.get('scan_id'),
-                    vulnerability_type=alert_data.get('vulnerability_type'),
-                    severity=alert_data.get('severity', 'info'),
-                    description=alert_data.get('description'),
-                    remediation=alert_data.get('remediation'),
-                    tool_source=alert_data.get('tool_source'),
-                    discovered_at=alert_data.get('discovered_at', get_ist_now())
-                )
+        self.store_findings(findings)
 
-                session.add(alert)
+        return {
+            'success': True,
+            'count': len(findings)
+        }
 
-            session.commit()
+    def get_alert_by_id(self, alert_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Get a specific alert by ID (now uses findings from analysis layer).
+
+        Args:
+            alert_id: Alert/Finding ID to retrieve
+
+        Returns:
+            Dictionary containing alert/finding details, or None if not found
+        """
+        return self.get_finding_by_id(alert_id)
 
     def get_alerts(
         self,
         limit: int = 50,
         offset: int = 0,
         severity_filter: Optional[List[str]] = None,
+        severity: Optional[str] = None,
         domain: Optional[str] = None,
-        scan_id: Optional[str] = None
+        scan_id: Optional[str] = None,
+        min_severity: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Get paginated security alerts with optional filtering.
+
+        Alerts are now retrieved from the findings table in the analysis layer.
 
         Args:
             limit: Maximum number of alerts to return
             offset: Number of alerts to skip
             severity_filter: List of severity levels to filter by
-            domain: Filter by domain
+            severity: Single severity level to filter by (convenience parameter)
+            domain: Filter by affected asset/domain
             scan_id: Filter by scan ID
+            min_severity: Minimum severity level
 
         Returns:
             Dictionary with alerts list, total count, and pagination info
         """
-        with Session(self.engine) as session:
-            # Build query
-            query = select(SecurityAlert)
+        # Use findings API which now handles all alerts
+        # Map severity parameter to min_severity if not already set
+        if severity and not min_severity:
+            min_severity = severity
 
-            # Apply filters
-            filters = []
-            if severity_filter:
-                filters.append(SecurityAlert.severity.in_(severity_filter))
-            if domain:
-                filters.append(SecurityAlert.domain == domain)
-            if scan_id:
-                filters.append(SecurityAlert.scan_id == scan_id)
+        result = self.get_findings(
+            limit=limit,
+            offset=offset,
+            affected_asset=domain,
+            scan_id=scan_id,
+            min_severity=min_severity
+        )
 
-            if filters:
-                query = query.where(and_(*filters))
-
-            # Get total count
-            count_query = select(func.count()).select_from(SecurityAlert)
-            if filters:
-                count_query = count_query.where(and_(*filters))
-
-            total_count = session.exec(count_query).one()
-
-            # Apply pagination and ordering
-            query = query.order_by(SecurityAlert.discovered_at.desc())
-            query = query.offset(offset).limit(limit)
-
-            # Execute query
-            alerts = session.exec(query).all()
-
-            return {
-                'alerts': [self._alert_to_dict(a) for a in alerts],
-                'total_count': total_count,
-                'has_more': (offset + len(alerts)) < total_count,
-                'limit': limit,
-                'offset': offset
-            }
+        # Map findings response to alerts response for backwards compatibility
+        return {
+            'alerts': result.get('findings', []),
+            'total_count': result.get('total_count', 0),
+            'limit': result.get('limit', limit),
+            'offset': result.get('offset', offset)
+        }
 
     # ============================================================================
     # Subdomain History
@@ -534,6 +559,39 @@ class SQLModelManager(DatabaseManager):
 
             session.add(history)
             session.commit()
+
+    def store_subdomain_history(
+        self,
+        apex_domain: str,
+        subdomain: str,
+        scan_id: str,
+        status: str = 'new',
+        tool_source: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """
+        Store subdomain history (alias for add_subdomain_to_history with return value).
+
+        Args:
+            apex_domain: Apex domain (e.g., example.com)
+            subdomain: Full subdomain (e.g., sub.example.com)
+            scan_id: Associated scan ID
+            status: Status (new, existing, removed)
+            tool_source: Tool that discovered the subdomain
+            metadata: Optional metadata dictionary
+
+        Returns:
+            Dictionary with success status
+        """
+        self.add_subdomain_to_history(
+            apex_domain=apex_domain,
+            subdomain=subdomain,
+            scan_id=scan_id,
+            status=status,
+            tool_source=tool_source,
+            metadata=metadata
+        )
+        return {'success': True}
 
     def get_subdomain_history(
         self,
@@ -744,6 +802,7 @@ class SQLModelManager(DatabaseManager):
                     target_host=result_data.get('target_host'),
                     port=result_data.get('port'),
                     protocol=result_data.get('protocol', 'tcp'),
+                    ip=result_data.get('ip'),
                     discovered_at=result_data.get('discovered_at', get_ist_now()),
                     raw_json=result_data.get('raw_json')
                 )
@@ -846,13 +905,14 @@ class SQLModelManager(DatabaseManager):
             ).one()
             preview['totals']['scan_sessions'] = scan_count
 
-            # Count security alerts
-            alert_count = session.exec(
-                select(func.count()).select_from(SecurityAlert).where(
-                    SecurityAlert.domain == domain
+            # Count findings (security alerts now stored as findings)
+            finding_count = session.exec(
+                select(func.count()).select_from(Finding).where(
+                    Finding.affected_asset == domain
                 )
             ).one()
-            preview['totals']['security_alerts'] = alert_count
+            preview['totals']['findings'] = finding_count
+            preview['totals']['security_alerts'] = finding_count  # Backward compat
 
             # Count subdomain history
             subdomain_history_count = session.exec(
@@ -934,13 +994,14 @@ class SQLModelManager(DatabaseManager):
             deleted['subdomain_history'] = result.rowcount
             session.commit()
 
-            # Delete security alerts
+            # Delete findings (security alerts now stored as findings)
             result = session.exec(
-                delete(SecurityAlert).where(
-                    SecurityAlert.domain == domain
+                delete(Finding).where(
+                    Finding.affected_asset == domain
                 )
             )
-            deleted['security_alerts'] = result.rowcount
+            deleted['findings'] = result.rowcount
+            deleted['security_alerts'] = result.rowcount  # Backward compat
             session.commit()
 
             # Delete tool results
@@ -1044,19 +1105,21 @@ class SQLModelManager(DatabaseManager):
                 )
             ).one()
 
-            # Alert metrics
+            # Finding/Alert metrics (alerts now stored as findings)
             metrics['total_alerts'] = session.exec(
-                select(func.count()).select_from(SecurityAlert)
+                select(func.count()).select_from(Finding)
             ).one()
+            metrics['total_findings'] = metrics['total_alerts']  # Same thing now
 
-            # Alert breakdown by severity
+            # Finding/Alert breakdown by severity
             for severity in ['critical', 'high', 'medium', 'low', 'info']:
                 count = session.exec(
-                    select(func.count()).select_from(SecurityAlert).where(
-                        SecurityAlert.severity == severity
+                    select(func.count()).select_from(Finding).where(
+                        Finding.severity == severity
                     )
                 ).one()
                 metrics[f'{severity}_alerts'] = count
+                metrics[f'{severity}_findings'] = count  # Same thing now
 
             # Subdomain metrics
             metrics['total_subdomains'] = session.exec(
@@ -1133,22 +1196,245 @@ class SQLModelManager(DatabaseManager):
             ).one()
 
     # ============================================================================
-    # Helper Methods (Internal)
+    # Findings and Analysis Layer
     # ============================================================================
 
-    def _domain_to_dict(self, domain: Domain) -> Dict[str, Any]:
-        """Convert Domain object to dictionary."""
-        return {
-            'domain': domain.domain,
-            'is_primary': domain.is_primary,
-            'created_at': domain.created_at,
-            'updated_at': domain.updated_at,
-            'last_scanned_at': domain.last_scanned_at,
-            'scan_count': domain.scan_count,
-            'contact_email': domain.contact_email,
-            'scan_frequency': domain.scan_frequency,
-            'active_scan_enabled': domain.active_scan_enabled
+    def store_findings(self, findings: List[Dict[str, Any]]) -> None:
+        """
+        Store analysis findings in database.
+
+        Args:
+            findings: List of finding dictionaries with fields:
+                - id: Finding UUID
+                - scan_id: Scan session UUID
+                - finding_type: Type of finding
+                - affected_asset: Domain/subdomain/IP
+                - title: Finding title
+                - description: Detailed description
+                - severity: critical/high/medium/low/info
+                - risk_score: Numeric score (0-100)
+                - evidence_json: JSON string with evidence
+                - remediation: Remediation guidance
+                - detector: Detector name
+                - And other optional fields...
+        """
+        with Session(self.engine) as session:
+            for finding_data in findings:
+                # Create Finding object
+                finding = Finding(
+                    id=finding_data.get('id', str(uuid.uuid4())),
+                    scan_id=finding_data['scan_id'],
+                    finding_type=finding_data['finding_type'],
+                    affected_asset=finding_data['affected_asset'],
+                    port=finding_data.get('port'),
+                    protocol=finding_data.get('protocol'),
+                    title=finding_data['title'],
+                    description=finding_data.get('description'),
+                    service_name=finding_data.get('service_name'),
+                    severity=finding_data.get('severity', 'medium'),
+                    risk_score=finding_data.get('risk_score', 50),
+                    confidence_level=finding_data.get('confidence_level', 'medium'),
+                    evidence_json=json.dumps(finding_data.get('evidence', {})),
+                    cwe_id=finding_data.get('cwe_id'),
+                    remediation=finding_data.get('remediation'),
+                    detector=finding_data.get('detector'),
+                    score_breakdown_json=json.dumps(finding_data.get('score_breakdown', {})),
+                    status='open',
+                    false_positive=False,
+                    discovered_at=get_ist_now(),
+                    updated_at=get_ist_now()
+                )
+                session.add(finding)
+
+            session.commit()
+
+    def get_findings(
+        self,
+        scan_id: Optional[str] = None,
+        affected_asset: Optional[str] = None,
+        min_severity: Optional[str] = None,
+        limit: int = 100,
+        offset: int = 0
+    ) -> Dict[str, Any]:
+        """
+        Retrieve findings with optional filters.
+
+        Args:
+            scan_id: Filter by scan ID
+            affected_asset: Filter by affected asset
+            min_severity: Minimum severity (critical/high/medium/low/info)
+            limit: Maximum number of findings to return
+            offset: Number of findings to skip
+
+        Returns:
+            Dictionary with findings list, total count, and pagination info
+        """
+        severity_order = {
+            'critical': 5,
+            'high': 4,
+            'medium': 3,
+            'low': 2,
+            'info': 1
         }
+
+        with Session(self.engine) as session:
+            # Build query
+            query = select(Finding)
+
+            # Apply filters
+            filters = []
+            if scan_id:
+                filters.append(Finding.scan_id == scan_id)
+            if affected_asset:
+                filters.append(Finding.affected_asset == affected_asset)
+            if min_severity and min_severity in severity_order:
+                min_order = severity_order[min_severity]
+                valid_severities = [s for s, o in severity_order.items() if o >= min_order]
+                filters.append(Finding.severity.in_(valid_severities))
+
+            if filters:
+                query = query.where(and_(*filters))
+
+            # Get total count
+            count_query = select(func.count()).select_from(Finding)
+            if filters:
+                count_query = count_query.where(and_(*filters))
+            total_count = session.exec(count_query).one()
+
+            # Apply pagination and ordering (highest risk first)
+            query = query.order_by(Finding.risk_score.desc(), Finding.discovered_at.desc())
+            query = query.offset(offset).limit(limit)
+
+            # Execute query
+            findings = session.exec(query).all()
+
+            return {
+                'findings': [self._finding_to_dict(f) for f in findings],
+                'total_count': total_count,
+                'has_more': (offset + len(findings)) < total_count,
+                'limit': limit,
+                'offset': offset
+            }
+
+    def get_finding_by_id(self, finding_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Get a specific finding by ID.
+
+        Args:
+            finding_id: Finding UUID
+
+        Returns:
+            Finding dictionary or None if not found
+        """
+        with Session(self.engine) as session:
+            finding = session.get(Finding, finding_id)
+            if finding:
+                return self._finding_to_dict(finding)
+            return None
+
+    def update_finding_status(
+        self,
+        finding_id: str,
+        status: str,
+        resolution_notes: Optional[str] = None
+    ) -> bool:
+        """
+        Update finding status.
+
+        Args:
+            finding_id: Finding UUID
+            status: New status (open/acknowledged/resolved/false_positive)
+            resolution_notes: Optional resolution notes
+
+        Returns:
+            True if updated, False if finding not found
+        """
+        with Session(self.engine) as session:
+            finding = session.get(Finding, finding_id)
+            if not finding:
+                return False
+
+            finding.status = status
+            finding.updated_at = get_ist_now()
+
+            if status == 'resolved':
+                finding.resolved_at = get_ist_now()
+            if status == 'false_positive':
+                finding.false_positive = True
+
+            if resolution_notes:
+                finding.resolution_notes = resolution_notes
+
+            session.add(finding)
+            session.commit()
+            return True
+
+    def get_findings_statistics(
+        self,
+        scan_id: Optional[str] = None,
+        affected_asset: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Get statistics about findings.
+
+        Args:
+            scan_id: Filter by scan ID
+            affected_asset: Filter by affected asset
+
+        Returns:
+            Dictionary with statistics
+        """
+        with Session(self.engine) as session:
+            # Build base query
+            query = select(Finding)
+            filters = []
+
+            if scan_id:
+                filters.append(Finding.scan_id == scan_id)
+            if affected_asset:
+                filters.append(Finding.affected_asset == affected_asset)
+
+            if filters:
+                query = query.where(and_(*filters))
+
+            findings = session.exec(query).all()
+
+            # Calculate statistics
+            total = len(findings)
+            by_severity = {}
+            by_status = {}
+            total_risk_score = 0
+
+            for finding in findings:
+                # Count by severity
+                severity = finding.severity
+                by_severity[severity] = by_severity.get(severity, 0) + 1
+
+                # Count by status
+                status = finding.status
+                by_status[status] = by_status.get(status, 0) + 1
+
+                # Sum risk scores
+                total_risk_score += finding.risk_score
+
+            return {
+                'total_findings': total,
+                'by_severity': by_severity,
+                'by_status': by_status,
+                'average_risk_score': round(total_risk_score / total, 2) if total > 0 else 0,
+                'critical_findings': by_severity.get('critical', 0),
+                'high_findings': by_severity.get('high', 0),
+                'medium_findings': by_severity.get('medium', 0),
+                'low_findings': by_severity.get('low', 0),
+                'info_findings': by_severity.get('info', 0),
+                'open_findings': by_status.get('open', 0),
+                'resolved_findings': by_status.get('resolved', 0),
+                'false_positives': by_status.get('false_positive', 0)
+            }
+
+    # ============================================================================
+    # Helper Methods (Internal)
+    # ============================================================================
 
     def _scan_to_dict(self, scan: ScanSession) -> Dict[str, Any]:
         """Convert ScanSession object to dictionary."""
@@ -1164,20 +1450,6 @@ class SQLModelManager(DatabaseManager):
             'end_time': scan.end_time,
             'status': scan.status,
             'findings_count': scan.findings_count
-        }
-
-    def _alert_to_dict(self, alert: SecurityAlert) -> Dict[str, Any]:
-        """Convert SecurityAlert object to dictionary."""
-        return {
-            'id': alert.id,
-            'domain': alert.domain,
-            'scan_id': alert.scan_id,
-            'vulnerability_type': alert.vulnerability_type,
-            'severity': alert.severity,
-            'description': alert.description,
-            'remediation': alert.remediation,
-            'tool_source': alert.tool_source,
-            'discovered_at': alert.discovered_at
         }
 
     def _subdomain_history_to_dict(self, history: SubdomainHistory) -> Dict[str, Any]:
@@ -1243,6 +1515,284 @@ class SQLModelManager(DatabaseManager):
             'target_host': result.target_host,
             'port': result.port,
             'protocol': result.protocol,
+            'ip': result.ip,
             'discovered_at': result.discovered_at,
             'raw_json': result.raw_json
         }
+
+    def _finding_to_dict(self, finding: Finding) -> Dict[str, Any]:
+        """Convert Finding object to dictionary."""
+        # Parse JSON fields
+        evidence = {}
+        score_breakdown = {}
+
+        try:
+            if finding.evidence_json:
+                evidence = json.loads(finding.evidence_json)
+        except (json.JSONDecodeError, TypeError):
+            pass
+
+        try:
+            if finding.score_breakdown_json:
+                score_breakdown = json.loads(finding.score_breakdown_json)
+        except (json.JSONDecodeError, TypeError):
+            pass
+
+        return {
+            'id': finding.id,
+            'scan_id': finding.scan_id,
+            'finding_type': finding.finding_type,
+            'affected_asset': finding.affected_asset,
+            'port': finding.port,
+            'protocol': finding.protocol,
+            'title': finding.title,
+            'description': finding.description,
+            'service_name': finding.service_name,
+            'severity': finding.severity,
+            'risk_score': finding.risk_score,
+            'confidence_level': finding.confidence_level,
+            'evidence': evidence,
+            'cwe_id': finding.cwe_id,
+            'remediation': finding.remediation,
+            'detector': finding.detector,
+            'score_breakdown': score_breakdown,
+            'status': finding.status,
+            'false_positive': finding.false_positive,
+            'resolved_at': finding.resolved_at,
+            'resolution_notes': finding.resolution_notes,
+            'discovered_at': finding.discovered_at,
+            'updated_at': finding.updated_at
+        }
+
+    # ============================================================================
+    # API Key Management
+    # ============================================================================
+
+    def create_api_key(
+        self,
+        key_hash: str,
+        name: str,
+        permissions: Optional[List[str]] = None
+    ) -> Dict[str, Any]:
+        """
+        Create a new API key.
+
+        Args:
+            key_hash: SHA-256 hash of the API key
+            name: Human-readable name for the key
+            permissions: List of permissions (e.g., ["domain:write", "scan:execute"])
+
+        Returns:
+            Dictionary with API key information
+        """
+        with Session(self.engine) as session:
+            api_key = APIKey(
+                key=key_hash,
+                name=name,
+                permissions=json.dumps(permissions or [])
+            )
+            session.add(api_key)
+            session.commit()
+            session.refresh(api_key)
+
+            return {
+                'id': api_key.id,
+                'name': api_key.name,
+                'permissions': json.loads(api_key.permissions),
+                'created_at': api_key.created_at,
+                'expires_at': api_key.expires_at,
+                'is_active': api_key.is_active
+            }
+
+    def get_api_key_by_hash(self, key_hash: str, include_inactive: bool = False) -> Optional[Dict[str, Any]]:
+        """
+        Get API key by its hash.
+
+        Args:
+            key_hash: SHA-256 hash of the API key
+            include_inactive: If True, include revoked keys in results
+
+        Returns:
+            API key information or None if not found
+        """
+        with Session(self.engine) as session:
+            if include_inactive:
+                query = select(APIKey).where(APIKey.key == key_hash)
+            else:
+                query = select(APIKey).where(
+                    and_(
+                        APIKey.key == key_hash,
+                        APIKey.is_active == True
+                    )
+                )
+            api_key = session.exec(query).first()
+
+            if not api_key:
+                return None
+
+            # Update last_used_at only if key is active
+            if api_key.is_active:
+                api_key.last_used_at = datetime.utcnow()
+                session.add(api_key)
+                session.commit()
+
+            return {
+                'id': api_key.id,
+                'name': api_key.name,
+                'permissions': json.loads(api_key.permissions),
+                'created_at': api_key.created_at,
+                'expires_at': api_key.expires_at,
+                'last_used_at': api_key.last_used_at,
+                'is_active': api_key.is_active
+            }
+
+    def list_api_keys(self) -> List[Dict[str, Any]]:
+        """
+        List all API keys.
+
+        Returns:
+            List of API key information dictionaries
+        """
+        with Session(self.engine) as session:
+            query = select(APIKey).order_by(APIKey.created_at.desc())
+            api_keys = session.exec(query).all()
+
+            return [
+                {
+                    'id': key.id,
+                    'name': key.name,
+                    'permissions': json.loads(key.permissions),
+                    'created_at': key.created_at,
+                    'expires_at': key.expires_at,
+                    'last_used_at': key.last_used_at,
+                    'is_active': key.is_active
+                }
+                for key in api_keys
+            ]
+
+    def revoke_api_key(self, key_id: str) -> bool:
+        """
+        Revoke an API key by ID.
+
+        Args:
+            key_id: API key ID
+
+        Returns:
+            True if revoked, False if not found
+        """
+        with Session(self.engine) as session:
+            query = select(APIKey).where(APIKey.id == key_id)
+            api_key = session.exec(query).first()
+
+            if not api_key:
+                return False
+
+            api_key.is_active = False
+            session.add(api_key)
+            session.commit()
+            return True
+
+    # ============================================================================
+    # Audit Logging
+    # ============================================================================
+
+    def create_audit_log(
+        self,
+        endpoint: str,
+        method: str,
+        resource_type: str,
+        action: str,
+        ip_address: str,
+        response_status: int,
+        success: bool,
+        api_key_id: Optional[str] = None,
+        resource_id: Optional[str] = None,
+        user_agent: Optional[str] = None,
+        request_body: Optional[str] = None
+    ) -> str:
+        """
+        Create an audit log entry.
+
+        Args:
+            endpoint: API endpoint path
+            method: HTTP method
+            resource_type: Type of resource (domain, scan, analysis)
+            action: Action performed (create, update, delete, execute)
+            ip_address: Client IP address
+            response_status: HTTP response status code
+            success: Whether the operation succeeded
+            api_key_id: Optional API key ID
+            resource_id: Optional resource ID
+            user_agent: Optional user agent string
+            request_body: Optional JSON request body
+
+        Returns:
+            Audit log ID
+        """
+        with Session(self.engine) as session:
+            audit_log = AuditLog(
+                api_key_id=api_key_id,
+                endpoint=endpoint,
+                method=method,
+                resource_type=resource_type,
+                resource_id=resource_id,
+                action=action,
+                ip_address=ip_address,
+                user_agent=user_agent,
+                request_body=request_body,
+                response_status=response_status,
+                success=success
+            )
+            session.add(audit_log)
+            session.commit()
+            session.refresh(audit_log)
+            return audit_log.id
+
+    def get_audit_logs(
+        self,
+        limit: int = 100,
+        resource_type: Optional[str] = None,
+        api_key_id: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        Get audit logs with optional filtering.
+
+        Args:
+            limit: Maximum number of logs to return
+            resource_type: Optional filter by resource type
+            api_key_id: Optional filter by API key ID
+
+        Returns:
+            List of audit log dictionaries
+        """
+        with Session(self.engine) as session:
+            query = select(AuditLog)
+
+            # Apply filters
+            if resource_type:
+                query = query.where(AuditLog.resource_type == resource_type)
+            if api_key_id:
+                query = query.where(AuditLog.api_key_id == api_key_id)
+
+            # Order by timestamp descending and limit
+            query = query.order_by(AuditLog.timestamp.desc()).limit(limit)
+
+            logs = session.exec(query).all()
+
+            return [
+                {
+                    'id': log.id,
+                    'timestamp': log.timestamp,
+                    'api_key_id': log.api_key_id,
+                    'endpoint': log.endpoint,
+                    'method': log.method,
+                    'resource_type': log.resource_type,
+                    'resource_id': log.resource_id,
+                    'action': log.action,
+                    'ip_address': log.ip_address,
+                    'user_agent': log.user_agent,
+                    'response_status': log.response_status,
+                    'success': log.success
+                }
+                for log in logs
+            ]

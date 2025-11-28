@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends
 from src.api.schemas.common import HealthResponse
 from src.data.database.sqlmodel_manager import SQLModelManager
 from src.api.dependencies import get_db_manager
+from src.api.settings import settings
 
 router = APIRouter()
 
@@ -31,6 +32,6 @@ async def health_check(db: SQLModelManager = Depends(get_db_manager)):
 
     return HealthResponse(
         status="healthy",
-        version="2.0.0",
+        version=settings.version,
         database=db_status
     )

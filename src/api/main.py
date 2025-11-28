@@ -1,56 +1,96 @@
 """
-FastAPI application for OpenEASD (Read-Only).
+FastAPI application for OpenEASD.
 
 Main application entry point for the REST API and web frontend.
-This API is read-only for security. All write operations must be performed via CLI.
+Now supports write operations with authentication, rate limiting, and audit logging.
 """
 
-from fastapi import FastAPI
+from contextlib import asynccontextmanager
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
-from src.api.routes import domains, scans, alerts, health
+from src.api.routes import domains, scans, alerts, health, findings, events
+from src.api.settings import settings
+from src.api.middleware import AuditMiddleware, RateLimitMiddleware
+from src.utils.config import Config
+from src.utils.logging import setup_logging
 import os
 
-# Create FastAPI application
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Lifespan event handler for startup and shutdown."""
+    # Startup
+    # Initialize logging from config
+    config = Config()
+    log_level = config.get('log_level', 'INFO')
+    setup_logging(log_level)
+
+    # Start EventBus for real-time messaging
+    from src.messaging.manager import EventBusManager
+    try:
+        EventBusManager.start()
+        print("📡 EventBus started for real-time messaging")
+    except Exception as e:
+        print(f"⚠️  EventBus failed to start: {e}")
+
+    print("🚀 OpenEASD API & Frontend starting up...")
+    print(f"🖥️  Dashboard available at: http://{settings.host}:{settings.port}")
+    print(f"📚 API Documentation: http://{settings.host}:{settings.port}{settings.docs_url}")
+    print("✅ Write operations enabled with API key authentication")
+    print("🔒 Rate limiting and audit logging active")
+    print(f"📊 Logging level: {log_level}")
+
+    yield
+
+    # Shutdown
+    print("👋 OpenEASD API & Frontend shutting down...")
+
+    # Stop EventBus
+    try:
+        EventBusManager.stop()
+        print("📡 EventBus stopped")
+    except Exception:
+        pass
+
+# Create FastAPI application with settings from config
 app = FastAPI(
-    title="OpenEASD API (Read-Only)",
-    description="""
-    Read-Only API for monitoring External Attack Surface Detection.
-
-    **Security Model:**
-    - API: Read-only access (GET requests only)
-    - CLI: Full access for all operations (add, update, delete, scan)
-
-    **For write operations, use the CLI:**
-    - Domain management: `openeasd domain add/update/remove`
-    - Scan execution: `openeasd scan domain <domain>`
-    - Batch scanning: `openeasd scan`
-    """,
-    version="2.0.0-readonly",
-    docs_url="/api/docs",
-    redoc_url="/api/redoc",
-    openapi_url="/api/openapi.json"
+    title=settings.title,
+    description=settings.description,
+    version=settings.version,
+    docs_url=settings.docs_url,
+    redoc_url=settings.redoc_url,
+    openapi_url=settings.openapi_url,
+    lifespan=lifespan
 )
 
-# Configure CORS
+# Configure CORS from settings
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allow all origins
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=settings.cors_allow_origins,
+    allow_credentials=settings.cors_allow_credentials,
+    allow_methods=settings.cors_allow_methods,
+    allow_headers=settings.cors_allow_headers,
 )
+
+# Add rate limiting middleware (before audit to prevent logging rate-limited requests)
+app.add_middleware(RateLimitMiddleware)
+
+# Add audit logging middleware (logs all write operations)
+app.add_middleware(AuditMiddleware)
 
 # API Routers
 app.include_router(health.router, prefix="/api/v1", tags=["health"])
 app.include_router(domains.router, prefix="/api/v1/domains", tags=["domains"])
 app.include_router(scans.router, prefix="/api/v1/scans", tags=["scans"])
 app.include_router(alerts.router, prefix="/api/v1/alerts", tags=["alerts"])
+app.include_router(findings.router, prefix="/api/v1/findings", tags=["findings"])
+app.include_router(events.router, prefix="/api/v1", tags=["events"])
 
 # --- Frontend Serving ---
 # Note: Place this after API routes to ensure API has priority
-FRONTEND_DIR = "frontend"
+FRONTEND_DIR = settings.frontend_dir
 
 if os.path.exists(FRONTEND_DIR):
     # Mount static files directory
@@ -64,26 +104,23 @@ if os.path.exists(FRONTEND_DIR):
     async def catch_all(path: str):
         # This catch-all is for client-side routing.
         # It serves index.html for any path not caught by API or static files.
+        # BUT: Skip API paths to allow proper 404 responses from FastAPI
+        if path.startswith("api/"):
+            # Let FastAPI handle API routes - will return 404 if not found
+            from fastapi import HTTPException
+            raise HTTPException(status_code=404, detail="Not Found")
+
         file_path = os.path.join(FRONTEND_DIR, path)
         if os.path.exists(file_path) and os.path.isfile(file_path):
              return FileResponse(file_path)
         return FileResponse(os.path.join(FRONTEND_DIR, "index.html"))
 
-# --- Lifecycle Events ---
-@app.on_event("startup")
-async def startup_event():
-    """Initialize application on startup."""
-    print("🚀 OpenEASD API & Frontend starting up...")
-    print("🖥️  Dashboard available at: http://localhost:8000")
-    print("📚 API Documentation: http://localhost:8000/api/docs")
-    print("⚠️  Write operations disabled - use CLI for operations")
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    """Cleanup on application shutdown."""
-    print("👋 OpenEASD API & Frontend shutting down...")
-
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(
+        app,
+        host=settings.host,
+        port=settings.port,
+        reload=settings.reload
+    )

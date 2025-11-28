@@ -336,7 +336,8 @@ class TestScanServiceListing:
 
         result = scan_service.list_scans(limit=2)
 
-        assert result['total'] == 2  # Limited to 2
+        assert len(result['scans']) == 2  # Limited to 2 results
+        assert result['total'] == 5  # But total count is 5
 
     @patch('src.services.scan_service.run_subfinder')
     @patch('src.services.scan_service.run_dnsx')

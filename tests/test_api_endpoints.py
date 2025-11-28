@@ -9,7 +9,7 @@ import tempfile
 import json
 from pathlib import Path
 from unittest.mock import patch, MagicMock
-from fastapi.testclient import TestClient
+from starlette.testclient import TestClient
 
 from src.api.main import app
 from src.data.database.sqlmodel_manager import SQLModelManager
@@ -98,16 +98,6 @@ class TestDomainEndpoints:
         # Should either accept or return 422 (validation error)
         assert response.status_code in [200, 422]
 
-    def test_list_domains_domain_type_filter(self, client, temp_db):
-        """Test filtering domains by type."""
-        temp_db.add_domain('example.com', domain_type='apex')
-
-        response = client.get("/api/v1/domains?domain_type=apex")
-
-        assert response.status_code == 200
-        data = response.json()
-        assert "domains" in data
-
     def test_list_domains_primary_only_filter(self, client, temp_db):
         """Test filtering only primary domains."""
         temp_db.add_domain('primary.com', is_primary=True)
@@ -123,14 +113,13 @@ class TestDomainEndpoints:
 
     def test_get_domain_existing(self, client, temp_db):
         """Test getting details of existing domain."""
-        temp_db.add_domain('example.com', notes='Test domain')
+        temp_db.add_domain('example.com')
 
         response = client.get("/api/v1/domains/example.com")
 
         assert response.status_code == 200
         data = response.json()
         assert data["domain"] == 'example.com'
-        assert data["notes"] == 'Test domain'
 
     def test_get_domain_nonexistent(self, client):
         """Test getting nonexistent domain returns 404."""
@@ -142,7 +131,7 @@ class TestDomainEndpoints:
         """Test that invalid domain format returns error."""
         response = client.get("/api/v1/domains/invalid..com")
 
-        assert response.status_code == 404 or response.status_code == 422
+        assert response.status_code == 400 or response.status_code == 422
 
     def test_list_domains_cors_headers(self, client):
         """Test that CORS headers are present."""
@@ -253,7 +242,11 @@ class TestAlertEndpoints:
 
         assert response.status_code == 200
         data = response.json()
-        assert "statistics" in data or "data" in data
+        # Check for expected fields at top level
+        assert "total" in data
+        assert "by_severity" in data
+        assert "by_type" in data
+        assert "by_tool" in data
 
 
 class TestAPIResponseFormats:
@@ -261,7 +254,7 @@ class TestAPIResponseFormats:
 
     def test_domain_list_response_format(self, client, temp_db):
         """Test that domain list response has correct format."""
-        temp_db.add_domain('example.com', is_primary=True, notes='Test')
+        temp_db.add_domain('example.com', is_primary=True)
 
         response = client.get("/api/v1/domains")
 
@@ -319,22 +312,25 @@ class TestAPIErrorHandling:
         assert response.status_code in [200, 422]
 
     def test_read_only_api_no_post(self, client):
-        """Test that POST requests are not allowed on read-only API."""
+        """Test that POST requests require authentication."""
         response = client.post("/api/v1/domains")
 
-        assert response.status_code == 405  # Method not allowed
+        # Now returns 401 Unauthorized (auth required) instead of 405
+        assert response.status_code == 401
 
     def test_read_only_api_no_delete(self, client):
-        """Test that DELETE requests are not allowed on read-only API."""
+        """Test that DELETE requests require authentication."""
         response = client.delete("/api/v1/domains/example.com")
 
-        assert response.status_code == 405  # Method not allowed
+        # Now returns 401 Unauthorized (auth required) instead of 405
+        assert response.status_code == 401
 
     def test_read_only_api_no_put(self, client):
-        """Test that PUT requests are not allowed on read-only API."""
+        """Test that PUT requests require authentication."""
         response = client.put("/api/v1/domains/example.com")
 
-        assert response.status_code == 405  # Method not allowed
+        # Now returns 401 Unauthorized (auth required) instead of 405
+        assert response.status_code == 401
 
     def test_api_handles_database_errors_gracefully(self, client, temp_db):
         """Test that API handles database errors gracefully."""
