@@ -13,10 +13,6 @@ import json
 from pathlib import Path
 
 from src.cli.commands_scan import batch_scan_subfinder_command
-from src.cli.commands_subfinder import run_tool_subfinder_command
-from src.cli.commands_naabu import run_tool_naabu_command
-from src.cli.commands_dnsx import run_tool_dnsx_command
-from src.cli.commands_httpx import run_tool_httpx_command
 from src.cli.commands_results import (
     view_scans_command, results_command
 )
@@ -48,7 +44,7 @@ def cli(ctx):
         openeasd domain add example.com     # Add domain to database
         openeasd domain list                # List all domains
         openeasd scans                      # List all scan sessions
-        openeasd run subfinder example.com  # Run tool without saving
+        openeasd results <scan-id>          # View scan results
     """
     # Ensure context object exists
     ctx.ensure_object(dict)
@@ -56,40 +52,6 @@ def cli(ctx):
     # If no command is provided, show help
     if ctx.invoked_subcommand is None:
         click.echo(ctx.get_help())
-
-
-def _run_tool(tool_func, **kwargs):
-    """Helper to run a tool and print results."""
-    try:
-        result = tool_func(kwargs)
-        if not result.get('success'):
-            click.echo(f"Error: {result.get('error', 'Unknown error')}", err=True)
-            sys.exit(1)
-
-        # Format and print the output
-        output = kwargs.get('output', 'table')
-        if output == 'json':
-            click.echo(json.dumps(result, indent=2))
-        else:
-            # The formatters are designed for the main commands, so we'll do some basic printing here
-            if 'subdomains' in result:
-                click.echo("\n".join(result['subdomains']))
-            elif 'ports' in result:
-                for port_info in result['ports']:
-                    click.echo(f"{port_info['subdomain']}:{port_info['port']}")
-            elif 'records' in result:
-                 for record in result['records']:
-                    click.echo(f"{record['host']}: {record}")
-            elif 'probes' in result:
-                for probe in result['probes']:
-                    click.echo(f"{probe['url']} - {probe['status_code']}")
-
-    except KeyboardInterrupt:
-        click.echo("\n\nTool cancelled by user", err=True)
-        sys.exit(130)
-    except Exception as e:
-        click.echo(f"Error: {e}", err=True)
-        sys.exit(1)
 
 
 @cli.command()
@@ -553,95 +515,6 @@ def apikey_revoke(key_id, force):
     except Exception as e:
         click.echo(f"Error: {e}", err=True)
         sys.exit(1)
-
-
-@cli.group()
-def run():
-    """Run individual security tools
-
-    Execute tools directly without database storage.
-    Useful for quick reconnaissance and testing.
-
-    Examples:
-        openeasd run subfinder example.com
-        openeasd run naabu api.example.com
-        openeasd run dnsx example.com --records a --records mx
-    """
-    pass
-
-
-@run.command('subfinder')
-@click.argument('domains', nargs=-1, required=True)
-@click.option('--timeout', default=300, type=int,
-              help='Tool timeout in seconds (default: 300)')
-@click.option('--output', type=click.Choice(['table', 'json', 'txt']),
-              default='table',
-              help='Output format (default: table)')
-def run_subfinder(domains, timeout, output):
-    """Run subfinder on one or more domains."""
-    all_subdomains = []
-    for domain in domains:
-        click.echo(f"[*] Scanning: {domain}")
-        result = run_tool_subfinder_command({'domain': domain, 'timeout': timeout})
-        if result.get('success') and result.get('subdomain_count', 0) > 0:
-            click.secho(f"  ✓ Found {result['subdomain_count']} subdomains", fg='green')
-            all_subdomains.extend(result['subdomains'])
-        else:
-            click.echo(f"  - No subdomains found")
-
-    click.echo()
-    click.echo(f"{ '=' * 80}")
-    click.echo(f"Total Subdomains Discovered: {len(all_subdomains)}")
-    click.echo(f"{ '=' * 80}")
-
-    if output == 'json':
-        click.echo(json.dumps(sorted(set(all_subdomains)), indent=2))
-    elif output == 'txt':
-        for subdomain in sorted(set(all_subdomains)):
-            click.echo(subdomain)
-
-
-@run.command('naabu')
-@click.argument('targets', nargs=-1, required=True)
-@click.option('--top-ports', default=1000, type=int,
-              help='Number of top ports to scan (default: 1000)')
-@click.option('--timeout', default=300, type=int,
-              help='Tool timeout in seconds (default: 300)')
-@click.option('--output', type=click.Choice(['table', 'json']),
-              default='table',
-              help='Output format (default: table)')
-def run_naabu(targets, top_ports, timeout, output):
-    """Run naabu port scanner."""
-    _run_tool(run_tool_naabu_command, targets=list(targets), top_ports=top_ports, timeout=timeout, output=output)
-
-
-@run.command('dnsx')
-@click.argument('domains', nargs=-1, required=True)
-@click.option('--records', '-r', 'record_types', multiple=True,
-              type=click.Choice(['a', 'aaaa', 'cname', 'mx', 'ns', 'txt', 'ptr', 'soa', 'srv'], case_sensitive=False),
-              help='DNS record types to query (can specify multiple)')
-@click.option('--timeout', default=300, type=int,
-              help='Tool timeout in seconds (default: 300)')
-@click.option('--output', type=click.Choice(['table', 'json']),
-              default='table',
-              help='Output format (default: table)')
-def run_dnsx(domains, record_types, timeout, output):
-    """Run dnsx DNS toolkit."""
-    _run_tool(run_tool_dnsx_command, domains=list(domains), record_types=list(record_types), timeout=timeout, output=output)
-
-
-@run.command('httpx')
-@click.argument('targets', nargs=-1, required=True)
-@click.option('--threads', default=50, type=int,
-              help='Number of concurrent threads (default: 50)')
-@click.option('--timeout', default=300, type=int,
-              help='Tool timeout in seconds (default: 300)')
-@click.option('--output', type=click.Choice(['table', 'json']),
-              default='table',
-              help='Output format (default: table)')
-def run_httpx(targets, threads, timeout, output):
-    """Run httpx HTTP probe."""
-    _run_tool(run_tool_httpx_command, targets=list(targets), threads=threads, timeout=timeout, output=output)
 
 
 def main():
