@@ -43,7 +43,7 @@ You are an expert system architect specializing in the OpenEASD (Automated Exter
 5. **Technology Stack Validation**: Verify tech choices align with the approved stack:
    - API Framework: FastAPI 0.109+ with Uvicorn, Pydantic v2
    - CLI Framework: Click 8.1.7 with real-time progress display
-   - Database: SQLite with SQLModel ORM (no indexing on scan_sessions due to DuckDB limitations)
+   - Database: SQLite with SQLModel ORM (no indexing on scan_sessions due to SQLite limitations)
    - Messaging: PyZMQ 27.1.0+ with ZeroMQ Pub/Sub
    - Tools: Subfinder, Amass, Nmap, Naabu via subprocess
    - Package Manager: uv (not pip)

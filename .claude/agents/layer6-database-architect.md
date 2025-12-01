@@ -36,7 +36,7 @@ You are responsible for the Database Layer (Layer 6) of the OpenEASD system, whi
    - Recommend query patterns that minimize database round-trips
    - Suggest eager loading strategies for related data (SQLAlchemy relationships)
    - Profile slow queries and identify optimization opportunities
-   - Note: SQLite has limitations (no indexes on scan_sessions due to DuckDB-related constraints)
+   - Note: SQLite has limitations (no indexes on scan_sessions due to SQLite-related constraints)
    - Ensure queries leverage existing indexes effectively
 
 4. **Database Operations**
