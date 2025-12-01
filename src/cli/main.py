@@ -24,7 +24,15 @@ from src.cli.commands_domain import (
     domain_add_command, domain_list_command, domain_update_command,
     domain_remove_command
 )
+from src.cli.commands_analysis import (
+    run_analysis_command, list_findings_command, show_finding_command,
+    findings_statistics_command, update_finding_status_command
+)
+from src.cli.commands_apikey import (
+    apikey_create_command, apikey_list_command, apikey_revoke_command
+)
 from src.cli.formatters import format_output
+from src.cli.progress import ContextProgressDisplay
 from src.data.database.sqlmodel_manager import SQLModelManager
 
 
@@ -187,7 +195,10 @@ def history(limit, output):
     try:
         result = history_command(locals())
         if result:
-            click.echo(format_output(result, output))
+            if result.get('message'):
+                click.echo(result['message'])
+            else:
+                click.echo(format_output(result, output))
     except Exception as e:
         click.echo(f"Error: {e}", err=True)
         sys.exit(1)
@@ -232,7 +243,7 @@ def domain_add(domain, primary, contact, frequency):
         openeasd domain add example.io --contact admin@example.io --frequency daily
     """
     try:
-        result = domain_add_command(locals())
+        result = domain_add_command(domain, primary, contact, frequency)
         if result.get('success'):
             click.echo(result['message'])
         else:
@@ -263,7 +274,7 @@ def domain_list(limit, primary, details, output):
         openeasd domain list --output json
     """
     try:
-        result = domain_list_command(locals())
+        result = domain_list_command(limit, primary, details, output)
         if result.get('success'):
             if result.get('domains'):
                 click.echo(format_output(result, output))
@@ -289,7 +300,7 @@ def domain_update(domain, primary):
         openeasd domain update example.com --primary false
     """
     try:
-        result = domain_update_command(locals())
+        result = domain_update_command(domain, primary)
         if result.get('success'):
             click.echo(result['message'])
         else:
@@ -312,7 +323,7 @@ def domain_remove(domain, force):
         openeasd domain remove example.io --force
     """
     try:
-        result = domain_remove_command(locals())
+        result = domain_remove_command(domain, force)
         if result.get('success'):
             click.echo()
             click.echo(result['message'])
@@ -342,6 +353,227 @@ def domain_remove(domain, force):
         sys.exit(1)
 
 
+@cli.group()
+def analysis():
+    """Manage security findings and analysis results
+
+    View, manage, and analyze security findings from completed scans.
+
+    Examples:
+        openeasd analysis findings              # List all findings
+        openeasd analysis findings --severity high  # Filter by severity
+        openeasd analysis show <finding-id>     # Show finding details
+        openeasd analysis stats                 # Show statistics
+    """
+    pass
+
+
+@analysis.command('run')
+@click.argument('scan_id')
+@click.option('--output', type=click.Choice(['table', 'json']),
+              default='table',
+              help='Output format (default: table)')
+def analysis_run(scan_id, output):
+    """Run analysis on a completed scan
+
+    Executes vulnerability detection detectors on scan results.
+
+    Examples:
+        openeasd analysis run <scan-id>
+    """
+    try:
+        run_analysis_command(scan_id, output)
+    except Exception as e:
+        click.echo(f"Error: {e}", err=True)
+        sys.exit(1)
+
+
+@analysis.command('findings')
+@click.option('--scan-id', help='Filter by scan ID')
+@click.option('--asset', help='Filter by affected asset (domain/subdomain/IP)')
+@click.option('--severity', type=click.Choice(['critical', 'high', 'medium', 'low', 'info']),
+              help='Filter by minimum severity')
+@click.option('--limit', default=50, type=int,
+              help='Maximum findings to show (default: 50)')
+@click.option('--output', type=click.Choice(['table', 'json']),
+              default='table',
+              help='Output format (default: table)')
+def analysis_findings(scan_id, asset, severity, limit, output):
+    """List security findings with optional filters
+
+    Examples:
+        openeasd analysis findings
+        openeasd analysis findings --severity high
+        openeasd analysis findings --scan-id <scan-id>
+        openeasd analysis findings --asset example.com --output json
+    """
+    try:
+        result = list_findings_command(scan_id=scan_id, asset=asset, min_severity=severity,
+                                       limit=limit, output_format=output)
+        if result:
+            click.echo(format_output(result, output))
+    except Exception as e:
+        click.echo(f"Error: {e}", err=True)
+        sys.exit(1)
+
+
+@analysis.command('show')
+@click.argument('finding_id')
+@click.option('--output', type=click.Choice(['table', 'json']),
+              default='table',
+              help='Output format (default: table)')
+def analysis_show(finding_id, output):
+    """Show detailed information for a finding
+
+    Examples:
+        openeasd analysis show <finding-id>
+        openeasd analysis show <finding-id> --output json
+    """
+    try:
+        show_finding_command(finding_id, output)
+    except Exception as e:
+        click.echo(f"Error: {e}", err=True)
+        sys.exit(1)
+
+
+@analysis.command('stats')
+@click.option('--scan-id', help='Filter by scan ID')
+@click.option('--asset', help='Filter by affected asset')
+@click.option('--output', type=click.Choice(['table', 'json']),
+              default='table',
+              help='Output format (default: table)')
+def analysis_stats(scan_id, asset, output):
+    """Show finding statistics
+
+    Examples:
+        openeasd analysis stats
+        openeasd analysis stats --scan-id <scan-id>
+        openeasd analysis stats --asset example.com
+    """
+    try:
+        result = findings_statistics_command(scan_id=scan_id, asset=asset, output_format=output)
+        if result:
+            click.echo(format_output(result, output))
+    except Exception as e:
+        click.echo(f"Error: {e}", err=True)
+        sys.exit(1)
+
+
+@analysis.command('update')
+@click.argument('finding_id')
+@click.argument('status', type=click.Choice(['open', 'acknowledged', 'resolved', 'false_positive']))
+@click.option('--notes', help='Optional notes about the status change')
+def analysis_update(finding_id, status, notes):
+    """Update finding status
+
+    Examples:
+        openeasd analysis update <finding-id> resolved
+        openeasd analysis update <finding-id> false_positive --notes "Not applicable"
+    """
+    try:
+        result = update_finding_status_command(finding_id, status, notes)
+        if result:
+            click.echo(result.get('message', 'Finding updated'))
+    except Exception as e:
+        click.echo(f"Error: {e}", err=True)
+        sys.exit(1)
+
+
+@cli.group()
+def apikey():
+    """Manage API keys for authenticated write operations
+
+    Create, list, and revoke API keys for API write operations
+    (domain management, scan execution, analysis).
+
+    Examples:
+        openeasd apikey create --name "my-key"
+        openeasd apikey list
+        openeasd apikey revoke <key-id>
+    """
+    pass
+
+
+@apikey.command('create')
+@click.option('--name', required=True,
+              help='Human-readable name for the API key')
+@click.option('--permissions', multiple=True, default=['*'],
+              help='Permissions: * (all), domain:write, scan:execute')
+def apikey_create(name, permissions):
+    """Create a new API key
+
+    Examples:
+        openeasd apikey create --name "my-integration"
+        openeasd apikey create --name "domain-writer" --permissions domain:write
+    """
+    try:
+        result = apikey_create_command({'name': name, 'permissions': list(permissions)})
+        if result.get('success'):
+            click.echo()
+            click.echo("✅ API Key Created!")
+            click.echo(f"   Name: {result['name']}")
+            click.echo(f"   Key ID: {result['key_id']}")
+            click.echo(f"   Created: {result.get('created_at', 'N/A')}")
+            click.echo()
+            click.echo("🔑 API Key (save this - shown only once):")
+            click.secho(f"   {result['api_key']}", fg='green')
+            click.echo()
+            click.echo("⚠️  Store this key securely. It will not be shown again.")
+        else:
+            click.echo(f"Error: {result.get('message', 'Failed to create API key')}", err=True)
+            sys.exit(1)
+    except Exception as e:
+        click.echo(f"Error: {e}", err=True)
+        sys.exit(1)
+
+
+@apikey.command('list')
+@click.option('--output', type=click.Choice(['table', 'json']),
+              default='table',
+              help='Output format (default: table)')
+def apikey_list(output):
+    """List all API keys
+
+    Examples:
+        openeasd apikey list
+        openeasd apikey list --output json
+    """
+    try:
+        result = apikey_list_command({})
+        if result:
+            click.echo(format_output(result, output))
+    except Exception as e:
+        click.echo(f"Error: {e}", err=True)
+        sys.exit(1)
+
+
+@apikey.command('revoke')
+@click.argument('key_id')
+@click.option('--force', is_flag=True,
+              help='Skip confirmation prompt')
+def apikey_revoke(key_id, force):
+    """Revoke an API key by ID
+
+    Examples:
+        openeasd apikey revoke <key-id>
+        openeasd apikey revoke <key-id> --force
+    """
+    try:
+        if not force:
+            click.echo(f"⚠️  You are about to revoke API key: {key_id}")
+            if not click.confirm("Continue?"):
+                click.echo("Revocation cancelled")
+                return
+
+        result = apikey_revoke_command({'key_id': key_id})
+        if result.get('success'):
+            click.echo(f"✅ API key {key_id} revoked")
+        else:
+            click.echo(f"Error: {result.get('message', 'Failed to revoke API key')}", err=True)
+            sys.exit(1)
+    except Exception as e:
+        click.echo(f"Error: {e}", err=True)
+        sys.exit(1)
 
 
 @cli.group()

@@ -36,8 +36,8 @@ def history_command(args) -> Dict[str, Any]:
 
         # Build summary per domain
         domain_summary = {}
-        for domain_info in domains_result.get('domains', []):
-            domain = domain_info['domain']
+        for domain_obj in domains_result.get('domains', []):
+            domain = domain_obj.domain
             domain_summary[domain] = {
                 'domain': domain,
                 'scan_count': 0,
@@ -60,7 +60,7 @@ def history_command(args) -> Dict[str, Any]:
                         'last_scan': None,
                         'status': 'pending'
                     }
-
+        
                 summary = domain_summary[domain]
                 summary['scan_count'] += 1
 
@@ -79,6 +79,11 @@ def history_command(args) -> Dict[str, Any]:
         scans = list(domain_summary.values())
         # Sort by last_scan datetime, putting None values at the end
         scans.sort(key=lambda x: x['last_scan'] if x['last_scan'] else datetime.min, reverse=True)
+
+        if not scans:
+            return {
+                'message': 'No scan history found'
+            }
 
         # Limit results
         scans = scans[:args['limit']]
@@ -125,40 +130,36 @@ def results_command(args) -> Dict[str, Any]:
         if not scan_info:
             raise Exception(f"Scan ID not found: {args['scan_id']}")
 
-        # Get alerts (subdomains/ports) for this scan
-        alerts_result = db_manager.get_alerts(scan_id=args['scan_id'], limit=10000)
-        alerts = alerts_result.get('alerts', [])
+        # Get subfinder results (subdomains) for this scan
+        subfinder_result = db_manager.get_tool_results(args['scan_id'], 'subfinder', limit=10000)
+        subfinder_results = subfinder_result.get('results', [])
 
+        # Get naabu results (ports) for this scan
+        naabu_result = db_manager.get_tool_results(args['scan_id'], 'naabu', limit=10000)
+        naabu_results = naabu_result.get('results', [])
+
+        # Build subdomains list
+        subdomains = []
+        for result in subfinder_results:
+            subdomains.append({
+                'subdomain': result.get('subdomain', ''),
+                'ip_address': '',
+                'discovered_at': result.get('discovered_at', '')
+            })
+
+        # Build ports list
         ports = []
-        subdomains = set()
-        for alert in alerts:
-            subdomain = alert.get('domain', '')
-            subdomains.add(subdomain)
-
-            # Parse port from description (e.g., "Open port 80 (tcp)")
-            port_num = 0
-            protocol = 'tcp'
-            desc = alert.get('description', '')
-            if 'Open port' in desc:
-                parts = desc.replace('Open port ', '').split(' ')
-                try:
-                    port_num = int(parts[0])
-                    if len(parts) > 1:
-                        protocol = parts[1].strip('()')
-                except:
-                    pass
-
-            if port_num > 0:  # Only add if we found a valid port
-                ports.append({
-                    'subdomain': subdomain,
-                    'port': port_num,
-                    'protocol': protocol,
-                    'ip': '',
-                    'discovered_at': alert.get('discovered_at', '')
-                })
+        for result in naabu_results:
+            ports.append({
+                'subdomain': result.get('target_host', ''),
+                'port': result.get('port', 0),
+                'protocol': result.get('protocol', 'tcp'),
+                'ip': result.get('ip', ''),
+                'discovered_at': result.get('discovered_at', '')
+            })
 
         scan_data = {
-            'subdomains': [{'subdomain': s, 'ip_address': '', 'discovered_at': ''} for s in sorted(subdomains)],
+            'subdomains': subdomains,
             'ports': ports
         }
 
