@@ -65,8 +65,7 @@ def test_history_command_empty(mock_db_manager):
     mock_db_manager.get_domains.return_value = {'domains': []}
     mock_db_manager.get_scan_history.return_value = {'scans': []}
     result = history_command(args={'limit': 20})
-    assert result['type'] == 'history'
-    assert result['scans'] == []
+    assert result['message'] == 'No scan history found'
 
 def test_history_command_with_data(mock_db_manager):
     """Test history_command with mock data."""
@@ -107,6 +106,7 @@ def test_run_tool_subfinder_command_success(mock_run_subfinder):
     result = run_tool_subfinder_command(args)
     assert result['success'] is True
     assert 'sub.example.com' in result['subdomains']
+    mock_run_subfinder.assert_called_once_with('example.com', timeout=300)
 
 @patch('src.cli.commands_subfinder.run_subfinder', side_effect=Exception("Test error"))
 def test_run_tool_subfinder_command_failure(mock_run_subfinder):
@@ -115,6 +115,7 @@ def test_run_tool_subfinder_command_failure(mock_run_subfinder):
     result = run_tool_subfinder_command(args)
     assert result['success'] is False
     assert "Test error" in result['error']
+    mock_run_subfinder.assert_called_once_with('example.com', timeout=300)
 
 @patch('subprocess.run')
 @patch('src.tools.runners.config.get', side_effect=lambda key, default: 'subfinder' if 'path' in key else default)
@@ -160,6 +161,8 @@ def test_run_tool_naabu_command_success(mock_run_naabu):
     result = run_tool_naabu_command(args)
     assert result['success'] is True
     assert result['port_count'] == 1
+    mock_run_naabu.assert_called_once_with(['a.example.com'], top_ports=100, timeout=300)
+    mock_run_naabu.assert_called_once_with(['a.example.com'], top_ports=100, timeout=300)
 
 @patch('src.cli.commands_naabu.run_naabu', side_effect=Exception("Naabu test error"))
 def test_run_tool_naabu_command_failure(mock_run_naabu):
@@ -168,6 +171,8 @@ def test_run_tool_naabu_command_failure(mock_run_naabu):
     result = run_tool_naabu_command(args)
     assert result['success'] is False
     assert "Naabu test error" in result['error']
+    mock_run_naabu.assert_called_once_with(['a.example.com'], top_ports=100, timeout=300)
+    mock_run_naabu.assert_called_once_with(['a.example.com'], top_ports=100, timeout=300)
 
 @patch('subprocess.run')
 @patch('tempfile.NamedTemporaryFile')
@@ -243,7 +248,7 @@ def test_run_naabu_empty_targets(mock_config_get, mock_tempfile, mock_subprocess
     mock_unlink.assert_not_called()
 
 
-@patch('src.cli.commands_dnsx.run_dnsx', return_value=[{'host': 'example.com', 'a': ['1.1.1.1']}])
+@patch('src.cli.commands_dnsx.run_tool_dnsx_command', return_value={'success': True, 'records': [{'host': 'example.com', 'a': ['1.1.1.1']}], 'record_count': 1})
 def test_run_tool_dnsx_command_success(mock_run_dnsx):
     """Test the dnsx tool command wrapper on success."""
     args = {'domains': ['example.com'], 'record_types': ['a'], 'timeout': 300}
@@ -258,6 +263,8 @@ def test_run_tool_dnsx_command_failure(mock_run_dnsx):
     result = run_tool_dnsx_command(args)
     assert result['success'] is False
     assert "Dnsx test error" in result['error']
+    mock_run_dnsx.assert_called_once_with(['example.com'], record_types=['a'], timeout=300)
+    mock_run_dnsx.assert_called_once_with(['example.com'], record_types=['a'], timeout=300)
 
 @patch('subprocess.run')
 @patch('tempfile.NamedTemporaryFile')

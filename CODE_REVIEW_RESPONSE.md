@@ -109,7 +109,7 @@ class SQLModelManager(DatabaseManager):
 
 **Your Feedback:** "The separation of the API, CLI, data models, and services is well-done."
 
-**Agreed!** The 6-layer (+1 messaging) architecture ensures clean boundaries:
+**Agreed!** The 7-layer architecture (including messaging) ensures clean boundaries:
 
 ```
 Layer 1: API (FastAPI) - Read-only + write with auth

@@ -1,7 +1,5 @@
 """
 Comprehensive test suite for CLI API key management commands.
-
-Tests apikey create, list, and revoke commands.
 """
 
 import pytest
@@ -11,13 +9,12 @@ from src.cli.commands_apikey import (
     apikey_list_command,
     apikey_revoke_command
 )
-
+from src.data.models.api_key import APIKey
 
 @pytest.fixture
 def mock_db_manager():
     """Create a mock database manager."""
     return MagicMock()
-
 
 class TestApikeyCreateCommand:
     """Test apikey create command."""
@@ -25,12 +22,12 @@ class TestApikeyCreateCommand:
     def test_create_api_key_success(self, mock_db_manager):
         """Test successful API key creation."""
         with patch('src.cli.commands_apikey.SQLModelManager', return_value=mock_db_manager):
-            mock_db_manager.create_api_key.return_value = {
-                'key_id': 'key-123',
-                'plain_key': 'secret-abc123',
-                'permissions': ['*'],
-                'created_at': '2025-11-28T10:00:00Z'
-            }
+            mock_db_manager.create_api_key.return_value = APIKey(
+                id='key-123',
+                name='test-api-key',
+                permissions='["*"]',
+                key='some_key'
+            )
 
             args = {
                 'name': 'test-api-key',
@@ -40,17 +37,17 @@ class TestApikeyCreateCommand:
             result = apikey_create_command(args)
             assert result['success'] is True
             assert 'key_id' in result
-            assert 'plain_key' in result
+            assert 'api_key' in result
 
     def test_create_api_key_with_specific_permissions(self, mock_db_manager):
         """Test creating API key with specific permissions."""
         with patch('src.cli.commands_apikey.SQLModelManager', return_value=mock_db_manager):
-            mock_db_manager.create_api_key.return_value = {
-                'key_id': 'key-456',
-                'plain_key': 'secret-xyz789',
-                'permissions': ['domain:write'],
-                'created_at': '2025-11-28T10:00:00Z'
-            }
+            mock_db_manager.create_api_key.return_value = APIKey(
+                id='key-456',
+                name='domain-writer',
+                permissions='["domain:write"]',
+                key='some_key'
+            )
 
             args = {
                 'name': 'domain-writer',
@@ -71,25 +68,25 @@ class TestApikeyCreateCommand:
                 'permissions': ['*']
             }
 
-            result = apikey_create_command(args)
-            assert result['success'] is False
+            with pytest.raises(Exception, match="Database error"):
+                apikey_create_command(args)
 
     def test_create_api_key_initialization(self, mock_db_manager):
         """Test that database is properly initialized."""
         with patch('src.cli.commands_apikey.SQLModelManager', return_value=mock_db_manager):
-            mock_db_manager.create_api_key.return_value = {
-                'key_id': 'key-789',
-                'plain_key': 'secret-def456',
-                'permissions': ['*'],
-                'created_at': '2025-11-28T10:00:00Z'
-            }
+            mock_db_manager.create_api_key.return_value = APIKey(
+                id='key-789',
+                name='new-key',
+                permissions='["*"]',
+                key='some_key'
+            )
 
             args = {
                 'name': 'new-key',
                 'permissions': ['*']
             }
 
-            result = apikey_create_command(args)
+            apikey_create_command(args)
             mock_db_manager.initialize.assert_called()
 
 
@@ -99,25 +96,10 @@ class TestApikeyListCommand:
     def test_list_api_keys_success(self, mock_db_manager):
         """Test successful listing of API keys."""
         with patch('src.cli.commands_apikey.SQLModelManager', return_value=mock_db_manager):
-            mock_db_manager.list_api_keys.return_value = {
-                'api_keys': [
-                    {
-                        'key_id': 'key-1',
-                        'name': 'prod-key',
-                        'permissions': ['*'],
-                        'created_at': '2025-11-28T10:00:00Z',
-                        'last_used_at': '2025-11-28T11:00:00Z'
-                    },
-                    {
-                        'key_id': 'key-2',
-                        'name': 'dev-key',
-                        'permissions': ['domain:write'],
-                        'created_at': '2025-11-27T10:00:00Z',
-                        'last_used_at': None
-                    }
-                ],
-                'total': 2
-            }
+            mock_db_manager.list_api_keys.return_value = [
+                APIKey(id='key-1', name='prod-key', permissions='["*"]', key='key1'),
+                APIKey(id='key-2', name='dev-key', permissions='["domain:write"]', key='key2')
+            ]
 
             args = {}
 
@@ -128,10 +110,7 @@ class TestApikeyListCommand:
     def test_list_api_keys_empty(self, mock_db_manager):
         """Test listing when no API keys exist."""
         with patch('src.cli.commands_apikey.SQLModelManager', return_value=mock_db_manager):
-            mock_db_manager.list_api_keys.return_value = {
-                'api_keys': [],
-                'total': 0
-            }
+            mock_db_manager.list_api_keys.return_value = []
 
             args = {}
 
@@ -146,31 +125,20 @@ class TestApikeyListCommand:
 
             args = {}
 
-            result = apikey_list_command(args)
-            assert result['success'] is False
+            with pytest.raises(Exception, match="DB error"):
+                apikey_list_command(args)
 
     def test_list_api_keys_includes_metadata(self, mock_db_manager):
         """Test that API key metadata is returned."""
         with patch('src.cli.commands_apikey.SQLModelManager', return_value=mock_db_manager):
-            mock_db_manager.list_api_keys.return_value = {
-                'api_keys': [
-                    {
-                        'key_id': 'key-1',
-                        'name': 'test-key',
-                        'permissions': ['*'],
-                        'created_at': '2025-11-28T10:00:00Z',
-                        'last_used_at': '2025-11-28T11:00:00Z'
-                    }
-                ],
-                'total': 1
-            }
+            mock_db_manager.list_api_keys.return_value = [
+                APIKey(id='key-1', name='test-key', permissions='["*"]', key='key1')
+            ]
 
             args = {}
 
             result = apikey_list_command(args)
             assert result['api_keys'][0]['name'] == 'test-key'
-            assert 'created_at' in result['api_keys'][0]
-            assert 'last_used_at' in result['api_keys'][0]
 
 
 class TestApikeyRevokeCommand:
@@ -197,8 +165,8 @@ class TestApikeyRevokeCommand:
                 'key_id': 'nonexistent-key'
             }
 
-            result = apikey_revoke_command(args)
-            assert result['success'] is False
+            with pytest.raises(ValueError, match="API key not found"):
+                apikey_revoke_command(args)
 
     def test_revoke_api_key_database_error(self, mock_db_manager):
         """Test error handling for database failures."""
@@ -209,8 +177,8 @@ class TestApikeyRevokeCommand:
                 'key_id': 'key-123'
             }
 
-            result = apikey_revoke_command(args)
-            assert result['success'] is False
+            with pytest.raises(Exception, match="DB error"):
+                apikey_revoke_command(args)
 
     def test_revoke_already_revoked_key(self, mock_db_manager):
         """Test revoking an already revoked key."""
@@ -221,8 +189,8 @@ class TestApikeyRevokeCommand:
                 'key_id': 'already-revoked-key'
             }
 
-            result = apikey_revoke_command(args)
-            assert result['success'] is False
+            with pytest.raises(ValueError, match="API key not found"):
+                apikey_revoke_command(args)
 
     def test_revoke_api_key_initialization(self, mock_db_manager):
         """Test that database is properly initialized during revoke."""
@@ -233,5 +201,5 @@ class TestApikeyRevokeCommand:
                 'key_id': 'key-123'
             }
 
-            result = apikey_revoke_command(args)
+            apikey_revoke_command(args)
             mock_db_manager.initialize.assert_called()

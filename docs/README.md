@@ -20,7 +20,7 @@ OpenEASD is a comprehensive security scanning platform that automates subdomain 
 
 **Version**: 2.0.0 | **Status**: Production-ready
 **Test Coverage**: 79% (367/378 tests passing)
-**Architecture**: 6-layer with Read-Only API and Analysis Layer
+**Architecture**: 7-layer with Messaging, API, Analysis, and Real-time Events
 
 ## Architecture Overview
 

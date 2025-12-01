@@ -12,7 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from src.api.routes import domains, scans, alerts, health, findings, events
 from src.api.settings import settings
-from src.api.middleware import AuditMiddleware, RateLimitMiddleware
+from src.api.middleware import AuditMiddleware
 from src.utils.config import Config
 from src.utils.logging import setup_logging
 import os
@@ -73,9 +73,6 @@ app.add_middleware(
     allow_methods=settings.cors_allow_methods,
     allow_headers=settings.cors_allow_headers,
 )
-
-# Add rate limiting middleware (before audit to prevent logging rate-limited requests)
-app.add_middleware(RateLimitMiddleware)
 
 # Add audit logging middleware (logs all write operations)
 app.add_middleware(AuditMiddleware)

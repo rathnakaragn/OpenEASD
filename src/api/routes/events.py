@@ -10,6 +10,7 @@ import asyncio
 import json
 from src.messaging.manager import EventBusManager
 from src.messaging.subscriber import EventSubscriber
+from src.api.dependencies import verify_api_key_sync
 
 
 router = APIRouter()
@@ -18,10 +19,13 @@ router = APIRouter()
 @router.websocket("/events")
 async def websocket_events(
     websocket: WebSocket,
+    api_key: Optional[str] = Query(None, description="API key for authentication"),
     topics: Optional[str] = Query(None, description="Comma-separated topics (e.g., 'scan.*,tool.*')")
 ):
     """
-    WebSocket endpoint for real-time event streaming.
+    WebSocket endpoint for real-time event streaming (Authenticated).
+
+    Requires API key authentication via 'api_key' query parameter.
 
     Subscribe to events by topic patterns:
     - scan.*: All scan events
@@ -31,10 +35,23 @@ async def websocket_events(
     - scan.{scan_id}.*: Events for specific scan
 
     Example usage:
-        ws://localhost:8000/api/v1/events?topics=scan.*,finding.*
+        ws://localhost:8000/api/v1/events?api_key=YOUR_API_KEY&topics=scan.*,finding.*
 
     The WebSocket will receive JSON messages for each matching event.
     """
+    # Authenticate API key before accepting connection
+    is_valid, api_key_info, error = verify_api_key_sync(api_key)
+
+    if not is_valid:
+        await websocket.accept()
+        await websocket.send_json({
+            "error": f"Authentication failed: {error}",
+            "type": "error"
+        })
+        await websocket.close(code=1008, reason="Authentication failed")
+        return
+
+    # Accept connection after authentication
     await websocket.accept()
 
     # Parse topics

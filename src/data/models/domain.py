@@ -13,7 +13,7 @@ class Domain(SQLModel, table=True):
     __tablename__ = "domains"
 
     domain: str = Field(primary_key=True, max_length=255)
-    is_primary: bool = Field(default=False)
+    is_primary: bool = Field(default=False, index=True)  # Index for filtering primary domains
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
     last_scanned_at: Optional[datetime] = None

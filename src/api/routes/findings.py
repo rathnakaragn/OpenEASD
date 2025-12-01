@@ -2,7 +2,7 @@
 Findings API routes.
 
 Provides endpoints for retrieving and managing security findings
-from the Analysis Layer.
+from the Analysis Layer. Uses FindingsService for business logic.
 """
 
 from typing import Optional
@@ -13,11 +13,14 @@ from src.api.schemas.finding import (
     FindingStatisticsResponse,
     FindingStatusUpdate
 )
-from src.api.dependencies import get_db_manager
-from src.data.database.sqlmodel_manager import SQLModelManager
+from src.api.dependencies import get_findings_service, verify_api_key, check_permission
+from src.services.findings_service import FindingsService, FindingNotFound, InvalidFindingStatus
+import logging
+
+logger = logging.getLogger(__name__)
 
 
-router = APIRouter(tags=["findings"])
+router = APIRouter(tags=["findings"], redirect_slashes=False)
 
 
 @router.get("/", response_model=FindingListResponse)
@@ -30,7 +33,7 @@ async def list_findings(
     ),
     limit: int = Query(100, ge=1, le=1000, description="Results per page"),
     offset: int = Query(0, ge=0, description="Offset for pagination"),
-    db: SQLModelManager = Depends(get_db_manager)
+    findings_service: FindingsService = Depends(get_findings_service)
 ) -> FindingListResponse:
     """
     List findings with optional filters.
@@ -49,55 +52,25 @@ async def list_findings(
     - List of findings with pagination metadata
     """
     try:
-        result = db.get_findings(
+        result = findings_service.list_findings(
             scan_id=scan_id,
             affected_asset=affected_asset,
             min_severity=min_severity,
             limit=limit,
             offset=offset
         )
-
         return FindingListResponse(**result)
 
     except Exception as e:
+        logger.error(f"Failed to retrieve findings: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to retrieve findings: {str(e)}")
-
-
-@router.get("/{finding_id}", response_model=FindingResponse)
-async def get_finding(
-    finding_id: str,
-    db: SQLModelManager = Depends(get_db_manager)
-) -> FindingResponse:
-    """
-    Get a specific finding by ID.
-
-    Retrieve detailed information about a single security finding.
-
-    **Parameters:**
-    - **finding_id**: UUID of the finding
-
-    **Returns:**
-    - Finding details including evidence, risk score breakdown, and status
-    """
-    try:
-        finding = db.get_finding_by_id(finding_id)
-
-        if not finding:
-            raise HTTPException(status_code=404, detail=f"Finding {finding_id} not found")
-
-        return FindingResponse(**finding)
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to retrieve finding: {str(e)}")
 
 
 @router.get("/statistics/summary", response_model=FindingStatisticsResponse)
 async def get_findings_statistics(
     scan_id: Optional[str] = Query(None, description="Filter by scan ID"),
     affected_asset: Optional[str] = Query(None, description="Filter by affected asset"),
-    db: SQLModelManager = Depends(get_db_manager)
+    findings_service: FindingsService = Depends(get_findings_service)
 ) -> FindingStatisticsResponse:
     """
     Get findings statistics.
@@ -113,65 +86,17 @@ async def get_findings_statistics(
     - Statistics including counts by severity, status, and risk scores
     """
     try:
-        stats = db.get_findings_statistics(
+        stats = findings_service.get_statistics(
             scan_id=scan_id,
             affected_asset=affected_asset
         )
-
         return FindingStatisticsResponse(**stats)
 
     except Exception as e:
+        logger.error(f"Failed to retrieve statistics: {e}")
         raise HTTPException(
             status_code=500,
             detail=f"Failed to retrieve statistics: {str(e)}"
-        )
-
-
-@router.patch("/{finding_id}/status", response_model=dict)
-async def update_finding_status(
-    finding_id: str,
-    status_update: FindingStatusUpdate,
-    db: SQLModelManager = Depends(get_db_manager)
-) -> dict:
-    """
-    Update finding status.
-
-    Update the status of a finding (e.g., mark as resolved or false positive).
-
-    **Parameters:**
-    - **finding_id**: UUID of the finding
-    - **status_update**: New status and optional resolution notes
-
-    **Valid statuses:**
-    - **open**: Finding is open and needs attention
-    - **acknowledged**: Finding has been acknowledged
-    - **resolved**: Finding has been fixed
-    - **false_positive**: Finding is a false positive
-
-    **Returns:**
-    - Success message
-    """
-    try:
-        success = db.update_finding_status(
-            finding_id=finding_id,
-            status=status_update.status,
-            resolution_notes=status_update.resolution_notes
-        )
-
-        if not success:
-            raise HTTPException(status_code=404, detail=f"Finding {finding_id} not found")
-
-        return {
-            "success": True,
-            "message": f"Finding {finding_id} status updated to {status_update.status}"
-        }
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to update finding status: {str(e)}"
         )
 
 
@@ -184,7 +109,7 @@ async def get_scan_findings(
     ),
     limit: int = Query(100, ge=1, le=1000, description="Results per page"),
     offset: int = Query(0, ge=0, description="Offset for pagination"),
-    db: SQLModelManager = Depends(get_db_manager)
+    findings_service: FindingsService = Depends(get_findings_service)
 ) -> FindingListResponse:
     """
     Get findings for a specific scan.
@@ -201,16 +126,16 @@ async def get_scan_findings(
     - List of findings from the specified scan
     """
     try:
-        result = db.get_findings(
+        result = findings_service.get_findings_by_scan(
             scan_id=scan_id,
             min_severity=min_severity,
             limit=limit,
             offset=offset
         )
-
         return FindingListResponse(**result)
 
     except Exception as e:
+        logger.error(f"Failed to retrieve scan findings: {e}")
         raise HTTPException(
             status_code=500,
             detail=f"Failed to retrieve scan findings: {str(e)}"
@@ -226,7 +151,7 @@ async def get_asset_findings(
     ),
     limit: int = Query(100, ge=1, le=1000, description="Results per page"),
     offset: int = Query(0, ge=0, description="Offset for pagination"),
-    db: SQLModelManager = Depends(get_db_manager)
+    findings_service: FindingsService = Depends(get_findings_service)
 ) -> FindingListResponse:
     """
     Get findings for a specific asset.
@@ -243,17 +168,107 @@ async def get_asset_findings(
     - List of findings affecting the specified asset
     """
     try:
-        result = db.get_findings(
-            affected_asset=asset_name,
+        result = findings_service.get_findings_by_asset(
+            asset_name=asset_name,
             min_severity=min_severity,
             limit=limit,
             offset=offset
         )
-
         return FindingListResponse(**result)
 
     except Exception as e:
+        logger.error(f"Failed to retrieve asset findings: {e}")
         raise HTTPException(
             status_code=500,
             detail=f"Failed to retrieve asset findings: {str(e)}"
+        )
+
+
+@router.get("/{finding_id}", response_model=FindingResponse)
+async def get_finding(
+    finding_id: str,
+    findings_service: FindingsService = Depends(get_findings_service)
+) -> FindingResponse:
+    """
+    Get a specific finding by ID.
+
+    Retrieve detailed information about a single security finding.
+
+    **Parameters:**
+    - **finding_id**: UUID of the finding
+
+    **Returns:**
+    - Finding details including evidence, risk score breakdown, and status
+    """
+    try:
+        finding = findings_service.get_finding(finding_id)
+        return FindingResponse(**finding)
+
+    except FindingNotFound:
+        raise HTTPException(status_code=404, detail=f"Finding {finding_id} not found")
+    except Exception as e:
+        logger.error(f"Failed to retrieve finding: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve finding: {str(e)}")
+
+
+@router.patch("/{finding_id}/status", response_model=dict)
+async def update_finding_status(
+    finding_id: str,
+    status_update: FindingStatusUpdate,
+    api_key_info: dict = Depends(verify_api_key),
+    findings_service: FindingsService = Depends(get_findings_service)
+) -> dict:
+    """
+    Update finding status.
+
+    Update the status of a finding (e.g., mark as resolved or false positive).
+    **Requires API key authentication with 'finding:write' or '*' permission.**
+
+    **Parameters:**
+    - **finding_id**: UUID of the finding
+    - **status_update**: New status and optional resolution notes
+
+    **Valid statuses:**
+    - **open**: Finding is open and needs attention
+    - **acknowledged**: Finding has been acknowledged
+    - **resolved**: Finding has been fixed
+    - **false_positive**: Finding is a false positive
+
+    **Returns:**
+    - Success message
+    """
+    # Check permission
+    if not check_permission(api_key_info, "finding:write"):
+        logger.warning(
+            f"Permission denied: API key {api_key_info.get('name')} "
+            f"attempted finding status update without permission"
+        )
+        raise HTTPException(
+            status_code=403,
+            detail="Insufficient permissions. Requires 'finding:write' or '*' permission."
+        )
+
+    try:
+        result = findings_service.update_status(
+            finding_id=finding_id,
+            status=status_update.status,
+            resolution_notes=status_update.resolution_notes
+        )
+
+        logger.info(
+            f"Finding {finding_id} status updated to {status_update.status} "
+            f"by API key: {api_key_info.get('name')}"
+        )
+
+        return result
+
+    except FindingNotFound:
+        raise HTTPException(status_code=404, detail=f"Finding {finding_id} not found")
+    except InvalidFindingStatus as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Failed to update finding status: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to update finding status: {str(e)}"
         )

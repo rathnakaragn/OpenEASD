@@ -19,22 +19,24 @@ This project is organized across multiple documentation files. When assisting wi
 ## Quick Reference
 
 ### Current Implementation Status
-- **Architecture**: 6-layer design with Read-Only API and Analysis Layer
+- **Architecture**: 7-layer design with Messaging, API, Analysis, and Real-time Events
 - **Model**: Single-organization architecture (simplified from multi-org)
-- **Tech Stack**: FastAPI (Read-Only), Click CLI (Full Access), Python 3.11+, SQLite
+- **Tech Stack**: FastAPI (Read-Only), Click CLI (Full Access), ZeroMQ (Events), Python 3.11+, SQLite
 - **Security Tools**: Subfinder, Amass, Nmap, Naabu (direct subprocess execution)
 - **Analysis**: Automated vulnerability detection with risk scoring
 - **Security Model**: API for monitoring (GET only), CLI for operations (full access)
-- **Status**: Production-ready with API, CLI, and Analysis Layer
+- **Messaging**: Real-time event streaming with ZeroMQ Pub/Sub
+- **Status**: Production-ready with API, CLI, Analysis, and Messaging Layer
 
-### 6-Layer Architecture
+### 7-Layer Architecture
 
-1. **API Layer** ✅ - Read-only REST API (GET requests only)
+1. **API Layer** ✅ - Read-only REST API (GET requests only) + WebSocket events
 2. **Service Layer** ✅ - Business logic (used by both API and CLI)
 3. **CLI Layer** ✅ - Full-featured command-line interface (read + write)
 4. **Analysis Layer** ✅ - Automated vulnerability detection and risk scoring
 5. **Tools Layer** ✅ - Security tool execution (Subfinder, Amass, Nmap, Naabu)
 6. **Database Layer** ✅ - Data persistence and analytics (SQLite with SQLModel)
+7. **Messaging Layer** ✅ - Real-time event streaming with ZeroMQ Pub/Sub
 
 ### Layer Responsibilities Quick Reference
 
@@ -76,16 +78,24 @@ This project is organized across multiple documentation files. When assisting wi
 - **Technology**: SQLite with SQLModel ORM, 15+ tables
 - **Files**: `database/sqlmodel_manager.py`, `models/*.py`
 
+**Layer 7: Messaging Layer** (`src/messaging/`) **NEW**
+- **What it does**: Real-time event streaming and inter-layer communication
+- **Key tasks**: Pub/Sub event distribution, WebSocket streaming, CLI progress display, event filtering
+- **Components**: EventBus (ZeroMQ), EventPublisher, EventSubscriber, EventBusManager
+- **Files**: `bus.py`, `publisher.py`, `subscriber.py`, `manager.py`, `events.py`
+- **Features**: Topic-based filtering, non-blocking delivery, WebSocket support, 26+ tests
+
 ## Implementation Progress
 
 | Layer | Status | Progress | Test Coverage | Notes |
 |-------|--------|----------|--------|-------|
-| API Layer | ✅ Complete | 100% | 77% | Read-only FastAPI, 24 endpoints, Pydantic schemas |
+| API Layer | ✅ Complete | 100% | 77% | Read-only FastAPI, 24 endpoints, Pydantic schemas, WebSocket events |
 | Service Layer | ✅ Complete | 100% | 85% | Domain, Scan, Alert, Analysis services |
-| CLI Layer | ✅ Complete | 100% | 92% | Domain, scan, and analysis commands |
+| CLI Layer | ✅ Complete | 100% | 92% | Domain, scan, and analysis commands, real-time progress |
 | Analysis Layer | ✅ Complete | 100% | 95% | Risk scoring, vulnerability detection, 56+ unit tests |
 | Tools Layer | ✅ Complete | 100% | 93% | Direct subprocess calls, JSON parsing |
 | Database Layer | ✅ Complete | 100% | 77% | SQLModel with findings, vulnerabilities, CVE mappings |
+| Messaging Layer | ✅ Complete | 100% | 100% | ZeroMQ Pub/Sub, WebSocket, 26+ tests, real-time events |
 
 ## Test Suite Status
 
@@ -277,7 +287,7 @@ openeasd run dnsx <domain>
 
 ## Data Flow
 
-### 5-Layer Workflow (API Path - Read-Only)
+### 7-Layer Workflow (API Path - Read-Only with Real-time Events)
 
 ```
 HTTP Request: GET /api/v1/domains
@@ -317,7 +327,7 @@ HTTP Request: GET /api/v1/domains
 └──────────────────────────────┘
 ```
 
-### 5-Layer Workflow (CLI Path - Full Access)
+### 7-Layer Workflow (CLI Path - Full Access with Real-time Events)
 
 ```
 User Command: openeasd scan domain example.com
@@ -332,23 +342,24 @@ User Command: openeasd scan domain example.com
 │ Service Layer                │
 │ - ScanService.execute_scan   │
 │ - Orchestrate workflow       │
+│ - Publish events via EventBus│
 └──────────────────────────────┘
-    ↓
-┌──────────────────────────────┐
-│ Tools Layer                  │
-│ - Execute subfinder          │
-│ - Execute dnsx               │
-│ - Execute naabu              │
-│ - Parse JSON output          │
-└──────────────────────────────┘
-    ↓
-┌──────────────────────────────┐
-│ Database Layer               │
-│ - Store scan session         │
-│ - Store subfinder results    │
-│ - Track subdomain changes    │
-│ - Generate security alerts   │
-└──────────────────────────────┘
+    ↓                       ↓ (events)
+┌──────────────────────────────┐  ┌──────────────────────────────┐
+│ Tools Layer                  │  │ Messaging Layer              │
+│ - Execute subfinder          │  │ - EventBus (ZeroMQ)          │
+│ - Execute dnsx               │  │ - Publish scan.started       │
+│ - Execute naabu              │  │ - Publish tool.completed     │
+│ - Parse JSON output          │  │ - Publish finding.discovered │
+└──────────────────────────────┘  └──────────────────────────────┘
+    ↓                                ↓ (subscribe)
+┌──────────────────────────────┐  ┌──────────────────────────────┐
+│ Database Layer               │  │ CLI Progress Display         │
+│ - Store scan session         │  │ - EventSubscriber            │
+│ - Store subfinder results    │  │ - Real-time progress         │
+│ - Track subdomain changes    │  │ - Live finding alerts        │
+│ - Generate security alerts   │  │ - Tool status updates        │
+└──────────────────────────────┘  └──────────────────────────────┘
     ↓
 ┌──────────────────────────────┐
 │ CLI Layer                    │
@@ -370,22 +381,26 @@ When helping with this project:
 - **Direct tool execution**: Tools called via subprocess, no orchestration layer
 
 ### Current State Awareness
-- **API Layer**: Production-ready with 17 read-only endpoints, FastAPI + Pydantic v2
+- **API Layer**: Production-ready with 24+ endpoints, FastAPI + Pydantic v2, WebSocket events
 - **Service Layer**: Business logic shared between API and CLI
-- **CLI Layer**: Production-ready with all commands implemented (full access)
-- **Tools Layer**: Subfinder actively used, other tools available as modules
-- **Database Layer**: DuckDB fully implemented with single-org schema
+- **CLI Layer**: Production-ready with all commands implemented (full access), real-time progress
+- **Analysis Layer**: Automated vulnerability detection, risk scoring (95% coverage)
+- **Tools Layer**: Subfinder, Naabu, Dnsx, Httpx actively used
+- **Database Layer**: SQLite with SQLModel fully implemented, single-org schema
+- **Messaging Layer**: ZeroMQ Pub/Sub event bus, WebSocket streaming, 26+ tests
 
 ### File Organization
 ```
 src/
-├── api/              # Layer 1 ✅ - Read-only REST API
+├── api/              # Layer 1 ✅ - Read-only REST API + WebSocket
 │   ├── main.py       # FastAPI application
 │   ├── dependencies.py  # Dependency injection
 │   ├── routes/       # API endpoints
 │   │   ├── domains.py   # GET /api/v1/domains
 │   │   ├── scans.py     # GET /api/v1/scans
 │   │   ├── alerts.py    # GET /api/v1/alerts
+│   │   ├── findings.py  # GET /api/v1/findings (7 endpoints)
+│   │   ├── events.py    # WebSocket /api/v1/events
 │   │   └── health.py    # GET /api/v1/health
 │   └── schemas/      # Pydantic models
 │       ├── domain.py
@@ -397,17 +412,34 @@ src/
 │   └── alert_service.py    # Alert management
 ├── cli/              # Layer 3 ✅ - Full-access CLI
 │   ├── main.py
-│   ├── commands.py
+│   ├── commands_scan.py
 │   ├── commands_domain.py
+│   ├── commands_analysis.py
+│   ├── progress.py        # Real-time progress display
 │   └── formatters.py
-├── tools/            # Layer 4 ✅ - Security tool modules
+├── analysis/         # Layer 4 ✅ - Vulnerability detection
+│   ├── analysis_service.py
+│   ├── scoring/
+│   │   └── risk_scorer.py
+│   └── detectors/
+│       └── port_detector.py
+├── tools/            # Layer 5 ✅ - Security tool modules
 │   ├── subfinder/
 │   ├── amass/
 │   ├── nmap/
-│   └── naabu/
-├── data/             # Layer 5 ✅ - DuckDB manager
-│   └── database/
-│       └── duckdb_manager.py
+│   ├── naabu/
+│   ├── dnsx/
+│   └── httpx/
+├── data/             # Layer 6 ✅ - SQLite + SQLModel
+│   ├── database/
+│   │   └── sqlmodel_manager.py
+│   └── models/
+├── messaging/        # Layer 7 ✅ - ZeroMQ event bus
+│   ├── bus.py
+│   ├── publisher.py
+│   ├── subscriber.py
+│   ├── manager.py
+│   └── events.py
 ├── core/             # Core infrastructure
 └── utils/            # Utilities (config, logging, timezone, validation)
 ```
@@ -448,11 +480,13 @@ src/
 ## Technology Stack
 
 ### All Layers (Fully Implemented)
-- **API**: FastAPI 0.109+, Uvicorn, Pydantic v2, Python 3.11+
+- **API**: FastAPI 0.109+, Uvicorn, Pydantic v2, Python 3.11+, WebSocket
 - **Services**: Business logic, dependency injection
-- **CLI**: Click 8.1.7, Python 3.11+
+- **CLI**: Click 8.1.7, Python 3.11+, real-time progress display
+- **Analysis**: Risk scoring, vulnerability detection, finding management
 - **Tools**: Subprocess execution, JSON parsing, Asyncio
-- **Database**: DuckDB 1.4.1, SQL, Python asyncio wrapper
+- **Database**: SQLite with SQLModel ORM, 15+ tables
+- **Messaging**: ZeroMQ 27.1.0+ (PyZMQ), Pub/Sub pattern, IPC transport
 
 ### Security Tool Dependencies
 - **Subfinder**: https://github.com/projectdiscovery/subfinder (actively used)
@@ -467,7 +501,8 @@ src/
 - **Server**: Uvicorn 0.27+ - ASGI server with uvloop
 - **HTTP Client**: HTTPX 0.26+ - Async HTTP client
 - **CLI Framework**: Click 8.1.7 - Command-line interface
-- **Database**: DuckDB 1.4.1 - Embedded analytical database
+- **Database**: SQLModel with SQLite - ORM and embedded database
+- **Messaging**: PyZMQ 27.1.0+ - Python bindings for ZeroMQ
 - **Timezone**: pytz - IST timezone support
 - **Config**: PyYAML 6.0.1 - Configuration files
 - **Testing**: pytest 8.2.2 - Testing framework (dev dependency)
@@ -661,6 +696,7 @@ curl -X POST http://localhost:8000/api/v1/scans/<scan-id>/analysis \
 ## Architecture Evolution
 
 ### Version History
+- **v10.0** (December 2025): **7-layer with Messaging Layer** - real-time event streaming with ZeroMQ
 - **v9.0** (December 2025): 6-layer with Analysis Layer - automated vulnerability detection and risk scoring
 - **v8.0** (November 2025): 5-layer with Read-Only API, API + Service + CLI + Tools + Database
 - **v7.0** (November 2025): 3-layer architecture, single-organization, production-ready (CLI only)
@@ -669,27 +705,32 @@ curl -X POST http://localhost:8000/api/v1/scans/<scan-id>/analysis \
 - **Earlier**: 6-layer design with API/Scheduler (outdated)
 
 ### Current Focus
-- ✅ Production-ready 6-layer architecture with Analysis Layer
+- ✅ Production-ready 7-layer architecture with Messaging and Analysis
 - ✅ API for monitoring (GET only), CLI for operations (full access)
-- ✅ **Automated vulnerability detection and risk scoring (NEW)**
+- ✅ **Real-time event streaming with ZeroMQ Pub/Sub (NEW)**
+- ✅ **WebSocket API for live scan progress (NEW)**
+- ✅ **CLI real-time progress display (NEW)**
+- ✅ Automated vulnerability detection and risk scoring
 - ✅ Service layer for shared business logic
 - ✅ Single-organization model (simplified from multi-org)
-- ✅ All core features implemented and tested (74 tests total)
-- ✅ FastAPI with Pydantic v2 validation
+- ✅ All core features implemented and tested (400+ tests total)
+- ✅ FastAPI with Pydantic v2 validation and WebSocket support
 - ✅ Direct subprocess tool execution
 - ✅ SQLite with SQLModel ORM
+- ✅ ZeroMQ event bus with topic-based filtering
 
 ---
 
 *This guide helps AI assistants understand the project structure. For detailed information, refer to DESIGN.md.*
 
-**Last Updated**: November 26, 2025
-**Architecture Version**: 6-Layer (Analysis + Read-Only API + Full-Access CLI)
+**Last Updated**: December 1, 2025
+**Architecture Version**: 7-Layer (Messaging + Analysis + Read-Only API + Full-Access CLI)
 **Package Manager**: uv (migrated from pip)
 **Security Model**: API (read-only) + CLI (full access)
+**Messaging**: ZeroMQ Pub/Sub event bus + WebSocket streaming
 **Analysis**: Deterministic risk scoring (0-100) + vulnerability detection
-**Test Coverage**: 79% (2,928/3,696 statements) - 367/378 tests passing
-**Status**: Production-ready with comprehensive test coverage and analysis layer
+**Test Coverage**: 79% (2,928/3,696 statements) - 367/378 tests passing + 26 messaging tests
+**Status**: Production-ready with real-time events, comprehensive test coverage, and analysis layer
 
 ### Running Commands
 
@@ -714,3 +755,4 @@ uv run python openeasd.py <command>
 source .venv/bin/activate
 python openeasd.py <command>
 ```
+- you alway run uv run python when you want run python

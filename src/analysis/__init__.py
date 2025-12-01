@@ -16,7 +16,8 @@ Created: November 2025
 
 from src.analysis.analysis_service import AnalysisService
 from src.analysis.alert_service import AlertManagementService
-from src.analysis.models import Finding, Vulnerability, CVEMapping, FindingGroup
+# Import finding models from Data Layer (proper layering)
+from src.data.models.finding import Finding, Vulnerability, CVEMapping, FindingGroup
 
 __all__ = [
     'AnalysisService',

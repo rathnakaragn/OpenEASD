@@ -29,8 +29,8 @@ from src.data.models.tool_results import (
 )
 from src.data.models.api_key import APIKey
 from src.data.models.audit_log import AuditLog
-# Import analysis layer models instead of data models
-from src.analysis.models import (
+# Import finding models from data layer (proper layering)
+from src.data.models.finding import (
     Finding,
     Vulnerability,
     CVEMapping,
@@ -955,7 +955,7 @@ class SQLModelManager(DatabaseManager):
             # Calculate total
             total = sum([
                 scan_count,
-                alert_count,
+                finding_count,
                 subdomain_history_count,
                 subfinder_count,
                 amass_count,
@@ -1192,7 +1192,7 @@ class SQLModelManager(DatabaseManager):
         """
         with Session(self.engine) as session:
             return session.exec(
-                select(func.count()).select_from(SecurityAlert)
+                select(func.count()).select_from(Finding)
             ).one()
 
     # ============================================================================
@@ -1632,7 +1632,7 @@ class SQLModelManager(DatabaseManager):
 
             # Update last_used_at only if key is active
             if api_key.is_active:
-                api_key.last_used_at = datetime.utcnow()
+                api_key.last_used_at = get_ist_now()
                 session.add(api_key)
                 session.commit()
 

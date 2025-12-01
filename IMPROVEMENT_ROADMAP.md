@@ -17,7 +17,7 @@
 
 2. **Well-Structured Architecture**
    - Modular design with clear separation of concerns
-   - 6-layer architecture: API → Service → CLI → Analysis → Tools → Database
+   - 7-layer architecture: API → Service → CLI → Analysis → Tools → Database → Messaging
    - 7th layer: Messaging (ZeroMQ) for real-time events
 
 3. **Interface-Based Design**

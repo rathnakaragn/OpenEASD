@@ -30,6 +30,7 @@ class ScanProgressDisplay:
         self.running = False
         self.thread: Optional[threading.Thread] = None
         self.scan_id: Optional[str] = None
+        self.shutdown_event = threading.Event()  # Event to signal thread shutdown
 
         # Track progress state
         self.current_tool: Optional[str] = None
@@ -45,8 +46,9 @@ class ScanProgressDisplay:
         """
         self.scan_id = scan_id
         self.running = True
+        self.shutdown_event.clear() # Clear event for a new start
 
-        # Create subscriber
+        # Create subscriber instance here
         self.subscriber = EventSubscriber(
             self.ipc_path,
             topics=[f"scan.{scan_id}.*", "tool.*", "finding.*", "analysis.*"]
@@ -61,21 +63,44 @@ class ScanProgressDisplay:
 
     def stop(self):
         """Stop displaying progress."""
-        self.running = False
-        if self.thread:
-            self.thread.join(timeout=1.0)
-        if self.subscriber:
-            self.subscriber.unsubscribe()
+        if self.running:
+            self.running = False
+            self.shutdown_event.set() # Signal the thread to shut down
+
+            if self.thread:
+                if self.thread.is_alive():
+                    self.thread.join(timeout=2.0) # Give thread time to clean up
+                    if self.thread.is_alive():
+                        # Fallback if thread doesn't respond, though not ideal
+                        # In this case, zmq context might not be properly terminated
+                        pass 
+            
+            if self.subscriber:
+                self.subscriber.unsubscribe() # Ensure ZeroMQ resources are cleaned up
+
+        self.subscriber = None # Nullify subscriber after use
+        self.scan_id = None
+        self.current_tool = None
+        self.tool_start_time = None
+        self.findings_count = 0 # Reset findings count
 
     def _event_loop(self):
         """Background thread that polls for events and displays them."""
-        while self.running:
+        # Use a non-blocking wait on the shutdown_event with a timeout
+        # to periodically check self.running and poll for events.
+        while self.running and not self.shutdown_event.is_set():
             try:
-                event = self.subscriber.poll(timeout_ms=100)
+                # Use a short timeout for polling to allow frequent checks of shutdown_event
+                event = self.subscriber.poll(timeout_ms=10) 
                 if event:
                     self._handle_event(event)
             except Exception as e:
                 click.echo(f"\n[!] Error in progress display: {e}", err=True)
+                # Decide if a critical error should stop the display
+                self.running = False # Stop on critical error
+        
+        # Ensure ZeroMQ context is terminated within the thread it was created
+        # The subscriber's unsubscribe method handles context termination now.
 
     def _handle_event(self, event: Dict[str, Any]):
         """

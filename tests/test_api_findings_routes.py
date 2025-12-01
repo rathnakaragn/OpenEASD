@@ -8,7 +8,7 @@ import pytest
 from unittest.mock import MagicMock
 from fastapi.testclient import TestClient
 from src.api.main import app
-from src.api.dependencies import get_db_manager
+from src.api.dependencies import get_db_manager, verify_api_key, get_findings_service
 
 
 @pytest.fixture(autouse=True)
@@ -31,21 +31,42 @@ def mock_db_manager():
 
 
 @pytest.fixture
+def mock_api_key_info():
+    """Mock API key info with full permissions."""
+    return {
+        'id': 'test-key-id',
+        'name': 'test-key',
+        'permissions': ['*'],
+        'is_active': True
+    }
+
+
+@pytest.fixture
 def sample_finding():
     """Create sample finding data."""
     return {
         'id': 'f-001',
         'scan_id': 's-001',
-        'affected_asset': 'api.example.com',
         'finding_type': 'database_exposure',
-        'severity': 'critical',
+        'affected_asset': 'api.example.com',
+        'port': 3306,
+        'protocol': 'tcp',
+        'title': 'MySQL port exposed',
         'description': 'MySQL port exposed',
-        'evidence': {'port': 3306},
+        'service_name': 'mysql',
+        'severity': 'critical',
         'risk_score': 85,
+        'confidence_level': 'high',
+        'evidence': {'port': 3306},
+        'cwe_id': 'CWE-200',
+        'remediation': 'Filter access to port 3306',
+        'detector': 'naabu',
         'score_breakdown': {'base': 40, 'context': 30, 'exposure': 15},
         'status': 'open',
+        'false_positive': False,
+        'resolved_at': None,
         'resolution_notes': None,
-        'created_at': '2025-11-28T10:00:00Z',
+        'discovered_at': '2025-11-28T10:00:00Z',
         'updated_at': '2025-11-28T10:00:00Z'
     }
 
@@ -54,10 +75,10 @@ class TestListFindingsEndpoint:
     """Test GET /findings/ endpoint."""
 
     def test_list_findings_default_params(self, client, mock_db_manager, sample_finding):
-        """Test listing findings with default parameters."""
         mock_db_manager.get_findings.return_value = {
             'findings': [sample_finding],
-            'total': 1,
+            'total_count': 1,
+            'has_more': False,
             'limit': 100,
             'offset': 0
         }
@@ -67,13 +88,13 @@ class TestListFindingsEndpoint:
         assert response.status_code == 200
         data = response.json()
         assert len(data['findings']) == 1
-        assert data['total'] == 1
+        assert data['total_count'] == 1
 
     def test_list_findings_with_scan_filter(self, client, mock_db_manager, sample_finding):
-        """Test filtering by scan ID."""
         mock_db_manager.get_findings.return_value = {
             'findings': [sample_finding],
-            'total': 1,
+            'total_count': 1,
+            'has_more': False,
             'limit': 100,
             'offset': 0
         }
@@ -84,10 +105,10 @@ class TestListFindingsEndpoint:
         mock_db_manager.get_findings.assert_called_once()
 
     def test_list_findings_with_asset_filter(self, client, mock_db_manager, sample_finding):
-        """Test filtering by affected asset."""
         mock_db_manager.get_findings.return_value = {
             'findings': [sample_finding],
-            'total': 1,
+            'total_count': 1,
+            'has_more': False,
             'limit': 100,
             'offset': 0
         }
@@ -100,7 +121,8 @@ class TestListFindingsEndpoint:
         """Test filtering by minimum severity."""
         mock_db_manager.get_findings.return_value = {
             'findings': [sample_finding],
-            'total': 1,
+            'total_count': 1,
+            'has_more': False,
             'limit': 100,
             'offset': 0
         }
@@ -113,7 +135,8 @@ class TestListFindingsEndpoint:
         """Test pagination parameters."""
         mock_db_manager.get_findings.return_value = {
             'findings': [sample_finding],
-            'total': 100,
+            'total_count': 100,
+            'has_more': True,
             'limit': 10,
             'offset': 10
         }
@@ -129,7 +152,8 @@ class TestListFindingsEndpoint:
         """Test when no findings exist."""
         mock_db_manager.get_findings.return_value = {
             'findings': [],
-            'total': 0,
+            'total_count': 0,
+            'has_more': False,
             'limit': 100,
             'offset': 0
         }
@@ -201,7 +225,15 @@ class TestFindingsStatisticsEndpoint:
             'total_findings': 10,
             'by_severity': {'critical': 2, 'high': 3, 'medium': 4, 'low': 1, 'info': 0},
             'by_status': {'open': 8, 'acknowledged': 1, 'resolved': 1, 'false_positive': 0},
-            'average_risk_score': 65.5
+            'average_risk_score': 65.5,
+            'critical_findings': 2,
+            'high_findings': 3,
+            'medium_findings': 4,
+            'low_findings': 1,
+            'info_findings': 0,
+            'open_findings': 8,
+            'resolved_findings': 1,
+            'false_positives': 0
         }
         mock_db_manager.get_findings_statistics.return_value = stats
         app.dependency_overrides[get_db_manager] = lambda: mock_db_manager
@@ -218,7 +250,15 @@ class TestFindingsStatisticsEndpoint:
             'total_findings': 5,
             'by_severity': {'critical': 1, 'high': 2, 'medium': 2, 'low': 0, 'info': 0},
             'by_status': {'open': 5, 'acknowledged': 0, 'resolved': 0, 'false_positive': 0},
-            'average_risk_score': 60.0
+            'average_risk_score': 60.0,
+            'critical_findings': 1,
+            'high_findings': 2,
+            'medium_findings': 2,
+            'low_findings': 0,
+            'info_findings': 0,
+            'open_findings': 5,
+            'resolved_findings': 0,
+            'false_positives': 0
         }
         mock_db_manager.get_findings_statistics.return_value = stats
         app.dependency_overrides[get_db_manager] = lambda: mock_db_manager
@@ -232,7 +272,15 @@ class TestFindingsStatisticsEndpoint:
             'total_findings': 2,
             'by_severity': {'critical': 1, 'high': 1, 'medium': 0, 'low': 0, 'info': 0},
             'by_status': {'open': 2, 'acknowledged': 0, 'resolved': 0, 'false_positive': 0},
-            'average_risk_score': 75.0
+            'average_risk_score': 75.0,
+            'critical_findings': 1,
+            'high_findings': 1,
+            'medium_findings': 0,
+            'low_findings': 0,
+            'info_findings': 0,
+            'open_findings': 2,
+            'resolved_findings': 0,
+            'false_positives': 0
         }
         mock_db_manager.get_findings_statistics.return_value = stats
         app.dependency_overrides[get_db_manager] = lambda: mock_db_manager
@@ -246,7 +294,15 @@ class TestFindingsStatisticsEndpoint:
             'total_findings': 0,
             'by_severity': {'critical': 0, 'high': 0, 'medium': 0, 'low': 0, 'info': 0},
             'by_status': {'open': 0, 'acknowledged': 0, 'resolved': 0, 'false_positive': 0},
-            'average_risk_score': 0
+            'average_risk_score': 0,
+            'critical_findings': 0,
+            'high_findings': 0,
+            'medium_findings': 0,
+            'low_findings': 0,
+            'info_findings': 0,
+            'open_findings': 0,
+            'resolved_findings': 0,
+            'false_positives': 0
         }
         mock_db_manager.get_findings_statistics.return_value = stats
         app.dependency_overrides[get_db_manager] = lambda: mock_db_manager
@@ -260,10 +316,12 @@ class TestFindingsStatisticsEndpoint:
 class TestUpdateFindingStatusEndpoint:
     """Test PATCH /findings/{finding_id}/status endpoint."""
 
-    def test_update_status_resolved(self, client, mock_db_manager):
+    def test_update_status_resolved(self, client, mock_db_manager, mock_api_key_info, sample_finding):
         """Test updating finding to resolved status."""
+        mock_db_manager.get_finding_by_id.return_value = sample_finding
         mock_db_manager.update_finding_status.return_value = True
         app.dependency_overrides[get_db_manager] = lambda: mock_db_manager
+        app.dependency_overrides[verify_api_key] = lambda: mock_api_key_info
 
         response = client.patch(
             '/api/v1/findings/f-001/status',
@@ -272,10 +330,12 @@ class TestUpdateFindingStatusEndpoint:
         assert response.status_code == 200
         assert 'resolved' in response.json()['message']
 
-    def test_update_status_acknowledged(self, client, mock_db_manager):
+    def test_update_status_acknowledged(self, client, mock_db_manager, mock_api_key_info, sample_finding):
         """Test updating finding to acknowledged status."""
+        mock_db_manager.get_finding_by_id.return_value = sample_finding
         mock_db_manager.update_finding_status.return_value = True
         app.dependency_overrides[get_db_manager] = lambda: mock_db_manager
+        app.dependency_overrides[verify_api_key] = lambda: mock_api_key_info
 
         response = client.patch(
             '/api/v1/findings/f-001/status',
@@ -283,10 +343,12 @@ class TestUpdateFindingStatusEndpoint:
         )
         assert response.status_code == 200
 
-    def test_update_status_false_positive(self, client, mock_db_manager):
+    def test_update_status_false_positive(self, client, mock_db_manager, mock_api_key_info, sample_finding):
         """Test marking finding as false positive."""
+        mock_db_manager.get_finding_by_id.return_value = sample_finding
         mock_db_manager.update_finding_status.return_value = True
         app.dependency_overrides[get_db_manager] = lambda: mock_db_manager
+        app.dependency_overrides[verify_api_key] = lambda: mock_api_key_info
 
         response = client.patch(
             '/api/v1/findings/f-001/status',
@@ -294,10 +356,11 @@ class TestUpdateFindingStatusEndpoint:
         )
         assert response.status_code == 200
 
-    def test_update_status_not_found(self, client, mock_db_manager):
+    def test_update_status_not_found(self, client, mock_db_manager, mock_api_key_info):
         """Test updating non-existent finding."""
-        mock_db_manager.update_finding_status.return_value = False
+        mock_db_manager.get_finding_by_id.return_value = None
         app.dependency_overrides[get_db_manager] = lambda: mock_db_manager
+        app.dependency_overrides[verify_api_key] = lambda: mock_api_key_info
 
         response = client.patch(
             '/api/v1/findings/nonexistent/status',
@@ -305,16 +368,59 @@ class TestUpdateFindingStatusEndpoint:
         )
         assert response.status_code == 404
 
-    def test_update_status_without_notes(self, client, mock_db_manager):
+    def test_update_status_without_notes(self, client, mock_db_manager, mock_api_key_info, sample_finding):
         """Test updating status without resolution notes."""
+        mock_db_manager.get_finding_by_id.return_value = sample_finding
         mock_db_manager.update_finding_status.return_value = True
         app.dependency_overrides[get_db_manager] = lambda: mock_db_manager
+        app.dependency_overrides[verify_api_key] = lambda: mock_api_key_info
 
         response = client.patch(
             '/api/v1/findings/f-001/status',
             json={'status': 'acknowledged'}
         )
         assert response.status_code == 200
+
+    def test_update_status_unauthorized(self, client, mock_db_manager):
+        """Test updating status without API key returns 401."""
+        app.dependency_overrides[get_db_manager] = lambda: mock_db_manager
+        # Don't override verify_api_key - should fail with 401
+
+        response = client.patch(
+            '/api/v1/findings/f-001/status',
+            json={'status': 'resolved'}
+        )
+        assert response.status_code == 401
+
+    def test_update_status_insufficient_permissions(self, client, mock_db_manager, sample_finding):
+        """Test updating status with read-only API key returns 403."""
+        mock_db_manager.get_finding_by_id.return_value = sample_finding
+        app.dependency_overrides[get_db_manager] = lambda: mock_db_manager
+        # API key with only read permission
+        app.dependency_overrides[verify_api_key] = lambda: {
+            'id': 'read-only-key',
+            'name': 'read-key',
+            'permissions': ['finding:read'],
+            'is_active': True
+        }
+
+        response = client.patch(
+            '/api/v1/findings/f-001/status',
+            json={'status': 'resolved'}
+        )
+        assert response.status_code == 403
+
+    def test_update_status_invalid_status(self, client, mock_db_manager, mock_api_key_info, sample_finding):
+        """Test updating with invalid status returns 400."""
+        mock_db_manager.get_finding_by_id.return_value = sample_finding
+        app.dependency_overrides[get_db_manager] = lambda: mock_db_manager
+        app.dependency_overrides[verify_api_key] = lambda: mock_api_key_info
+
+        response = client.patch(
+            '/api/v1/findings/f-001/status',
+            json={'status': 'invalid_status'}
+        )
+        assert response.status_code == 400
 
 
 class TestScanFindingsEndpoint:
@@ -324,7 +430,8 @@ class TestScanFindingsEndpoint:
         """Test retrieving findings for a scan."""
         mock_db_manager.get_findings.return_value = {
             'findings': [sample_finding],
-            'total': 1,
+            'total_count': 1,
+            'has_more': False,
             'limit': 100,
             'offset': 0
         }
@@ -336,10 +443,10 @@ class TestScanFindingsEndpoint:
         assert len(data['findings']) == 1
 
     def test_scan_findings_with_severity_filter(self, client, mock_db_manager, sample_finding):
-        """Test scan findings with severity filter."""
         mock_db_manager.get_findings.return_value = {
             'findings': [sample_finding],
-            'total': 1,
+            'total_count': 1,
+            'has_more': False,
             'limit': 100,
             'offset': 0
         }
@@ -349,10 +456,10 @@ class TestScanFindingsEndpoint:
         assert response.status_code == 200
 
     def test_scan_findings_empty(self, client, mock_db_manager):
-        """Test scan with no findings."""
         mock_db_manager.get_findings.return_value = {
             'findings': [],
-            'total': 0,
+            'total_count': 0,
+            'has_more': False,
             'limit': 100,
             'offset': 0
         }
@@ -371,7 +478,8 @@ class TestAssetFindingsEndpoint:
         """Test retrieving findings for an asset."""
         mock_db_manager.get_findings.return_value = {
             'findings': [sample_finding],
-            'total': 1,
+            'total_count': 1,
+            'has_more': False,
             'limit': 100,
             'offset': 0
         }
@@ -383,10 +491,10 @@ class TestAssetFindingsEndpoint:
         assert len(data['findings']) == 1
 
     def test_asset_findings_with_severity_filter(self, client, mock_db_manager, sample_finding):
-        """Test asset findings with severity filter."""
         mock_db_manager.get_findings.return_value = {
             'findings': [sample_finding],
-            'total': 1,
+            'total_count': 1,
+            'has_more': False,
             'limit': 100,
             'offset': 0
         }
@@ -399,7 +507,8 @@ class TestAssetFindingsEndpoint:
         """Test asset with no findings."""
         mock_db_manager.get_findings.return_value = {
             'findings': [],
-            'total': 0,
+            'total_count': 0,
+            'has_more': False,
             'limit': 100,
             'offset': 0
         }
@@ -414,7 +523,8 @@ class TestAssetFindingsEndpoint:
         """Test findings for a specific subdomain."""
         mock_db_manager.get_findings.return_value = {
             'findings': [sample_finding],
-            'total': 1,
+            'total_count': 1,
+            'has_more': False,
             'limit': 100,
             'offset': 0
         }

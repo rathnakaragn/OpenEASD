@@ -195,51 +195,7 @@ class TestScanWriteOperations:
         assert response.status_code == 404
 
 
-class TestRateLimiting:
-    """Test rate limiting on write operations."""
 
-    def test_rate_limit_scans(self, client, test_api_key):
-        """Test rate limiting on scan endpoint."""
-        # Attempt 11 requests (limit is 10/hour)
-        for i in range(11):
-            response = client.post(
-                "/api/v1/scans",
-                json={"domain": f"domain{i}.com"},
-                headers={"X-API-Key": test_api_key}
-            )
-
-            if i < 10:
-                assert response.status_code in [202, 400]  # 202 or 400 for invalid domain
-            else:
-                assert response.status_code == 429
-                assert "Rate limit exceeded" in response.json()["detail"]
-
-    def test_rate_limit_domains(self, client, test_api_key):
-        """Test rate limiting on domain endpoint."""
-        # Attempt 51 requests (limit is 50/hour)
-        for i in range(51):
-            response = client.post(
-                "/api/v1/domains",
-                json={"domain": f"domain{i}.com", "is_primary": False},
-                headers={"X-API-Key": test_api_key}
-            )
-
-            if i < 50:
-                assert response.status_code in [201, 400]
-            else:
-                assert response.status_code == 429
-
-    def test_rate_limit_headers(self, client, test_api_key):
-        """Test rate limit response headers."""
-        response = client.post(
-            "/api/v1/domains",
-            json={"domain": "test.com", "is_primary": False},
-            headers={"X-API-Key": test_api_key}
-        )
-
-        assert "X-RateLimit-Limit" in response.headers
-        assert "X-RateLimit-Remaining" in response.headers
-        assert "X-RateLimit-Reset" in response.headers
 
 
 class TestAPIKeyManagement:

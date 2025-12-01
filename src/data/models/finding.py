@@ -1,9 +1,17 @@
 """
-Finding and Analysis SQLModels for OpenEASD Analysis Layer.
+Finding Models for OpenEASD Data Layer.
+
+Contains SQLModel definitions for findings, vulnerabilities, CVE mappings,
+and finding groups. These models are part of the Database Layer (Layer 6)
+and are used by the Analysis Layer (Layer 4) for vulnerability detection.
+
+Note: These models were moved from src/analysis/models.py to fix the
+architectural violation where Database Layer was importing from Analysis Layer.
 
 Author: Rathnakara G N
 Company: Cybersecify
 Created: November 2025
+Updated: December 2025 (moved to Data Layer)
 """
 
 from datetime import datetime
@@ -11,19 +19,24 @@ from typing import Optional
 from sqlmodel import Field, SQLModel
 
 
-class Finding(SQLModel, table=True):
+class Finding(SQLModel, table=True, extend_existing=True):
     """
     Security finding discovered during analysis.
 
     Findings are the core output of the Analysis Layer, representing
     potential security issues detected by various detectors.
+    Replaces the legacy SecurityAlert model.
     """
 
     __tablename__ = "findings"
 
     # Primary identification
     id: str = Field(primary_key=True, max_length=255)  # UUID
-    scan_id: str = Field(index=True, max_length=255)   # Links to scan_sessions
+    scan_id: str = Field(
+        foreign_key="scan_sessions.scan_id",
+        index=True,
+        max_length=255
+    )  # Links to scan_sessions
     finding_type: str = Field(index=True, max_length=100)  # e.g., 'database_port_exposed'
 
     # Asset information
@@ -38,7 +51,7 @@ class Finding(SQLModel, table=True):
 
     # Risk assessment
     severity: str = Field(index=True, max_length=20)  # critical/high/medium/low/info
-    risk_score: int = Field(default=50)  # 0-100
+    risk_score: int = Field(default=50, ge=0, le=100)  # 0-100
     confidence_level: Optional[str] = Field(default='medium', max_length=20)  # high/medium/low
 
     # Evidence and metadata
@@ -61,7 +74,7 @@ class Finding(SQLModel, table=True):
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 
 
-class Vulnerability(SQLModel, table=True):
+class Vulnerability(SQLModel, table=True, extend_existing=True):
     """
     CVE-enriched vulnerability record.
 
@@ -100,75 +113,72 @@ class Vulnerability(SQLModel, table=True):
     advisory_url: Optional[str] = None
 
     # Metadata
-    published_date: Optional[datetime] = None
-    last_modified_date: Optional[datetime] = None
-    discovered_at: datetime = Field(default_factory=datetime.utcnow)
+    discovered_at: datetime = Field(default_factory=datetime.utcnow, index=True)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 
 
-class CVEMapping(SQLModel, table=True):
+class CVEMapping(SQLModel, table=True, extend_existing=True):
     """
-    Maps findings to CVE records.
+    Maps findings to CVEs.
 
-    A many-to-many relationship between findings and vulnerabilities,
-    allowing a finding to be linked to multiple CVEs and vice versa.
+    Links a finding to one or more CVE records to track
+    known vulnerabilities associated with findings.
     """
 
     __tablename__ = "cve_mappings"
 
-    # Composite primary key
+    # Primary identification
     id: str = Field(primary_key=True, max_length=255)  # UUID
-    finding_id: str = Field(index=True, max_length=255)  # Foreign key to findings
-    vulnerability_id: str = Field(index=True, max_length=255)  # Foreign key to vulnerabilities
-    cve_id: str = Field(index=True, max_length=50)  # Denormalized for quick lookup
 
-    # Mapping confidence
-    confidence: str = Field(default='medium', max_length=20)  # high/medium/low
-    match_type: Optional[str] = Field(default=None, max_length=50)  # exact/partial/related
+    # Foreign key relationships
+    finding_id: str = Field(
+        foreign_key="findings.id",
+        index=True,
+        max_length=255
+    )  # Links to findings
+    vulnerability_id: str = Field(
+        foreign_key="vulnerabilities.id",
+        index=True,
+        max_length=255
+    )  # Links to vulnerabilities
 
-    # Verification
-    verified: bool = Field(default=False)
-    verified_by: Optional[str] = Field(default=None, max_length=100)
-    verified_at: Optional[datetime] = None
+    # Confidence score for the mapping (0-100)
+    confidence: int = Field(default=50)
 
-    # Metadata
+    # Timestamps
     created_at: datetime = Field(default_factory=datetime.utcnow)
-    notes: Optional[str] = None
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
 
 
-class FindingGroup(SQLModel, table=True):
+class FindingGroup(SQLModel, table=True, extend_existing=True):
     """
-    Groups related findings for better organization.
+    Groups related findings together.
 
-    Findings can be grouped by:
-    - Same vulnerability across multiple assets
-    - Related findings in a single asset
-    - Campaign or attack pattern
+    Used to group findings that represent the same underlying issue
+    but are detected in multiple locations or by multiple detectors.
     """
 
     __tablename__ = "finding_groups"
 
     # Primary identification
     id: str = Field(primary_key=True, max_length=255)  # UUID
-    group_name: str = Field(max_length=255)
-    group_type: str = Field(default='related', max_length=50)  # related/campaign/asset_specific
+    scan_id: str = Field(
+        foreign_key="scan_sessions.scan_id",
+        index=True,
+        max_length=255
+    )  # Links to scan_sessions
 
-    # Group details
+    # Group information
+    name: str = Field(max_length=255)
     description: Optional[str] = None
-    affected_assets_json: Optional[str] = None  # JSON: List of affected assets
-    finding_ids_json: Optional[str] = None  # JSON: List of finding IDs in this group
-
-    # Risk assessment
-    severity: str = Field(default='medium', max_length=20)
-    total_findings: int = Field(default=0)
-    critical_findings: int = Field(default=0)
-    high_findings: int = Field(default=0)
+    finding_type: str = Field(index=True, max_length=100)
 
     # Status
-    status: str = Field(default='open', max_length=20)  # open/investigating/resolved
-    priority: Optional[str] = Field(default=None, max_length=20)  # critical/high/medium/low
+    status: str = Field(default='open', max_length=20)
 
     # Timestamps
-    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
-    resolved_at: Optional[datetime] = None
+
+
+__all__ = ['Finding', 'Vulnerability', 'CVEMapping', 'FindingGroup']
