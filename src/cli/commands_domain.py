@@ -121,9 +121,7 @@ def domain_remove_command(domain: str, force: bool) -> Dict[str, Any]:
 
     try:
         if not force:
-            confirm = input(f"\nAre you sure you want to delete {domain} and all its data? Type 'yes' to confirm: ")
-            if confirm.lower() != 'yes':
-                click.echo('Domain deletion cancelled')
+            if not click.confirm(f"Delete {domain} and all its data?", default=False):
                 return {'success': False, 'message': 'Domain deletion cancelled'}
 
         result = service.delete_domain(domain=domain)

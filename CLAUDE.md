@@ -26,7 +26,7 @@ This project is organized across multiple documentation files. When assisting wi
 - **Analysis**: Automated vulnerability detection with risk scoring
 - **Security Model**: API for monitoring (GET only), CLI for operations (full access)
 
-- **Status**: Production-ready with API, CLI, Analysis, and Messaging Layer
+- **Status**: Production-ready with API, CLI, and Analysis Layer
 
 ### 6-Layer Architecture
 
@@ -43,8 +43,8 @@ This project is organized across multiple documentation files. When assisting wi
 
 **Layer 1: API Layer** (`src/api/`)
 - **What it does**: Provides read-only REST API for monitoring and dashboards
-- **Key tasks**: HTTP request handling, API key authentication, rate limiting, CORS, OpenAPI docs
-- **Access**: 24 GET endpoints + 1 PATCH endpoint (finding status updates)
+- **Key tasks**: HTTP request handling, CORS, OpenAPI docs
+- **Access**: Read-only GET endpoints
 - **Files**: `main.py`, `routes/*.py`, `schemas/*.py`, `dependencies.py`
 
 **Layer 2: Service Layer** (`src/services/`)
@@ -81,7 +81,7 @@ This project is organized across multiple documentation files. When assisting wi
 
 | Layer | Status | Progress | Test Coverage | Notes |
 |-------|--------|----------|--------|-------|
-| API Layer | ✅ Complete | 100% | 77% | Read-only FastAPI, 24 endpoints, Pydantic schemas,  events |
+| API Layer | ✅ Complete | 100% | 77% | Read-only FastAPI, Pydantic schemas |
 | Service Layer | ✅ Complete | 100% | 85% | Domain, Scan, Alert, Analysis services |
 | CLI Layer | ✅ Complete | 100% | 92% | Domain, scan, and analysis commands |
 | Analysis Layer | ✅ Complete | 100% | 95% | Risk scoring, vulnerability detection, 56+ unit tests |
@@ -127,12 +127,11 @@ GET /api/v1/scans/{scan_id}                 # Scan status
 GET /api/v1/scans/{scan_id}/results         # Scan results
 GET /api/v1/alerts                          # List alerts
 GET /api/v1/alerts/statistics               # Alert statistics
-GET /api/v1/findings                        # List findings (NEW)
-GET /api/v1/findings/{finding_id}           # Finding details (NEW)
-GET /api/v1/findings/statistics/summary     # Finding statistics (NEW)
-GET /api/v1/findings/scan/{scan_id}         # Findings by scan (NEW)
-GET /api/v1/findings/asset/{asset_name}     # Findings by asset (NEW)
-PATCH /api/v1/findings/{finding_id}/status  # Update status (NEW)
+GET /api/v1/findings                        # List findings
+GET /api/v1/findings/{finding_id}           # Finding details
+GET /api/v1/findings/statistics/summary     # Finding statistics
+GET /api/v1/findings/scan/{scan_id}         # Findings by scan
+GET /api/v1/findings/asset/{asset_name}     # Findings by asset
 ```
 
 ### CLI (Full Access)
@@ -156,22 +155,16 @@ openeasd domain show <domain>
 # Scan Operations
 openeasd scan domain <domain>    # Single domain scan
 openeasd scan                    # Batch scan all domains
-openeasd history                 # View scan history
 openeasd scans                   # List all scans
 openeasd results <scan-id>       # View scan results
 
-# Analysis & Findings (NEW)
+# Analysis & Findings
 openeasd analysis run <scan-id>           # Run analysis manually
 openeasd analysis findings                # List all findings
 openeasd analysis findings --severity high # Filter by severity
 openeasd analysis show <finding-id>       # Show finding details
 openeasd analysis stats                   # View statistics
 openeasd analysis update <id> resolved    # Update finding status
-
-# Direct Tool Execution
-openeasd run subfinder <domain>
-openeasd run naabu <domain>
-openeasd run dnsx <domain>
 ```
 
 ### Why This Model?
@@ -210,12 +203,12 @@ openeasd run dnsx <domain>
 
 **API Layer (Read-Only)**:
 - FastAPI application with OpenAPI/Swagger documentation
-- 24 read-only endpoints (GET requests only) + 1 PATCH endpoint
+- Read-only endpoints (GET requests only)
 - Health check endpoint
 - Domain listing and details
 - Scan status and results
 - Security alerts and statistics
-- **Findings management (7 new endpoints)**
+- Findings management (5 endpoints)
 - Pydantic v2 schemas for validation
 - CORS middleware for cross-origin requests
 - JSON responses with proper error handling
@@ -234,8 +227,8 @@ openeasd run dnsx <domain>
 **CLI Layer (Full Access)**:
 - Scan commands: `scan domain`, `scan` (batch mode)
 - Domain management: `add`, `list`, `update`, `remove`
-- **Analysis commands: `run`, `findings`, `show`, `stats`, `update` (NEW)**
-- History & results: `history`, `scans`, `results`
+- Analysis commands: `run`, `findings`, `show`, `stats`, `update`
+- Results: `scans`, `results`
 - Output formats: table, json, csv, txt
 - Single-organization model (simplified)
 - UUID-based scan tracking
@@ -279,7 +272,7 @@ openeasd run dnsx <domain>
 
 ## Data Flow
 
-### 6-Layer Workflow (API Path - Read-Only with Real-time Events)
+### 6-Layer Workflow (API Path - Read-Only)
 
 ```
 HTTP Request: GET /api/v1/domains
@@ -300,7 +293,7 @@ HTTP Request: GET /api/v1/domains
     ↓
 ┌──────────────────────────────┐
 │ Database Layer               │
-│ - DuckDB query execution     │
+│ - SQLite query execution     │
 │ - Fetch domain records       │
 │ - Return results             │
 └──────────────────────────────┘
@@ -319,7 +312,7 @@ HTTP Request: GET /api/v1/domains
 └──────────────────────────────┘
 ```
 
-### 6-Layer Workflow (CLI Path - Full Access with Real-time Events)
+### 6-Layer Workflow (CLI Path - Full Access)
 
 ```
 User Command: openeasd scan domain example.com
@@ -334,7 +327,6 @@ User Command: openeasd scan domain example.com
 │ Service Layer                │
 │ - ScanService.execute_scan   │
 │ - Orchestrate workflow       │
-│ │
 └──────────────────────────────┘
     ↓
 ┌──────────────────────────────┐
@@ -348,10 +340,10 @@ User Command: openeasd scan domain example.com
 ┌──────────────────────────────┐
 │ Database Layer               │
 │ - Store scan session         │
-│ - Store subfinder results    │  │ - Real-time progress         │
-│ - Track subdomain changes    │  │ - Live finding alerts        │
-│ - Generate security alerts   │  │ - Tool status updates        │
-└──────────────────────────────┘  └──────────────────────────────┘
+│ - Store subfinder results    │
+│ - Track subdomain changes    │
+│ - Generate security alerts   │
+└──────────────────────────────┘
     ↓
 ┌──────────────────────────────┐
 │ CLI Layer                    │
@@ -373,7 +365,7 @@ When helping with this project:
 - **Direct tool execution**: Tools called via subprocess, no orchestration layer
 
 ### Current State Awareness
-- **API Layer**: Production-ready with 24+ endpoints, FastAPI + Pydantic v2,  events
+- **API Layer**: Production-ready read-only endpoints, FastAPI + Pydantic v2
 - **Service Layer**: Business logic shared between API and CLI
 - **CLI Layer**: Production-ready with all commands implemented (full access)
 - **Analysis Layer**: Automated vulnerability detection, risk scoring (95% coverage)
@@ -384,15 +376,14 @@ When helping with this project:
 ### File Organization
 ```
 src/
-├── api/              # Layer 1 ✅ - Read-only REST API + 
+├── api/              # Layer 1 ✅ - Read-only REST API
 │   ├── main.py       # FastAPI application
 │   ├── dependencies.py  # Dependency injection
 │   ├── routes/       # API endpoints
 │   │   ├── domains.py   # GET /api/v1/domains
 │   │   ├── scans.py     # GET /api/v1/scans
 │   │   ├── alerts.py    # GET /api/v1/alerts
-│   │   ├── findings.py  # GET /api/v1/findings (7 endpoints)
-
+│   │   ├── findings.py  # GET /api/v1/findings (5 endpoints)
 │   │   └── health.py    # GET /api/v1/health
 │   └── schemas/      # Pydantic models
 │       ├── domain.py
@@ -457,19 +448,18 @@ src/
 6. Test tool execution and data storage
 
 **Database schema changes**:
-1. Review `src/data/database/duckdb_manager.py`
-2. Update table creation in `_initialize_sync()`
+1. Review `src/data/database/sqlmodel_manager.py`
+2. Update SQLModel models in `src/data/models/`
 3. Test schema changes carefully
 4. Update service layer if needed
 5. Update DESIGN.md with schema documentation
-6. **Note**: Avoid adding indexes on scan_sessions (DuckDB limitation)
 
 ## Technology Stack
 
 ### All Layers (Fully Implemented)
-- **API**: FastAPI 0.109+, Uvicorn, Pydantic v2, Python 3.11+, 
+- **API**: FastAPI 0.109+, Uvicorn, Pydantic v2, Python 3.11+
 - **Services**: Business logic, dependency injection
-- **CLI**: Click 8.1.7, Python 3.11+ display
+- **CLI**: Click 8.1.7, Python 3.11+
 - **Analysis**: Risk scoring, vulnerability detection, finding management
 - **Tools**: Subprocess execution, JSON parsing, Asyncio
 - **Database**: SQLite with SQLModel ORM, 15+ tables
@@ -526,7 +516,6 @@ uv run pytest tests/ --cov=src --cov-report=html
 
 - API findings routes (32% coverage)
 - CLI main module (47% coverage)
-- API key management (23% coverage)
 - Tool modules (0% coverage - need integration tests)
 
 See [TEST_COVERAGE_REPORT.md](docs/TEST_COVERAGE_REPORT.md) for detailed test statistics and improvement roadmap.
@@ -598,9 +587,6 @@ uv run python openeasd.py scan --primary-only
 
 #### Viewing Results (CLI or API)
 ```bash
-# CLI: View scan history
-uv run python openeasd.py history
-
 # CLI: View all scans
 uv run python openeasd.py scans
 
@@ -612,73 +598,6 @@ curl http://localhost:8000/api/v1/scans
 curl http://localhost:8000/api/v1/scans/<scan-id>
 curl http://localhost:8000/api/v1/scans/<scan-id>/results
 ```
-
-#### API Key Management (NEW - Write Operations with Authentication)
-
-**Note**: The API now supports write operations (domain creation/update/deletion, scan execution) with API key-based authentication.
-
-##### Creating API Keys
-
-```bash
-# Create a new API key with all permissions
-uv run python openeasd.py apikey create --name "my-integration" --permissions "*"
-
-# Create a domain-write only API key
-uv run python openeasd.py apikey create --name "domain-writer" --permissions "domain:write"
-
-# Create a scan-execute only API key
-uv run python openeasd.py apikey create --name "scan-executor" --permissions "scan:execute"
-
-# List all API keys
-uv run python openeasd.py apikey list
-
-# Revoke an API key by ID
-uv run python openeasd.py apikey revoke <key-id>
-```
-
-**Important**: The plain API key is displayed ONLY once during creation. Store it securely. If lost, create a new key.
-
-##### Using API Keys with Write Operations
-
-```bash
-# Create a domain via API
-curl -X POST http://localhost:8000/api/v1/domains \
-  -H "X-API-Key: your-api-key-here" \
-  -H "Content-Type: application/json" \
-  -d '{"domain": "example.com", "is_primary": true}'
-
-# Update a domain
-curl -X PATCH http://localhost:8000/api/v1/domains/example.com \
-  -H "X-API-Key: your-api-key-here" \
-  -H "Content-Type: application/json" \
-  -d '{"is_primary": false}'
-
-# Delete a domain
-curl -X DELETE "http://localhost:8000/api/v1/domains/example.com?force=true" \
-  -H "X-API-Key: your-api-key-here"
-
-# Execute a scan
-curl -X POST http://localhost:8000/api/v1/scans \
-  -H "X-API-Key: your-api-key-here" \
-  -H "Content-Type: application/json" \
-  -d '{"domain": "example.com"}'
-
-# Trigger analysis on completed scan
-curl -X POST http://localhost:8000/api/v1/scans/<scan-id>/analysis \
-  -H "X-API-Key: your-api-key-here"
-```
-
-**Permission Levels**:
-- `"*"` (all permissions) - Full access to all operations
-- `"domain:write"` - Create, update, delete domains
-- `"scan:execute"` - Execute scans and trigger analysis
-
-**Security Features**:
-- API keys are SHA-256 hashed in the database (never stored in plain text)
-- All write operations are logged to audit trail
-- Rate limiting: 50 domain operations/hour, 10 scans/hour per API key
-- Revoked keys are immediately rejected
-- API keys are case-sensitive and whitespace-sensitive
 
 ## Architecture Evolution
 
@@ -701,7 +620,7 @@ curl -X POST http://localhost:8000/api/v1/scans/<scan-id>/analysis \
 - ✅ Service layer for shared business logic
 - ✅ Single-organization model (simplified from multi-org)
 - ✅ All core features implemented and tested (400+ tests total)
-- ✅ FastAPI with Pydantic v2 validation and  support
+- ✅ FastAPI with Pydantic v2 validation
 - ✅ Direct subprocess tool execution
 - ✅ SQLite with SQLModel ORM
 
@@ -710,7 +629,7 @@ curl -X POST http://localhost:8000/api/v1/scans/<scan-id>/analysis \
 
 *This guide helps AI assistants understand the project structure. For detailed information, refer to DESIGN.md.*
 
-**Last Updated**: December 1, 2025
+**Last Updated**: December 2, 2025
 **Architecture Version**: 6-Layer (Analysis + Read-Only API + Full-Access CLI)
 **Package Manager**: uv (migrated from pip)
 **Security Model**: API (read-only) + CLI (full access)

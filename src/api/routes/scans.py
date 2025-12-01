@@ -13,8 +13,7 @@ from src.api.schemas.scan import (
     ScanListResponse,
 )
 from src.services.scan_service import ScanService
-from src.api.dependencies import get_scan_service, get_db_manager
-from src.data.database.sqlmodel_manager import SQLModelManager
+from src.api.dependencies import get_scan_service
 
 logger = logging.getLogger(__name__)
 
@@ -24,15 +23,13 @@ router = APIRouter(redirect_slashes=False)
 @router.get("", response_model=ScanListResponse)
 async def list_scans(
     limit: int = Query(20, ge=1, le=100),
-    db: SQLModelManager = Depends(get_db_manager)
+    service: ScanService = Depends(get_scan_service)
 ):
     """
     List scan sessions.
 
     Returns a paginated list of recent scan sessions.
     """
-    service = get_scan_service(db)
-
     try:
         result = service.list_scans(limit=limit)
 
@@ -42,24 +39,22 @@ async def list_scans(
         )
     except ValueError as e:
         logger.warning(f"Invalid scan list request: {e}")
-        raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        logger.error(f"Error listing scans: {e}", exc_info=True)
+        raise HTTPException(status_code=400, detail="Invalid request parameters")
+    except Exception:
+        logger.error("Error listing scans", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to list scans")
 
 
 @router.get("/{scan_id}", response_model=ScanResponse)
 async def get_scan_status(
     scan_id: str,
-    db: SQLModelManager = Depends(get_db_manager)
+    service: ScanService = Depends(get_scan_service)
 ):
     """
     Get scan status.
 
     Returns the current status and metadata for a specific scan.
     """
-    service = get_scan_service(db)
-
     try:
         result = service.get_scan_status(scan_id)
         scan_data = result['scan']
@@ -69,18 +64,17 @@ async def get_scan_status(
             scan_data['domain'] = scan_data['domains'][0] if scan_data['domains'] else None
 
         return ScanResponse(**scan_data)
-    except ValueError as e:
-        logger.info(f"Scan not found: {scan_id}")
-        raise HTTPException(status_code=404, detail=str(e))
-    except Exception as e:
-        logger.error(f"Error retrieving scan status {scan_id}: {e}", exc_info=True)
+    except ValueError:
+        raise HTTPException(status_code=404, detail=f"Scan '{scan_id}' not found")
+    except Exception:
+        logger.error(f"Error retrieving scan status {scan_id}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to retrieve scan status")
 
 
 @router.get("/{scan_id}/results", response_model=ScanResultsResponse)
 async def get_scan_results(
     scan_id: str,
-    db: SQLModelManager = Depends(get_db_manager)
+    service: ScanService = Depends(get_scan_service)
 ):
     """
     Get scan results.
@@ -88,8 +82,6 @@ async def get_scan_results(
     Returns detailed results including discovered subdomains
     and open ports for a specific scan.
     """
-    service = get_scan_service(db)
-
     try:
         result = service.get_scan_results(scan_id)
 
@@ -98,9 +90,8 @@ async def get_scan_results(
             subdomains=result['subdomains'],
             ports=result['ports']
         )
-    except ValueError as e:
-        logger.info(f"Scan results not found: {scan_id}")
-        raise HTTPException(status_code=404, detail=str(e))
-    except Exception as e:
-        logger.error(f"Error retrieving scan results {scan_id}: {e}", exc_info=True)
+    except ValueError:
+        raise HTTPException(status_code=404, detail=f"Scan '{scan_id}' not found")
+    except Exception:
+        logger.error(f"Error retrieving scan results {scan_id}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to retrieve scan results")

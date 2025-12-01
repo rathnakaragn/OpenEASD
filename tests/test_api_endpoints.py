@@ -312,25 +312,25 @@ class TestAPIErrorHandling:
         assert response.status_code in [200, 422]
 
     def test_read_only_api_no_post(self, client):
-        """Test that POST requests require authentication."""
+        """Test that POST requests are not allowed (read-only API)."""
         response = client.post("/api/v1/domains")
 
-        # Now returns 401 Unauthorized (auth required) instead of 405
-        assert response.status_code == 401
+        # Returns 405 Method Not Allowed (read-only API)
+        assert response.status_code == 405
 
     def test_read_only_api_no_delete(self, client):
-        """Test that DELETE requests require authentication."""
+        """Test that DELETE requests are not allowed (read-only API)."""
         response = client.delete("/api/v1/domains/example.com")
 
-        # Now returns 401 Unauthorized (auth required) instead of 405
-        assert response.status_code == 401
+        # Returns 405 Method Not Allowed (read-only API)
+        assert response.status_code == 405
 
     def test_read_only_api_no_put(self, client):
-        """Test that PUT requests require authentication."""
+        """Test that PUT requests are not allowed (read-only API)."""
         response = client.put("/api/v1/domains/example.com")
 
-        # Now returns 401 Unauthorized (auth required) instead of 405
-        assert response.status_code == 401
+        # Returns 405 Method Not Allowed (read-only API)
+        assert response.status_code == 405
 
     def test_api_handles_database_errors_gracefully(self, client, temp_db):
         """Test that API handles database errors gracefully."""

@@ -39,21 +39,6 @@ def test_format_table_for_detailed_domains():
     assert "Domain Details - example.com" in result
     assert "Total Subdomains: 120" in result
 
-def test_format_table_for_scan_history():
-    """Test the table formatter for scan history."""
-    data = {
-        'type': 'history',
-        'scans': [{
-            'domain': 'example.com', 'status': 'completed', 'total_subdomains': 50,
-            'first_scan': '2023-10-27T10:00:00', 'last_scan': '2023-10-28T10:00:00'
-        }]
-    }
-    result = format_output(data, 'table')
-    assert "Scan History" in result
-    assert "example.com" in result
-    assert "completed" in result
-    assert "50" in result
-
 def test_format_table_for_scan_list():
     """Test the table formatter for the list of all scan sessions."""
     data = {

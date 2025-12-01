@@ -4,7 +4,7 @@ Pydantic schemas for findings API endpoints.
 
 from typing import Optional, Dict, Any, List
 from datetime import datetime
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 
 class FindingBase(BaseModel):
@@ -39,8 +39,7 @@ class FindingResponse(FindingBase):
     discovered_at: datetime = Field(..., description="When finding was discovered")
     updated_at: datetime = Field(..., description="Last update timestamp")
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class FindingListResponse(BaseModel):

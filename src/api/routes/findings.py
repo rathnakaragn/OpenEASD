@@ -50,9 +50,12 @@ async def list_findings(
         )
         return FindingListResponse(**result)
 
-    except Exception as e:
-        logger.error(f"Failed to retrieve findings: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to retrieve findings: {str(e)}")
+    except ValueError as e:
+        logger.warning(f"Invalid request parameters: {e}")
+        raise HTTPException(status_code=400, detail="Invalid request parameters")
+    except Exception:
+        logger.error("Failed to retrieve findings", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to retrieve findings")
 
 
 @router.get("/statistics/summary", response_model=FindingStatisticsResponse)
@@ -74,12 +77,12 @@ async def get_findings_statistics(
         )
         return FindingStatisticsResponse(**stats)
 
-    except Exception as e:
-        logger.error(f"Failed to retrieve statistics: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to retrieve statistics: {str(e)}"
-        )
+    except ValueError as e:
+        logger.warning(f"Invalid request parameters: {e}")
+        raise HTTPException(status_code=400, detail="Invalid request parameters")
+    except Exception:
+        logger.error("Failed to retrieve statistics", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to retrieve statistics")
 
 
 @router.get("/scan/{scan_id}", response_model=FindingListResponse)
@@ -107,12 +110,11 @@ async def get_scan_findings(
         )
         return FindingListResponse(**result)
 
-    except Exception as e:
-        logger.error(f"Failed to retrieve scan findings: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to retrieve scan findings: {str(e)}"
-        )
+    except ValueError:
+        raise HTTPException(status_code=404, detail=f"Scan '{scan_id}' not found")
+    except Exception:
+        logger.error(f"Failed to retrieve scan findings for {scan_id}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to retrieve scan findings")
 
 
 @router.get("/asset/{asset_name}", response_model=FindingListResponse)
@@ -140,12 +142,11 @@ async def get_asset_findings(
         )
         return FindingListResponse(**result)
 
-    except Exception as e:
-        logger.error(f"Failed to retrieve asset findings: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to retrieve asset findings: {str(e)}"
-        )
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid asset name")
+    except Exception:
+        logger.error(f"Failed to retrieve asset findings for {asset_name}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to retrieve asset findings")
 
 
 @router.get("/{finding_id}", response_model=FindingResponse)
@@ -163,7 +164,7 @@ async def get_finding(
         return FindingResponse(**finding)
 
     except FindingNotFound:
-        raise HTTPException(status_code=404, detail=f"Finding {finding_id} not found")
-    except Exception as e:
-        logger.error(f"Failed to retrieve finding: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to retrieve finding: {str(e)}")
+        raise HTTPException(status_code=404, detail=f"Finding '{finding_id}' not found")
+    except Exception:
+        logger.error(f"Failed to retrieve finding {finding_id}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to retrieve finding")

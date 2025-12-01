@@ -974,88 +974,92 @@ class SQLModelManager(DatabaseManager):
 
     def delete_domain_with_data(self, domain: str) -> Dict[str, int]:
         """
-        Delete domain and all associated data.
+        Delete domain and all associated data in a single transaction.
 
         Args:
             domain: Domain to delete
 
         Returns:
             Dictionary with counts of deleted records by category
+
+        Note:
+            All deletions are performed in a single transaction to ensure
+            data consistency. If any deletion fails, the entire operation
+            is rolled back.
         """
         with Session(self.engine) as session:
-            deleted = {}
+            try:
+                deleted = {}
 
-            # Delete subdomain history
-            result = session.exec(
-                delete(SubdomainHistory).where(
-                    SubdomainHistory.apex_domain == domain
+                # Delete subdomain history
+                result = session.exec(
+                    delete(SubdomainHistory).where(
+                        SubdomainHistory.apex_domain == domain
+                    )
                 )
-            )
-            deleted['subdomain_history'] = result.rowcount
-            session.commit()
+                deleted['subdomain_history'] = result.rowcount
 
-            # Delete findings (security alerts now stored as findings)
-            result = session.exec(
-                delete(Finding).where(
-                    Finding.affected_asset == domain
+                # Delete findings (security alerts now stored as findings)
+                result = session.exec(
+                    delete(Finding).where(
+                        Finding.affected_asset == domain
+                    )
                 )
-            )
-            deleted['findings'] = result.rowcount
-            deleted['security_alerts'] = result.rowcount  # Backward compat
-            session.commit()
+                deleted['findings'] = result.rowcount
+                deleted['security_alerts'] = result.rowcount  # Backward compat
 
-            # Delete tool results
-            result = session.exec(
-                delete(SubfinderResult).where(
-                    SubfinderResult.apex_domain == domain
+                # Delete tool results
+                result = session.exec(
+                    delete(SubfinderResult).where(
+                        SubfinderResult.apex_domain == domain
+                    )
                 )
-            )
-            deleted['subfinder_results'] = result.rowcount
-            session.commit()
+                deleted['subfinder_results'] = result.rowcount
 
-            result = session.exec(
-                delete(AmassResult).where(
-                    AmassResult.apex_domain == domain
+                result = session.exec(
+                    delete(AmassResult).where(
+                        AmassResult.apex_domain == domain
+                    )
                 )
-            )
-            deleted['amass_results'] = result.rowcount
-            session.commit()
+                deleted['amass_results'] = result.rowcount
 
-            result = session.exec(
-                delete(NmapResult).where(
-                    NmapResult.target_host.contains(domain)
+                result = session.exec(
+                    delete(NmapResult).where(
+                        NmapResult.target_host.contains(domain)
+                    )
                 )
-            )
-            deleted['nmap_results'] = result.rowcount
-            session.commit()
+                deleted['nmap_results'] = result.rowcount
 
-            result = session.exec(
-                delete(NaabuResult).where(
-                    NaabuResult.target_host.contains(domain)
+                result = session.exec(
+                    delete(NaabuResult).where(
+                        NaabuResult.target_host.contains(domain)
+                    )
                 )
-            )
-            deleted['naabu_results'] = result.rowcount
-            session.commit()
+                deleted['naabu_results'] = result.rowcount
 
-            # Delete scan sessions
-            result = session.exec(
-                delete(ScanSession).where(
-                    ScanSession.domains_scanned.contains(domain)
+                # Delete scan sessions
+                result = session.exec(
+                    delete(ScanSession).where(
+                        ScanSession.domains_scanned.contains(domain)
+                    )
                 )
-            )
-            deleted['scan_sessions'] = result.rowcount
-            session.commit()
+                deleted['scan_sessions'] = result.rowcount
 
-            # Finally, delete the domain itself
-            domain_obj = session.get(Domain, domain)
-            if domain_obj:
-                session.delete(domain_obj)
+                # Finally, delete the domain itself
+                domain_obj = session.get(Domain, domain)
+                if domain_obj:
+                    session.delete(domain_obj)
+                    deleted['domain'] = 1
+                else:
+                    deleted['domain'] = 0
+
+                # Commit all changes in a single transaction
                 session.commit()
-                deleted['domain'] = 1
-            else:
-                deleted['domain'] = 0
+                return deleted
 
-            return deleted
+            except Exception:
+                session.rollback()
+                raise
 
     # ============================================================================
     # System Metrics
