@@ -32,7 +32,6 @@ from src.cli.commands_apikey import (
     apikey_create_command, apikey_list_command, apikey_revoke_command
 )
 from src.cli.formatters import format_output
-from src.cli.progress import ContextProgressDisplay
 from src.data.database.sqlmodel_manager import SQLModelManager
 
 

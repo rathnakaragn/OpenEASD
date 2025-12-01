@@ -15,7 +15,6 @@ from src.utils.validation import validate_domain, is_private_ip
 from src.tools.runners import run_subfinder, run_naabu, run_dnsx, run_httpx
 from src.utils.timezone import get_ist_now
 from src.analysis.analysis_service import AnalysisService
-from src.messaging.publisher import EventPublisher
 
 logger = logging.getLogger(__name__)
 
@@ -56,8 +55,7 @@ class ScanService:
     def __init__(
         self,
         db_manager: SQLModelManager,
-        enable_analysis: bool = True,
-        event_publisher: Optional[EventPublisher] = None
+        enable_analysis: bool = True
     ):
         """
         Initialize scan service.
@@ -65,19 +63,15 @@ class ScanService:
         Args:
             db_manager: Database manager instance
             enable_analysis: Enable analysis layer integration (default: True)
-            event_publisher: Optional EventPublisher for real-time event broadcasting
         """
         self.db = db_manager
-        self.publisher = event_publisher  # NEW: Event publisher for messaging layer
+        self.publisher = None  # Messaging layer removed
 
         # Initialize analysis service if enabled
         self.analysis_service = None
         if enable_analysis:
             try:
-                self.analysis_service = AnalysisService(
-                    db_manager=db_manager,
-                    event_publisher=event_publisher  # Pass publisher to analysis layer
-                )
+                self.analysis_service = AnalysisService(db_manager=db_manager)
                 if self.analysis_service.is_enabled():
                     logger.info("Analysis Layer enabled for scan service")
                 else:

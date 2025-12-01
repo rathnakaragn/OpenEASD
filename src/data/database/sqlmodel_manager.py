@@ -1643,7 +1643,8 @@ class SQLModelManager(DatabaseManager):
                 'created_at': api_key.created_at,
                 'expires_at': api_key.expires_at,
                 'last_used_at': api_key.last_used_at,
-                'is_active': api_key.is_active
+                'is_active': api_key.is_active,
+                'key': api_key.key  # Add the actual key hash here
             }
 
     def list_api_keys(self) -> List[Dict[str, Any]]:

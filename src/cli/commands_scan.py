@@ -219,7 +219,7 @@ def batch_scan_subfinder_command(args) -> Dict[str, Any]:
 
         # Scan each domain
         for idx, domain_obj in enumerate(domains, 1):
-            domain = domain_obj.domain
+            domain = domain_obj['domain']
             print(f"[{idx}/{len(domains)}] Scanning: {domain}")
             print("-" * 60)
 
@@ -285,7 +285,7 @@ def batch_scan_subfinder_command(args) -> Dict[str, Any]:
                 try:
                     domain_exists = db_manager.domain_exists(domain)
                     if not domain_exists:
-                        db_manager.add_domain(domain, is_primary=domain_obj.is_primary)
+                        db_manager.add_domain(domain, is_primary=domain_obj['is_primary'])
                 except Exception as e:
                     raise Exception(f"Failed to add domain: {e}")
 

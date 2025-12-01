@@ -32,17 +32,16 @@ class AnalysisService:
     6. Generate statistics
     """
 
-    def __init__(self, db_manager=None, event_publisher=None):
+    def __init__(self, db_manager=None):
         """
         Initialize analysis service.
 
         Args:
             db_manager: Database manager instance (optional, for testing)
-            event_publisher: Optional EventPublisher for real-time event broadcasting
         """
         self.config = get_analysis_config()
         self.db_manager = db_manager
-        self.publisher = event_publisher
+        self.publisher = None  # Messaging layer removed
 
         # Initialize risk scorer
         self.risk_scorer = RiskScorer()

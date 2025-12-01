@@ -10,7 +10,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
-from src.api.routes import domains, scans, alerts, health, findings, events
+from src.api.routes import domains, scans, alerts, health, findings
 from src.api.settings import settings
 from src.api.middleware import AuditMiddleware
 from src.utils.config import Config
@@ -27,14 +27,6 @@ async def lifespan(app: FastAPI):
     log_level = config.get('log_level', 'INFO')
     setup_logging(log_level)
 
-    # Start EventBus for real-time messaging
-    from src.messaging.manager import EventBusManager
-    try:
-        EventBusManager.start()
-        print("📡 EventBus started for real-time messaging")
-    except Exception as e:
-        print(f"⚠️  EventBus failed to start: {e}")
-
     print("🚀 OpenEASD API & Frontend starting up...")
     print(f"🖥️  Dashboard available at: http://{settings.host}:{settings.port}")
     print(f"📚 API Documentation: http://{settings.host}:{settings.port}{settings.docs_url}")
@@ -46,13 +38,6 @@ async def lifespan(app: FastAPI):
 
     # Shutdown
     print("👋 OpenEASD API & Frontend shutting down...")
-
-    # Stop EventBus
-    try:
-        EventBusManager.stop()
-        print("📡 EventBus stopped")
-    except Exception:
-        pass
 
 # Create FastAPI application with settings from config
 app = FastAPI(
@@ -83,7 +68,6 @@ app.include_router(domains.router, prefix="/api/v1/domains", tags=["domains"])
 app.include_router(scans.router, prefix="/api/v1/scans", tags=["scans"])
 app.include_router(alerts.router, prefix="/api/v1/alerts", tags=["alerts"])
 app.include_router(findings.router, prefix="/api/v1/findings", tags=["findings"])
-app.include_router(events.router, prefix="/api/v1", tags=["events"])
 
 # --- Frontend Serving ---
 # Note: Place this after API routes to ensure API has priority

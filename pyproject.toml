@@ -17,7 +17,6 @@ dependencies = [
     "python-multipart>=0.0.6",
     # HTTP client for CLI
     "httpx>=0.26.0",
-    "pyzmq>=25.1.0",
 ]
 
 [project.optional-dependencies]

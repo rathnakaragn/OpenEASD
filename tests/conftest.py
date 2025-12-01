@@ -16,6 +16,9 @@ from src.data.database.sqlmodel_manager import SQLModelManager
 from src.utils.config import Config # Import Config to mock it
 from fastapi import FastAPI # Import FastAPI to patch its add_middleware
 
+import asyncio
+from src.api.main import app, lifespan # Import lifespan
+
 # Mock FastAPI.add_middleware to prevent RateLimitMiddleware from being added
 original_add_middleware = FastAPI.add_middleware
 def mock_add_middleware(app_instance, middleware_class, **kwargs):
@@ -63,12 +66,12 @@ def db_manager():
 @pytest.fixture(scope="function")
 def client(mock_config):
     """FastAPI test client."""
-    # Use the mocked config and patched add_middleware for the app
     with patch('src.utils.config.Config', return_value=mock_config):
         with patch.object(FastAPI, 'add_middleware', new=mock_add_middleware):
-            # Re-import app to ensure it picks up the patched add_middleware
-            # from src.api.main import app # This global app causes issues
-            return TestClient(app)
+            # Patch EventBusManager as it's imported in src.api.routes.events
+            with patch('src.api.routes.events.EventBusManager.is_running', return_value=True), \
+                 patch('src.api.routes.events.EventBusManager.get_ipc_path', return_value="/tmp/test_openeasd_events.ipc"):
+                return TestClient(app)
 
 
 @pytest.fixture(scope="function")
