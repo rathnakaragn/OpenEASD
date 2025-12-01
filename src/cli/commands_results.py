@@ -37,7 +37,7 @@ def history_command(args) -> Dict[str, Any]:
         # Build summary per domain
         domain_summary = {}
         for domain_obj in domains_result.get('domains', []):
-            domain = domain_obj['domain']
+            domain = domain_obj.domain
             domain_summary[domain] = {
                 'domain': domain,
                 'scan_count': 0,

@@ -63,10 +63,10 @@ def apikey_create_command(args) -> Dict[str, Any]:
             'success': True,
             'type': 'apikey_create',
             'api_key': plain_key,  # Show once to user
-            'key_id': result.id,
-            'name': result.name,
-            'permissions': result.permissions,
-            'created_at': result.created_at
+            'key_id': result['id'],
+            'name': result['name'],
+            'permissions': result['permissions'],
+            'created_at': result['created_at']
         }
 
     finally:
@@ -87,22 +87,11 @@ def apikey_list_command(args) -> Dict[str, Any]:
 
     try:
         api_keys = db_manager.list_api_keys()
-        
+
         return {
             'success': True,
             'type': 'apikey_list',
-            'api_keys': [
-                {
-                    'id': key.id,
-                    'name': key.name,
-                    'permissions': key.permissions,
-                    'created_at': key.created_at,
-                    'expires_at': key.expires_at,
-                    'last_used_at': key.last_used_at,
-                    'is_active': key.is_active,
-                }
-                for key in api_keys
-            ],
+            'api_keys': api_keys,  # Already formatted as dicts by SQLModelManager
             'total': len(api_keys),
         }
 
