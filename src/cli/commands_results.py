@@ -1,7 +1,7 @@
 """
-Results and history module for OpenEASD CLI.
+Results module for OpenEASD CLI.
 
-Handles viewing scan history, results, and scan listings.
+Handles viewing scan results and scan listings.
 
 Author: Rathnakara G N
 Company: Cybersecify
@@ -9,105 +9,8 @@ Created: November 2025
 """
 
 from typing import Dict, Any
-from datetime import datetime
 
 from src.data.database.sqlmodel_manager import SQLModelManager
-
-
-def history_command(args) -> Dict[str, Any]:
-    """
-    Execute history command - shows scan history.
-
-    Args:
-        args: Parsed command arguments
-
-    Returns:
-        Scan history dictionary
-    """
-    db_manager = SQLModelManager()
-    db_manager.initialize()
-
-    try:
-        # Get all domains
-        domains_result = db_manager.get_domains(limit=1000)
-
-        # Get scan history
-        scans_result = db_manager.get_scan_history(limit=1000)
-
-        # Build summary per domain
-        domain_summary = {}
-        for domain_obj in domains_result.get('domains', []):
-            domain = domain_obj.domain
-            domain_summary[domain] = {
-                'domain': domain,
-                'scan_count': 0,
-                'total_subdomains': 0,
-                'first_scan': None,
-                'last_scan': None,
-                'status': 'pending'
-            }
-
-        # Aggregate scan data
-        for scan in scans_result.get('scans', []):
-            domains_scanned = scan.get('domains_scanned', [])
-            for domain in domains_scanned:
-                if domain not in domain_summary:
-                    domain_summary[domain] = {
-                        'domain': domain,
-                        'scan_count': 0,
-                        'total_subdomains': 0,
-                        'first_scan': None,
-                        'last_scan': None,
-                        'status': 'pending'
-                    }
-        
-                summary = domain_summary[domain]
-                summary['scan_count'] += 1
-
-                if scan.get('status') == 'completed':
-                    summary['total_subdomains'] = max(summary['total_subdomains'], scan.get('findings_count', 0))
-
-                scan_time = scan.get('start_time')
-                if scan_time is not None:
-                    if summary['first_scan'] is None or scan_time < summary['first_scan']:
-                        summary['first_scan'] = scan_time
-                    if summary['last_scan'] is None or scan_time > summary['last_scan']:
-                        summary['last_scan'] = scan_time
-                        summary['status'] = scan.get('status', 'pending')
-
-        # Convert to list and sort
-        scans = list(domain_summary.values())
-        # Sort by last_scan datetime, putting None values at the end
-        scans.sort(key=lambda x: x['last_scan'] if x['last_scan'] else datetime.min, reverse=True)
-
-        if not scans:
-            return {
-                'message': 'No scan history found'
-            }
-
-        # Limit results
-        scans = scans[:args['limit']]
-
-        # Format for output
-        for scan in scans:
-            scan['total_ports'] = scan['total_subdomains']  # For compatibility
-            # Convert datetime objects to strings
-            if scan['first_scan'] is not None:
-                scan['first_scan'] = scan['first_scan'].isoformat()
-            else:
-                scan['first_scan'] = 'N/A'
-            if scan['last_scan'] is not None:
-                scan['last_scan'] = scan['last_scan'].isoformat()
-            else:
-                scan['last_scan'] = 'N/A'
-
-        return {
-            'type': 'history',
-            'scans': scans
-        }
-
-    finally:
-        db_manager.close()
 
 
 def results_command(args) -> Dict[str, Any]:

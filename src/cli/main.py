@@ -18,7 +18,7 @@ from src.cli.commands_naabu import run_tool_naabu_command
 from src.cli.commands_dnsx import run_tool_dnsx_command
 from src.cli.commands_httpx import run_tool_httpx_command
 from src.cli.commands_results import (
-    history_command, view_scans_command, results_command
+    view_scans_command, results_command
 )
 from src.cli.commands_domain import (
     domain_add_command, domain_list_command, domain_update_command,
@@ -47,15 +47,15 @@ def cli(ctx):
         openeasd scan                       # Scan all domains
         openeasd domain add example.com     # Add domain to database
         openeasd domain list                # List all domains
-        openeasd history                    # Show scan history
+        openeasd scans                      # List all scan sessions
         openeasd run subfinder example.com  # Run tool without saving
     """
     # Ensure context object exists
     ctx.ensure_object(dict)
 
-    # If no command is provided, run history by default
+    # If no command is provided, show help
     if ctx.invoked_subcommand is None:
-        ctx.invoke(history)
+        click.echo(ctx.get_help())
 
 
 def _run_tool(tool_func, **kwargs):
@@ -178,26 +178,6 @@ def scans(limit, output):
         result = view_scans_command(locals())
         if result:
             click.echo(format_output(result, output))
-    except Exception as e:
-        click.echo(f"Error: {e}", err=True)
-        sys.exit(1)
-
-
-@cli.command()
-@click.option('--limit', default=10, type=int,
-              help='Number of scans to show (default: 10)')
-@click.option('--output', type=click.Choice(['table', 'json']),
-              default='table',
-              help='Output format (default: table)')
-def history(limit, output):
-    """Show scan history"""
-    try:
-        result = history_command(locals())
-        if result:
-            if result.get('message'):
-                click.echo(result['message'])
-            else:
-                click.echo(format_output(result, output))
     except Exception as e:
         click.echo(f"Error: {e}", err=True)
         sys.exit(1)

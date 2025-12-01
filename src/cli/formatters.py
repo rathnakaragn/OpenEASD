@@ -72,19 +72,6 @@ def format_csv(data: Dict[str, Any]) -> str:
                     port.get('ip', '')
                 ])
 
-    elif data.get('type') == 'history':
-        writer = csv.writer(output)
-        writer.writerow(['Scan ID', 'Domain', 'Status', 'Subdomains', 'Ports', 'Start Time'])
-        for scan in data.get('scans', []):
-            writer.writerow([
-                scan.get('scan_id', '')[:8],
-                scan.get('domain', ''),
-                scan.get('status', ''),
-                scan.get('total_subdomains', 0),
-                scan.get('total_ports', 0),
-                scan.get('start_time', '')
-            ])
-
     return output.getvalue()
 
 
@@ -269,44 +256,6 @@ def format_table(data: Dict[str, Any]) -> str:
                     f"{start_time:<20} "
                     f"{end_time:<20} "
                     f"{duration_str:<10}"
-                )
-
-    elif data.get('type') == 'history':
-        # Header
-        output.append("=" * 150)
-        output.append("Scan History")
-        output.append("=" * 150)
-
-        scans = data.get('scans', [])
-
-        if not scans:
-            output.append("\nNo scans found.")
-            output.append(data.get('message', ''))
-        else:
-            output.append("")
-            output.append(f"{ 'Domain':<30} {'Status':<12} {'Scans':<8} {'Subdomains':<12} {'First Scan':<20} {'Last Scan':<20}")
-            output.append("-" * 130)
-
-            for scan in scans:
-                # Get subdomain count from findings_count for passive scans
-                subdomain_count = scan.get('total_subdomains', 0)
-                scan_count = scan.get('scan_count', 1)
-                first_scan = scan.get('first_scan', 'N/A')
-                last_scan = scan.get('last_scan', 'N/A')
-
-                # Format timestamps to be more readable (remove microseconds)
-                if first_scan != 'N/A' and 'T' in first_scan:
-                    first_scan = first_scan.split('.')[0].replace('T', ' ')
-                if last_scan != 'N/A' and 'T' in last_scan:
-                    last_scan = last_scan.split('.')[0].replace('T', ' ')
-
-                output.append(
-                    f"{scan.get('domain', ''):<30} "
-                    f"{scan.get('status', ''):<12} "
-                    f"{scan_count:<8} "
-                    f"{subdomain_count:<12} "
-                    f"{first_scan:<20} "
-                    f"{last_scan:<20}"
                 )
 
     elif data.get('domains') is not None:
