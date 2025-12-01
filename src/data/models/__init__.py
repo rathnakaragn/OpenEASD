@@ -9,8 +9,6 @@ from .domain import Domain
 from .scan import ScanSession
 from .subdomain import SubdomainHistory
 from .tool_results import SubfinderResult, AmassResult, NmapResult, NaabuResult
-from .api_key import APIKey
-from .audit_log import AuditLog
 from .finding import Finding, Vulnerability, CVEMapping, FindingGroup
 
 __all__ = [
@@ -25,6 +23,4 @@ __all__ = [
     'Vulnerability',
     'CVEMapping',
     'FindingGroup',
-    'APIKey',
-    'AuditLog',
 ]
