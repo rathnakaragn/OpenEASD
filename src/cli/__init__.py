@@ -1,5 +1,5 @@
 """CLI module for OpenEASD."""
 
-from .cli_app import cli
+from .main import cli
 
 __all__ = ['cli']
