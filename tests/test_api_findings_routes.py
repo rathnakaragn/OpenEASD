@@ -2,13 +2,14 @@
 Comprehensive test suite for API findings routes.
 
 Tests all endpoints in src/api/routes/findings.py with proper dependency injection.
+API is read-only - no write operations.
 """
 
 import pytest
 from unittest.mock import MagicMock
 from fastapi.testclient import TestClient
 from src.api.main import app
-from src.api.dependencies import get_db_manager, verify_api_key, get_findings_service
+from src.api.dependencies import get_db_manager, get_findings_service
 
 
 @pytest.fixture(autouse=True)
@@ -28,17 +29,6 @@ def client():
 def mock_db_manager():
     """Create a mock database manager."""
     return MagicMock()
-
-
-@pytest.fixture
-def mock_api_key_info():
-    """Mock API key info with full permissions."""
-    return {
-        'id': 'test-key-id',
-        'name': 'test-key',
-        'permissions': ['*'],
-        'is_active': True
-    }
 
 
 @pytest.fixture
@@ -311,116 +301,6 @@ class TestFindingsStatisticsEndpoint:
         assert response.status_code == 200
         data = response.json()
         assert data['total_findings'] == 0
-
-
-class TestUpdateFindingStatusEndpoint:
-    """Test PATCH /findings/{finding_id}/status endpoint."""
-
-    def test_update_status_resolved(self, client, mock_db_manager, mock_api_key_info, sample_finding):
-        """Test updating finding to resolved status."""
-        mock_db_manager.get_finding_by_id.return_value = sample_finding
-        mock_db_manager.update_finding_status.return_value = True
-        app.dependency_overrides[get_db_manager] = lambda: mock_db_manager
-        app.dependency_overrides[verify_api_key] = lambda: mock_api_key_info
-
-        response = client.patch(
-            '/api/v1/findings/f-001/status',
-            json={'status': 'resolved', 'resolution_notes': 'Fixed'}
-        )
-        assert response.status_code == 200
-        assert 'resolved' in response.json()['message']
-
-    def test_update_status_acknowledged(self, client, mock_db_manager, mock_api_key_info, sample_finding):
-        """Test updating finding to acknowledged status."""
-        mock_db_manager.get_finding_by_id.return_value = sample_finding
-        mock_db_manager.update_finding_status.return_value = True
-        app.dependency_overrides[get_db_manager] = lambda: mock_db_manager
-        app.dependency_overrides[verify_api_key] = lambda: mock_api_key_info
-
-        response = client.patch(
-            '/api/v1/findings/f-001/status',
-            json={'status': 'acknowledged', 'resolution_notes': 'In progress'}
-        )
-        assert response.status_code == 200
-
-    def test_update_status_false_positive(self, client, mock_db_manager, mock_api_key_info, sample_finding):
-        """Test marking finding as false positive."""
-        mock_db_manager.get_finding_by_id.return_value = sample_finding
-        mock_db_manager.update_finding_status.return_value = True
-        app.dependency_overrides[get_db_manager] = lambda: mock_db_manager
-        app.dependency_overrides[verify_api_key] = lambda: mock_api_key_info
-
-        response = client.patch(
-            '/api/v1/findings/f-001/status',
-            json={'status': 'false_positive', 'resolution_notes': 'Not applicable'}
-        )
-        assert response.status_code == 200
-
-    def test_update_status_not_found(self, client, mock_db_manager, mock_api_key_info):
-        """Test updating non-existent finding."""
-        mock_db_manager.get_finding_by_id.return_value = None
-        app.dependency_overrides[get_db_manager] = lambda: mock_db_manager
-        app.dependency_overrides[verify_api_key] = lambda: mock_api_key_info
-
-        response = client.patch(
-            '/api/v1/findings/nonexistent/status',
-            json={'status': 'resolved'}
-        )
-        assert response.status_code == 404
-
-    def test_update_status_without_notes(self, client, mock_db_manager, mock_api_key_info, sample_finding):
-        """Test updating status without resolution notes."""
-        mock_db_manager.get_finding_by_id.return_value = sample_finding
-        mock_db_manager.update_finding_status.return_value = True
-        app.dependency_overrides[get_db_manager] = lambda: mock_db_manager
-        app.dependency_overrides[verify_api_key] = lambda: mock_api_key_info
-
-        response = client.patch(
-            '/api/v1/findings/f-001/status',
-            json={'status': 'acknowledged'}
-        )
-        assert response.status_code == 200
-
-    def test_update_status_unauthorized(self, client, mock_db_manager):
-        """Test updating status without API key returns 401."""
-        app.dependency_overrides[get_db_manager] = lambda: mock_db_manager
-        # Don't override verify_api_key - should fail with 401
-
-        response = client.patch(
-            '/api/v1/findings/f-001/status',
-            json={'status': 'resolved'}
-        )
-        assert response.status_code == 401
-
-    def test_update_status_insufficient_permissions(self, client, mock_db_manager, sample_finding):
-        """Test updating status with read-only API key returns 403."""
-        mock_db_manager.get_finding_by_id.return_value = sample_finding
-        app.dependency_overrides[get_db_manager] = lambda: mock_db_manager
-        # API key with only read permission
-        app.dependency_overrides[verify_api_key] = lambda: {
-            'id': 'read-only-key',
-            'name': 'read-key',
-            'permissions': ['finding:read'],
-            'is_active': True
-        }
-
-        response = client.patch(
-            '/api/v1/findings/f-001/status',
-            json={'status': 'resolved'}
-        )
-        assert response.status_code == 403
-
-    def test_update_status_invalid_status(self, client, mock_db_manager, mock_api_key_info, sample_finding):
-        """Test updating with invalid status returns 400."""
-        mock_db_manager.get_finding_by_id.return_value = sample_finding
-        app.dependency_overrides[get_db_manager] = lambda: mock_db_manager
-        app.dependency_overrides[verify_api_key] = lambda: mock_api_key_info
-
-        response = client.patch(
-            '/api/v1/findings/f-001/status',
-            json={'status': 'invalid_status'}
-        )
-        assert response.status_code == 400
 
 
 class TestScanFindingsEndpoint:

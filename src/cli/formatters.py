@@ -367,38 +367,5 @@ def format_table(data: Dict[str, Any]) -> str:
                 last_seen = sub.get('last_seen', 'N/A')
                 output.append(f"  [{status:8s}] {subdomain} (last seen: {last_seen})")
 
-    elif data.get('type') == 'apikey_list':
-        # API key list formatting
-        api_keys = data.get('api_keys', [])
-        total = data.get('total', len(api_keys))
-
-        output.append("=" * 100)
-        output.append("API Keys")
-        output.append("=" * 100)
-
-        if not api_keys:
-            output.append("\nNo API keys found.")
-        else:
-            output.append("")
-            output.append(f"{'ID':<40} {'Name':<20} {'Active':<8} {'Created':<20}")
-            output.append("-" * 100)
-
-            for key in api_keys:
-                key_id = key.get('id', '')
-                name = key.get('name', '')
-                is_active = '✓' if key.get('is_active') else '✗'
-                created_at = key.get('created_at', 'N/A')
-
-                # Format timestamp
-                if created_at and hasattr(created_at, 'isoformat'):
-                    created_at = created_at.isoformat()
-                if created_at and 'T' in str(created_at):
-                    created_at = str(created_at).split('.')[0].replace('T', ' ')
-
-                output.append(f"{key_id:<40} {name:<20} {is_active:<8} {created_at:<20}")
-
-            output.append("")
-            output.append(f"Total: {total} API key(s)")
-
     output.append("")
     return "\n".join(output)

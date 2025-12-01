@@ -24,9 +24,6 @@ from src.cli.commands_analysis import (
     run_analysis_command, list_findings_command, show_finding_command,
     findings_statistics_command, update_finding_status_command
 )
-from src.cli.commands_apikey import (
-    apikey_create_command, apikey_list_command, apikey_revoke_command
-)
 from src.cli.formatters import format_output
 from src.data.database.sqlmodel_manager import SQLModelManager
 
@@ -415,103 +412,6 @@ def analysis_update(finding_id, status, notes):
         result = update_finding_status_command(finding_id, status, notes)
         if result:
             click.echo(result.get('message', 'Finding updated'))
-    except Exception as e:
-        click.echo(f"Error: {e}", err=True)
-        sys.exit(1)
-
-
-@cli.group()
-def apikey():
-    """Manage API keys for authenticated write operations
-
-    Create, list, and revoke API keys for API write operations
-    (domain management, scan execution, analysis).
-
-    Examples:
-        openeasd apikey create --name "my-key"
-        openeasd apikey list
-        openeasd apikey revoke <key-id>
-    """
-    pass
-
-
-@apikey.command('create')
-@click.option('--name', required=True,
-              help='Human-readable name for the API key')
-@click.option('--permissions', multiple=True, default=['*'],
-              help='Permissions: * (all), domain:write, scan:execute')
-def apikey_create(name, permissions):
-    """Create a new API key
-
-    Examples:
-        openeasd apikey create --name "my-integration"
-        openeasd apikey create --name "domain-writer" --permissions domain:write
-    """
-    try:
-        result = apikey_create_command({'name': name, 'permissions': list(permissions)})
-        if result.get('success'):
-            click.echo()
-            click.echo("✅ API Key Created!")
-            click.echo(f"   Name: {result['name']}")
-            click.echo(f"   Key ID: {result['key_id']}")
-            click.echo(f"   Created: {result.get('created_at', 'N/A')}")
-            click.echo()
-            click.echo("🔑 API Key (save this - shown only once):")
-            click.secho(f"   {result['api_key']}", fg='green')
-            click.echo()
-            click.echo("⚠️  Store this key securely. It will not be shown again.")
-        else:
-            click.echo(f"Error: {result.get('message', 'Failed to create API key')}", err=True)
-            sys.exit(1)
-    except Exception as e:
-        click.echo(f"Error: {e}", err=True)
-        sys.exit(1)
-
-
-@apikey.command('list')
-@click.option('--output', type=click.Choice(['table', 'json']),
-              default='table',
-              help='Output format (default: table)')
-def apikey_list(output):
-    """List all API keys
-
-    Examples:
-        openeasd apikey list
-        openeasd apikey list --output json
-    """
-    try:
-        result = apikey_list_command({})
-        if result:
-            click.echo(format_output(result, output))
-    except Exception as e:
-        click.echo(f"Error: {e}", err=True)
-        sys.exit(1)
-
-
-@apikey.command('revoke')
-@click.argument('key_id')
-@click.option('--force', is_flag=True,
-              help='Skip confirmation prompt')
-def apikey_revoke(key_id, force):
-    """Revoke an API key by ID
-
-    Examples:
-        openeasd apikey revoke <key-id>
-        openeasd apikey revoke <key-id> --force
-    """
-    try:
-        if not force:
-            click.echo(f"⚠️  You are about to revoke API key: {key_id}")
-            if not click.confirm("Continue?"):
-                click.echo("Revocation cancelled")
-                return
-
-        result = apikey_revoke_command({'key_id': key_id})
-        if result.get('success'):
-            click.echo(f"✅ API key {key_id} revoked")
-        else:
-            click.echo(f"Error: {result.get('message', 'Failed to revoke API key')}", err=True)
-            sys.exit(1)
     except Exception as e:
         click.echo(f"Error: {e}", err=True)
         sys.exit(1)

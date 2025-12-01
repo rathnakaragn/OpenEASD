@@ -1,5 +1,8 @@
 """
 Tests for the CLI command implementations.
+
+Note: Tool-specific CLI commands (run subfinder, run naabu, etc.) were removed
+as users can run tools directly. Tests for tool runners are in test_tools_runners_2.py.
 """
 import json
 from unittest.mock import MagicMock, patch
@@ -10,11 +13,7 @@ import os
 from pathlib import Path
 
 
-from src.cli.commands_results import history_command, view_scans_command, results_command
-from src.cli.commands_subfinder import run_tool_subfinder_command
-from src.cli.commands_naabu import run_tool_naabu_command
-from src.cli.commands_dnsx import run_tool_dnsx_command
-from src.cli.commands_httpx import run_tool_httpx_command
+from src.cli.commands_results import view_scans_command, results_command
 from src.tools.runners import run_subfinder, run_naabu, run_dnsx, run_httpx
 from src.utils.validation import validate_domain, validate_domains
 
@@ -60,29 +59,6 @@ def mock_pathlib_methods(monkeypatch):
     return mock_exists, mock_unlink
 
 
-def test_history_command_empty(mock_db_manager):
-    """Test history_command with no data from the database."""
-    mock_db_manager.get_domains.return_value = {'domains': []}
-    mock_db_manager.get_scan_history.return_value = {'scans': []}
-    result = history_command(args={'limit': 20})
-    assert result['message'] == 'No scan history found'
-
-def test_history_command_with_data(mock_db_manager):
-    """Test history_command with mock data."""
-    now = datetime.utcnow()
-    yesterday = now - timedelta(days=1)
-    mock_domains = {'domains': [{'domain': 'example.com'}, {'domain': 'test.com'}]}
-    mock_scans = {'scans': [
-        {'domains_scanned': ['example.com'], 'status': 'completed', 'findings_count': 100, 'start_time': now},
-        {'domains_scanned': ['test.com'], 'status': 'failed', 'findings_count': 0, 'start_time': yesterday}
-    ]}
-    mock_db_manager.get_domains.return_value = mock_domains
-    mock_db_manager.get_scan_history.return_value = mock_scans
-    result = history_command(args={'limit': 20})
-    assert len(result['scans']) == 2
-    assert result['scans'][0]['domain'] == 'example.com'
-    assert result['scans'][0]['last_scan'] == now.isoformat()
-
 def test_view_scans_command_empty(mock_db_manager):
     """Test view_scans_command with no data."""
     mock_db_manager.get_scan_history.return_value = {'scans': []}
@@ -99,23 +75,8 @@ def test_view_scans_command_with_data(mock_db_manager):
     assert len(result['scans']) == 1
     assert result['scans'][0]['scan_id'] == 'scan1'
 
-@patch('src.cli.commands_subfinder.run_subfinder', return_value=['sub.example.com'])
-def test_run_tool_subfinder_command_success(mock_run_subfinder):
-    """Test the subfinder tool command wrapper on success."""
-    args = {'domain': 'example.com', 'timeout': 300}
-    result = run_tool_subfinder_command(args)
-    assert result['success'] is True
-    assert 'sub.example.com' in result['subdomains']
-    mock_run_subfinder.assert_called_once_with('example.com', timeout=300)
 
-@patch('src.cli.commands_subfinder.run_subfinder', side_effect=Exception("Test error"))
-def test_run_tool_subfinder_command_failure(mock_run_subfinder):
-    """Test the subfinder tool command wrapper on failure."""
-    args = {'domain': 'example.com', 'timeout': 300}
-    result = run_tool_subfinder_command(args)
-    assert result['success'] is False
-    assert "Test error" in result['error']
-    mock_run_subfinder.assert_called_once_with('example.com', timeout=300)
+# Tests for tool runners (not CLI wrappers)
 
 @patch('subprocess.run')
 @patch('src.tools.runners.config.get', side_effect=lambda key, default: 'subfinder' if 'path' in key else default)
@@ -154,25 +115,6 @@ def test_run_subfinder_malformed_json(mock_config_get, mock_subprocess_run):
     assert 'a.example.com' in subdomains
     assert 'b.example.com' in subdomains
 
-@patch('src.cli.commands_naabu.run_naabu', return_value=[{'host': 'a.example.com', 'port': 443}])
-def test_run_tool_naabu_command_success(mock_run_naabu):
-    """Test the naabu tool command wrapper on success."""
-    args = {'targets': ['a.example.com'], 'top_ports': 100, 'timeout': 300}
-    result = run_tool_naabu_command(args)
-    assert result['success'] is True
-    assert result['port_count'] == 1
-    mock_run_naabu.assert_called_once_with(['a.example.com'], top_ports=100, timeout=300)
-    mock_run_naabu.assert_called_once_with(['a.example.com'], top_ports=100, timeout=300)
-
-@patch('src.cli.commands_naabu.run_naabu', side_effect=Exception("Naabu test error"))
-def test_run_tool_naabu_command_failure(mock_run_naabu):
-    """Test the naabu tool command wrapper on failure."""
-    args = {'targets': ['a.example.com'], 'top_ports': 100, 'timeout': 300}
-    result = run_tool_naabu_command(args)
-    assert result['success'] is False
-    assert "Naabu test error" in result['error']
-    mock_run_naabu.assert_called_once_with(['a.example.com'], top_ports=100, timeout=300)
-    mock_run_naabu.assert_called_once_with(['a.example.com'], top_ports=100, timeout=300)
 
 @patch('subprocess.run')
 @patch('tempfile.NamedTemporaryFile')
@@ -247,24 +189,6 @@ def test_run_naabu_empty_targets(mock_config_get, mock_tempfile, mock_subprocess
     mock_tempfile.assert_not_called()
     mock_unlink.assert_not_called()
 
-
-@patch('src.cli.commands_dnsx.run_tool_dnsx_command', return_value={'success': True, 'records': [{'host': 'example.com', 'a': ['1.1.1.1']}], 'record_count': 1})
-def test_run_tool_dnsx_command_success(mock_run_dnsx):
-    """Test the dnsx tool command wrapper on success."""
-    args = {'domains': ['example.com'], 'record_types': ['a'], 'timeout': 300}
-    result = run_tool_dnsx_command(args)
-    assert result['success'] is True
-    assert result['record_count'] == 1
-
-@patch('src.cli.commands_dnsx.run_dnsx', side_effect=Exception("Dnsx test error"))
-def test_run_tool_dnsx_command_failure(mock_run_dnsx):
-    """Test the dnsx tool command wrapper on failure."""
-    args = {'domains': ['example.com'], 'record_types': ['a'], 'timeout': 300}
-    result = run_tool_dnsx_command(args)
-    assert result['success'] is False
-    assert "Dnsx test error" in result['error']
-    mock_run_dnsx.assert_called_once_with(['example.com'], record_types=['a'], timeout=300)
-    mock_run_dnsx.assert_called_once_with(['example.com'], record_types=['a'], timeout=300)
 
 @patch('subprocess.run')
 @patch('tempfile.NamedTemporaryFile')

@@ -1,8 +1,8 @@
 """
 FastAPI application for OpenEASD.
 
-Main application entry point for the REST API and web frontend.
-Now supports write operations with authentication, rate limiting, and audit logging.
+Main application entry point for the read-only REST API.
+Write operations are handled through the CLI.
 """
 
 from contextlib import asynccontextmanager
@@ -12,7 +12,6 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from src.api.routes import domains, scans, alerts, health, findings
 from src.api.settings import settings
-from src.api.middleware import AuditMiddleware
 from src.utils.config import Config
 from src.utils.logging import setup_logging
 import os
@@ -27,17 +26,16 @@ async def lifespan(app: FastAPI):
     log_level = config.get('log_level', 'INFO')
     setup_logging(log_level)
 
-    print("🚀 OpenEASD API & Frontend starting up...")
+    print("🚀 OpenEASD API starting up...")
     print(f"🖥️  Dashboard available at: http://{settings.host}:{settings.port}")
     print(f"📚 API Documentation: http://{settings.host}:{settings.port}{settings.docs_url}")
-    print("✅ Write operations enabled with API key authentication")
-    print("🔒 Rate limiting and audit logging active")
+    print("📖 Read-only API - write operations via CLI")
     print(f"📊 Logging level: {log_level}")
 
     yield
 
     # Shutdown
-    print("👋 OpenEASD API & Frontend shutting down...")
+    print("👋 OpenEASD API shutting down...")
 
 # Create FastAPI application with settings from config
 app = FastAPI(
@@ -58,9 +56,6 @@ app.add_middleware(
     allow_methods=settings.cors_allow_methods,
     allow_headers=settings.cors_allow_headers,
 )
-
-# Add audit logging middleware (logs all write operations)
-app.add_middleware(AuditMiddleware)
 
 # API Routers
 app.include_router(health.router, prefix="/api/v1", tags=["health"])

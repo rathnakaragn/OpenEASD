@@ -1,20 +1,19 @@
 """
-Scan management endpoints.
+Scan management endpoints (read-only).
 
-This module provides full API endpoints for scan management including
-scan execution with authentication.
+This module provides read-only API endpoints for scan information.
+Scan execution is handled through the CLI.
 """
 
 import logging
-from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, Query
 from src.api.schemas.scan import (
     ScanResponse,
     ScanResultsResponse,
     ScanListResponse,
-    ScanCreate
 )
 from src.services.scan_service import ScanService
-from src.api.dependencies import get_scan_service, get_db_manager, verify_api_key, check_permission
+from src.api.dependencies import get_scan_service, get_db_manager
 from src.data.database.sqlmodel_manager import SQLModelManager
 
 logger = logging.getLogger(__name__)
@@ -105,97 +104,3 @@ async def get_scan_results(
     except Exception as e:
         logger.error(f"Error retrieving scan results {scan_id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to retrieve scan results")
-
-
-@router.post("", response_model=ScanResponse, status_code=202)
-async def execute_scan(
-    scan_data: ScanCreate,
-    background_tasks: BackgroundTasks,
-    api_key_info: dict = Depends(verify_api_key),
-    db: SQLModelManager = Depends(get_db_manager)
-):
-    """
-    Execute a scan (async, requires authentication).
-
-    Creates a scan session and executes it in the background.
-    Returns immediately with scan ID for status polling.
-
-    Requires: API key with 'scan:execute' or '*' permission
-
-    Note: This endpoint returns 202 Accepted and runs the scan
-    in the background. Poll GET /scans/{scan_id} to check status.
-    """
-    # Check permission
-    if not check_permission(api_key_info, "scan:execute"):
-        raise HTTPException(
-            status_code=403,
-            detail="Insufficient permissions. Requires 'scan:execute' permission."
-        )
-
-    service = get_scan_service(db)
-
-    try:
-        # Execute scan in background (non-blocking)
-        result = service.execute_scan_async(
-            domain=scan_data.domain,
-            timeout=scan_data.timeout,
-            save=True
-        )
-
-        logger.info(f"Scan initiated via API: {scan_data.domain} (API key: {api_key_info.get('id')})")
-
-        return ScanResponse(**result['scan'])
-
-    except ValueError as e:
-        logger.warning(f"Invalid scan request: {e}")
-        raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        logger.error(f"Error initiating scan for {scan_data.domain}: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Failed to initiate scan")
-
-
-@router.post("/{scan_id}/analysis", response_model=dict, status_code=202)
-async def run_analysis(
-    scan_id: str,
-    background_tasks: BackgroundTasks,
-    api_key_info: dict = Depends(verify_api_key),
-    db: SQLModelManager = Depends(get_db_manager)
-):
-    """
-    Trigger analysis on completed scan (requires authentication).
-
-    Runs analysis in the background to identify vulnerabilities
-    and security findings from scan results.
-
-    Requires: API key with 'scan:execute' or '*' permission
-
-    Note: This endpoint returns 202 Accepted and runs analysis
-    in the background. Check findings via GET /findings.
-    """
-    # Check permission
-    if not check_permission(api_key_info, "scan:execute"):
-        raise HTTPException(
-            status_code=403,
-            detail="Insufficient permissions. Requires 'scan:execute' permission."
-        )
-
-    service = get_scan_service(db)
-
-    try:
-        # Trigger analysis in background
-        result = service.trigger_analysis(scan_id)
-
-        logger.info(f"Analysis triggered via API for scan: {scan_id} (API key: {api_key_info.get('id')})")
-
-        return {
-            "message": "Analysis triggered successfully",
-            "scan_id": scan_id,
-            "status": "analyzing"
-        }
-
-    except ValueError as e:
-        logger.info(f"Scan not found for analysis: {scan_id}")
-        raise HTTPException(status_code=404, detail=str(e))
-    except Exception as e:
-        logger.error(f"Error triggering analysis for scan {scan_id}: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Failed to trigger analysis")
