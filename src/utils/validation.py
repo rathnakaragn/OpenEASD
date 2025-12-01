@@ -5,6 +5,7 @@ Provides validation functions to prevent injection attacks and ensure data integ
 """
 
 import re
+import ipaddress
 from typing import List
 
 
@@ -132,3 +133,48 @@ def sanitize_domain(domain: str) -> str:
         domain = domain.replace(char, '')
 
     return domain
+
+
+def is_private_ip(ip_address: str) -> bool:
+    """
+    Check if an IP address is private or reserved (non-routable).
+
+    Args:
+        ip_address: IP address to check (IPv4 or IPv6)
+
+    Returns:
+        True if IP is private/reserved, False if public/routable
+
+    Examples:
+        >>> is_private_ip('192.168.1.100')
+        True
+        >>> is_private_ip('10.0.0.1')
+        True
+        >>> is_private_ip('172.16.0.1')
+        True
+        >>> is_private_ip('127.0.0.1')
+        True
+        >>> is_private_ip('8.8.8.8')
+        False
+        >>> is_private_ip('1.1.1.1')
+        False
+    """
+    if not ip_address or not isinstance(ip_address, str):
+        return False
+
+    try:
+        # Parse the IP address
+        ip = ipaddress.ip_address(ip_address.strip())
+
+        # Check if it's private, loopback, link-local, multicast, or reserved
+        return (
+            ip.is_private or          # Private ranges (192.168.x.x, 10.x.x.x, 172.16.x.x)
+            ip.is_loopback or         # Loopback (127.x.x.x, ::1)
+            ip.is_link_local or       # Link-local (169.254.x.x)
+            ip.is_multicast or        # Multicast (224.x.x.x and higher)
+            ip.is_reserved or         # Reserved ranges
+            ip.is_unspecified         # Unspecified (0.0.0.0, ::)
+        )
+    except ValueError:
+        # Invalid IP address format
+        return False

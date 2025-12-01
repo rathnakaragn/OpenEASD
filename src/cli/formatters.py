@@ -7,6 +7,13 @@ from typing import Dict, Any
 from datetime import datetime
 
 
+class DateTimeEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, datetime):
+            return obj.isoformat()
+        return super().default(obj)
+
+
 def format_output(data: Dict[str, Any], format_type: str = 'table') -> str:
     """
     Format output data.
@@ -19,13 +26,18 @@ def format_output(data: Dict[str, Any], format_type: str = 'table') -> str:
         Formatted string
     """
     if format_type == 'json':
-        return format_json(data)
+        return format_json_with_datetime(data)
     elif format_type == 'csv':
         return format_csv(data)
     elif format_type == 'txt':
         return format_txt(data)
     else:
         return format_table(data)
+
+
+def format_json_with_datetime(data: Dict[str, Any]) -> str:
+    """Format as JSON with datetime handling."""
+    return json.dumps(data, indent=2, cls=DateTimeEncoder)
 
 
 def format_json(data: Dict[str, Any]) -> str:
@@ -59,19 +71,6 @@ def format_csv(data: Dict[str, Any]) -> str:
                     port.get('protocol', ''),
                     port.get('ip', '')
                 ])
-
-    elif data.get('type') == 'history':
-        writer = csv.writer(output)
-        writer.writerow(['Scan ID', 'Domain', 'Status', 'Subdomains', 'Ports', 'Start Time'])
-        for scan in data.get('scans', []):
-            writer.writerow([
-                scan.get('scan_id', '')[:8],
-                scan.get('domain', ''),
-                scan.get('status', ''),
-                scan.get('total_subdomains', 0),
-                scan.get('total_ports', 0),
-                scan.get('start_time', '')
-            ])
 
     return output.getvalue()
 
@@ -217,7 +216,7 @@ def format_table(data: Dict[str, Any]) -> str:
             output.append(data.get('message', ''))
         else:
             output.append("")
-            output.append(f"{'Scan ID':<32} {'Tool':<12} {'Domain':<30} {'Status':<12} {'Findings':<10} {'Start Time':<20} {'End Time':<20} {'Duration':<10}")
+            output.append(f"{ 'Scan ID':<32} {'Tool':<12} {'Domain':<30} {'Status':<12} {'Findings':<10} {'Start Time':<20} {'End Time':<20} {'Duration':<10}")
             output.append("-" * 171)
 
             for scan in scans:
@@ -259,75 +258,79 @@ def format_table(data: Dict[str, Any]) -> str:
                     f"{duration_str:<10}"
                 )
 
-    elif data.get('type') == 'history':
-        # Header
-        output.append("=" * 150)
-        output.append("Scan History")
-        output.append("=" * 150)
-
-        scans = data.get('scans', [])
-
-        if not scans:
-            output.append("\nNo scans found.")
-            output.append(data.get('message', ''))
-        else:
-            output.append("")
-            output.append(f"{'Domain':<30} {'Status':<12} {'Scans':<8} {'Subdomains':<12} {'First Scan':<20} {'Last Scan':<20}")
-            output.append("-" * 130)
-
-            for scan in scans:
-                # Get subdomain count from findings_count for passive scans
-                subdomain_count = scan.get('total_subdomains', 0)
-                scan_count = scan.get('scan_count', 1)
-                first_scan = scan.get('first_scan', 'N/A')
-                last_scan = scan.get('last_scan', 'N/A')
-
-                # Format timestamps to be more readable (remove microseconds)
-                if first_scan != 'N/A' and 'T' in first_scan:
-                    first_scan = first_scan.split('.')[0].replace('T', ' ')
-                if last_scan != 'N/A' and 'T' in last_scan:
-                    last_scan = last_scan.split('.')[0].replace('T', ' ')
-
-                output.append(
-                    f"{scan.get('domain', ''):<30} "
-                    f"{scan.get('status', ''):<12} "
-                    f"{scan_count:<8} "
-                    f"{subdomain_count:<12} "
-                    f"{first_scan:<20} "
-                    f"{last_scan:<20}"
-                )
-
     elif data.get('domains') is not None:
         # Domain list formatting
-        output.append("=" * 150)
-        output.append("Domains")
-        output.append("=" * 150)
-
         domains = data.get('domains', [])
         total_count = data.get('total_count', len(domains))
+        show_details = data.get('show_details', False)
 
         if not domains:
+            output.append("=" * 150)
+            output.append("Domains")
+            output.append("=" * 150)
             output.append("\nNo domains found.")
-        else:
+        elif show_details:
+            # Detailed view for each domain
+            for idx, domain in enumerate(domains):
+                if idx > 0:
+                    output.append("\n")
+
+                output.append("=" * 80)
+                output.append(f"Domain Details - {domain.get('domain', 'Unknown')}")
+                output.append("=" * 80)
+                output.append(f"Domain:             {domain.get('domain', 'N/A')}")
+                output.append(f"Primary:            {'Yes' if domain.get('is_primary') else 'No'}")
+                output.append(f"Active Scan:        {'Enabled' if domain.get('active_scan_enabled') else 'Disabled'}")
+                output.append(f"Scan Frequency:     {domain.get('scan_frequency') or 'Not set'}")
+                output.append(f"Scan Count:         {domain.get('scan_count', 0)}")
+                output.append(f"Contact Email:      {domain.get('contact_email') or 'Not set'}")
+                output.append(f"Created:            {domain.get('created_at', 'N/A')}")
+                output.append(f"Last Scanned:       {domain.get('last_scanned_at') or 'Never'}")
+                output.append("")
+
+                subdomain_count = domain.get('subdomain_count', 0)
+                output.append(f"Total Subdomains: {subdomain_count}")
+
+                recent_subdomains = domain.get('recent_subdomains', [])
+                if recent_subdomains:
+                    output.append("")
+                    output.append("Recent Subdomains:")
+                    output.append("-" * 80)
+                    for sub in recent_subdomains[:5]:
+                        status = sub.get('status', 'unknown')
+                        subdomain = sub.get('subdomain', '')
+                        last_seen = sub.get('last_seen', 'N/A')
+                        output.append(f"  [{status:8s}] {subdomain} (last seen: {last_seen})")
+
             output.append("")
-            output.append(f"{'Domain':<30} {'Type':<12} {'Primary':<10} {'Scans':<8} {'Notes':<40} {'Tags':<20}")
-            output.append("-" * 150)
+            output.append(f"Total: {total_count} domain(s)")
+        else:
+            # Table view (compact)
+            output.append("=" * 100)
+            output.append("Domains")
+            output.append("=" * 100)
+            output.append("")
+            output.append(f"{ 'Domain':<35} {'Primary':<10} {'Scans':<8} {'Last Scanned':<30}")
+            output.append("-" * 100)
 
             for domain in domains:
                 domain_name = domain.get('domain', '')
-                domain_type = domain.get('domain_type', 'apex')
                 is_primary = '✓' if domain.get('is_primary') else ''
                 scan_count = domain.get('scan_count', 0)
-                notes = (domain.get('notes') or '')[:38]  # Truncate long notes
-                tags = ', '.join(domain.get('tags') or [])[:18]  # Truncate long tag lists
+                last_scanned = domain.get('last_scanned_at')
+
+                # Format last scanned date
+                if last_scanned:
+                    if isinstance(last_scanned, str) and 'T' in last_scanned:
+                        last_scanned = last_scanned.split('.')[0].replace('T', ' ')
+                else:
+                    last_scanned = 'Never'
 
                 output.append(
-                    f"{domain_name:<30} "
-                    f"{domain_type:<12} "
+                    f"{domain_name:<35} "
                     f"{is_primary:<10} "
                     f"{scan_count:<8} "
-                    f"{notes:<40} "
-                    f"{tags:<20}"
+                    f"{last_scanned:<30}"
                 )
 
             output.append("")
@@ -341,7 +344,6 @@ def format_table(data: Dict[str, Any]) -> str:
         output.append(f"Domain Details - {domain.get('domain', 'Unknown')}")
         output.append("=" * 80)
         output.append(f"Domain:             {domain.get('domain', 'N/A')}")
-        output.append(f"Type:               {domain.get('domain_type', 'N/A')}")
         output.append(f"Primary:            {'Yes' if domain.get('is_primary') else 'No'}")
         output.append(f"Active Scan:        {'Enabled' if domain.get('active_scan_enabled') else 'Disabled'}")
         output.append(f"Scan Frequency:     {domain.get('scan_frequency') or 'Not set'}")
@@ -350,15 +352,6 @@ def format_table(data: Dict[str, Any]) -> str:
         output.append(f"Created:            {domain.get('created_at', 'N/A')}")
         output.append(f"Last Scanned:       {domain.get('last_scanned_at') or 'Never'}")
         output.append("")
-
-        if domain.get('notes'):
-            output.append(f"Notes:")
-            output.append(f"  {domain.get('notes')}")
-            output.append("")
-
-        if domain.get('tags'):
-            output.append(f"Tags: {', '.join(domain.get('tags'))}")
-            output.append("")
 
         subdomain_count = data.get('subdomain_count', 0)
         output.append(f"Total Subdomains: {subdomain_count}")

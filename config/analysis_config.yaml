@@ -1,0 +1,149 @@
+# Analysis Layer Configuration
+# OpenEASD Security Intelligence Configuration
+
+analysis:
+  # Feature flags
+  enabled: true
+  auto_analyze_on_scan: false              # Auto-run analysis after scans (set to true when ready)
+  batch_analysis_enabled: false            # For re-analyzing historical data
+
+  # Risk scoring configuration
+  scoring:
+    algorithm: "deterministic"             # deterministic or ml-based
+    base_score_weight: 0.4                 # 40% - Inherent risk of finding type
+    context_score_weight: 0.4              # 40% - Business context
+    exposure_score_weight: 0.2             # 20% - Public exposure level
+
+    # Severity thresholds (0-100 scale)
+    critical_threshold: 80
+    high_threshold: 60
+    medium_threshold: 40
+    low_threshold: 20
+
+  # Vulnerability detectors
+  detectors:
+    port_detector:
+      enabled: true
+      high_risk_ports: [21, 23, 3389, 5900, 5432, 3306, 27017, 6379]  # FTP, Telnet, RDP, VNC, PostgreSQL, MySQL, MongoDB, Redis
+      medium_risk_ports: [8080, 8443, 9090, 9200]                      # Alternative HTTP, Elasticsearch
+      database_ports: [3306, 5432, 27017, 6379, 1433, 5984]           # MySQL, PostgreSQL, MongoDB, Redis, MSSQL, CouchDB
+      auth_ports: [389, 636, 88, 464]                                  # LDAP, LDAPS, Kerberos
+
+    web_detector:
+      enabled: false                       # Disabled for now (requires Nuclei)
+      nuclei_templates_path: "./nuclei-templates"
+      timeout: 300
+
+    tls_detector:
+      enabled: false                       # Disabled for now (Phase 3)
+      check_expiry: true
+      expiry_warning_days: 30
+      check_weak_ciphers: true
+
+    dns_detector:
+      enabled: false                       # Disabled for now (Phase 3)
+      check_takeover: true
+      check_dnssec: true
+
+    email_detector:
+      enabled: false                       # Disabled for now (Phase 3)
+      check_spf: true
+      check_dkim: true
+      check_dmarc: true
+
+  # CVE enrichment (Phase 4)
+  cve_enrichment:
+    enabled: false                         # Disabled for now
+    nvd_api_key: ""                        # Optional, for higher rate limits
+    cache_ttl_days: 7                      # Cache CVE data locally
+    max_cves_per_finding: 5
+
+  # Finding deduplication
+  deduplication:
+    enabled: true
+    strategies:
+      - exact_match                        # Exact asset + type match
+      - similar_match                      # Fuzzy matching
+      - time_window                        # Within time window
+    time_window_hours: 24
+    similarity_threshold: 0.85             # 85% similarity required
+
+  # Performance tuning
+  performance:
+    max_concurrent_detectors: 5
+    analysis_timeout: 600                  # 10 minutes per scan
+    batch_size: 100                        # For batch analysis
+
+# Service-specific port information
+port_info:
+  21:
+    name: "FTP"
+    risk_level: "high"
+    description: "File Transfer Protocol - commonly exploited, transmits credentials in plain text"
+    remediation: "Disable FTP or use SFTP/FTPS instead"
+
+  23:
+    name: "Telnet"
+    risk_level: "critical"
+    description: "Unencrypted remote access protocol"
+    remediation: "Disable Telnet and use SSH (port 22) instead"
+
+  3306:
+    name: "MySQL"
+    risk_level: "critical"
+    description: "MySQL database server"
+    remediation: "Restrict access to internal networks only, use firewall rules"
+
+  5432:
+    name: "PostgreSQL"
+    risk_level: "critical"
+    description: "PostgreSQL database server"
+    remediation: "Restrict access to internal networks only, use firewall rules"
+
+  27017:
+    name: "MongoDB"
+    risk_level: "critical"
+    description: "MongoDB database server"
+    remediation: "Restrict access to internal networks only, enable authentication"
+
+  6379:
+    name: "Redis"
+    risk_level: "critical"
+    description: "Redis in-memory data store"
+    remediation: "Restrict access to internal networks only, require authentication"
+
+  3389:
+    name: "RDP"
+    risk_level: "high"
+    description: "Remote Desktop Protocol"
+    remediation: "Use VPN for remote access, enable Network Level Authentication"
+
+  5900:
+    name: "VNC"
+    risk_level: "high"
+    description: "Virtual Network Computing"
+    remediation: "Use strong passwords, enable encryption, consider SSH tunneling"
+
+  80:
+    name: "HTTP"
+    risk_level: "low"
+    description: "Unencrypted web traffic"
+    remediation: "Redirect to HTTPS (port 443)"
+
+  443:
+    name: "HTTPS"
+    risk_level: "info"
+    description: "Encrypted web traffic"
+    remediation: "Ensure valid TLS certificate and strong cipher suites"
+
+  8080:
+    name: "HTTP-Alt"
+    risk_level: "medium"
+    description: "Alternative HTTP port"
+    remediation: "Verify if intentionally exposed, use HTTPS if possible"
+
+  9200:
+    name: "Elasticsearch"
+    risk_level: "high"
+    description: "Elasticsearch HTTP API"
+    remediation: "Restrict access, enable authentication and TLS"

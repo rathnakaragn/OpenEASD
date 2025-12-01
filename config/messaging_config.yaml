@@ -1,0 +1,34 @@
+# ZeroMQ Messaging Configuration for OpenEASD
+
+messaging:
+  # Enable/disable messaging layer
+  enabled: true
+
+  # Event Bus (Pub/Sub) Configuration
+  event_bus:
+    enabled: true
+    ipc_path: "/tmp/openeasd-events.ipc"
+    high_water_mark: 1000          # Max queued messages before blocking
+    linger_ms: 1000                # Wait time for pending messages on shutdown
+    send_timeout_ms: 5000          # Publisher send timeout
+    recv_timeout_ms: 1000          # Subscriber receive timeout
+
+  # Serialization Configuration
+  serialization:
+    format: "json"                 # json or msgpack (future)
+    compression: false             # gzip compression (future)
+    max_message_size_mb: 10        # Maximum message size
+
+  # Monitoring Configuration
+  monitoring:
+    enabled: true
+    log_all_events: false          # Debug mode - log every event
+    metrics_enabled: true          # Track event throughput
+    metrics_interval_seconds: 60   # Metrics reporting interval
+
+  # Worker Pool Configuration (Phase 2 - currently disabled)
+  workers:
+    enabled: false                 # Enable worker pool
+    num_workers: 2                 # Number of worker processes
+    task_queue_ipc: "/tmp/openeasd-tasks.ipc"  # Task queue socket
+    result_queue_ipc: "/tmp/openeasd-results.ipc"  # Result queue socket

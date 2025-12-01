@@ -6,6 +6,24 @@ log_level: INFO
 log_file: logs/recon.log
 temp_directory: /tmp/openeasd
 
+# API Configuration
+api:
+  title: "OpenEASD API (Read-Only)"
+  description: "Read-Only API for monitoring External Attack Surface Detection"
+  version: "2.0.0-readonly"
+  host: "0.0.0.0"
+  port: 8000
+  docs_url: "/api/docs"
+  redoc_url: "/api/redoc"
+  openapi_url: "/api/openapi.json"
+  cors:
+    allow_origins: ["*"]           # Allow all origins by default
+    allow_credentials: true
+    allow_methods: ["*"]
+    allow_headers: ["*"]
+  frontend_dir: "frontend"         # Frontend directory path
+  reload: false                    # Auto-reload for development
+
 # Workflow Configuration
 workflow:
   max_concurrent_tools: 2              # Maximum number of tools running simultaneously
@@ -18,7 +36,7 @@ workflow:
 
 # Database Configuration
 database:
-  database_path: data/openeasd.db      # Path to DuckDB database file
+  database_path: data/openeasd.sqlite  # Path to SQLite database file
   max_connections: 10                  # Maximum database connections
   connection_timeout: 30.0             # Connection timeout in seconds
   query_timeout: 60.0                  # Query timeout in seconds

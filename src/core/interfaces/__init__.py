@@ -6,6 +6,5 @@ enabling easy testing, mocking, and implementation swapping.
 """
 
 from .database import DatabaseManager
-from .scanner import SecurityScanner, SecurityTool
 
-__all__ = ['DatabaseManager', 'SecurityScanner', 'SecurityTool']
+__all__ = ['DatabaseManager']

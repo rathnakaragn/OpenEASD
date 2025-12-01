@@ -1,14 +1,22 @@
 [project]
 name = "openeasd"
-version = "1.0.0"
+version = "2.0.0"
 description = "Automated External Attack Surface Detection"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "click==8.1.7",
-    "duckdb==1.4.1",
+    "sqlmodel>=0.0.14",
     "pytz",
     "pyyaml==6.0.1",
+    "texttable",
+    # API dependencies
+    "fastapi>=0.109.0",
+    "uvicorn[standard]>=0.27.0",
+    "pydantic>=2.5.0",
+    "python-multipart>=0.0.6",
+    # HTTP client for CLI
+    "httpx>=0.26.0",
 ]
 
 [project.optional-dependencies]
@@ -26,4 +34,9 @@ build-backend = "hatchling.build"
 [tool.uv]
 dev-dependencies = [
     "pytest==8.2.2",
+]
+
+[tool.pytest.ini_options]
+testpaths = [
+    "tests",
 ]

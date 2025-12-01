@@ -1,9 +1,9 @@
 """
 Database layer for OpenEASD.
 
-Provides DuckDB implementation for single-user MVP.
+Provides SQLModel implementation with SQLite for single-user MVP.
 """
 
-from .duckdb_manager import DuckDBManager
+from .sqlmodel_manager import SQLModelManager
 
-__all__ = ['DuckDBManager']
+__all__ = ['SQLModelManager']

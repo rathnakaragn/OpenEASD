@@ -12,17 +12,20 @@ import sys
 import json
 from pathlib import Path
 
-from src.cli.commands import (
-    scan_command, history_command, results_command, view_scans_command,
-    batch_scan_subfinder_command, run_tool_subfinder_command, run_tool_naabu_command,
-    run_tool_dnsx_command, run_tool_httpx_command
+from src.cli.commands_scan import batch_scan_subfinder_command
+from src.cli.commands_results import (
+    view_scans_command, results_command
 )
 from src.cli.commands_domain import (
     domain_add_command, domain_list_command, domain_update_command,
-    domain_remove_command, domain_show_command
+    domain_remove_command
+)
+from src.cli.commands_analysis import (
+    run_analysis_command, list_findings_command, show_finding_command,
+    findings_statistics_command, update_finding_status_command
 )
 from src.cli.formatters import format_output
-from src.data.database.duckdb_manager import DuckDBManager
+from src.data.database.sqlmodel_manager import SQLModelManager
 
 
 @click.group(invoke_without_command=True)
@@ -37,49 +40,15 @@ def cli(ctx):
         openeasd scan                       # Scan all domains
         openeasd domain add example.com     # Add domain to database
         openeasd domain list                # List all domains
-        openeasd history                    # Show scan history
-        openeasd run subfinder example.com  # Run tool without saving
+        openeasd scans                      # List all scan sessions
+        openeasd results <scan-id>          # View scan results
     """
     # Ensure context object exists
     ctx.ensure_object(dict)
 
-    # If no command is provided, run history by default
+    # If no command is provided, show help
     if ctx.invoked_subcommand is None:
-        ctx.invoke(history)
-
-
-def _run_tool(tool_func, **kwargs):
-    """Helper to run a tool and print results."""
-    try:
-        result = tool_func(kwargs)
-        if not result.get('success'):
-            click.echo(f"Error: {result.get('error', 'Unknown error')}", err=True)
-            sys.exit(1)
-        
-        # Format and print the output
-        output = kwargs.get('output', 'table')
-        if output == 'json':
-            click.echo(json.dumps(result, indent=2))
-        else:
-            # The formatters are designed for the main commands, so we'll do some basic printing here
-            if 'subdomains' in result:
-                click.echo("\n".join(result['subdomains']))
-            elif 'ports' in result:
-                for port_info in result['ports']:
-                    click.echo(f"{port_info['subdomain']}:{port_info['port']}")
-            elif 'records' in result:
-                 for record in result['records']:
-                    click.echo(f"{record['host']}: {record}")
-            elif 'probes' in result:
-                for probe in result['probes']:
-                    click.echo(f"{probe['url']} - {probe['status_code']}")
-
-    except KeyboardInterrupt:
-        click.echo("\n\nTool cancelled by user", err=True)
-        sys.exit(130)
-    except Exception as e:
-        click.echo(f"Error: {e}", err=True)
-        sys.exit(1)
+        click.echo(ctx.get_help())
 
 
 @cli.command()
@@ -174,23 +143,6 @@ def scans(limit, output):
 
 
 @cli.command()
-@click.option('--limit', default=10, type=int,
-              help='Number of scans to show (default: 10)')
-@click.option('--output', type=click.Choice(['table', 'json']),
-              default='table',
-              help='Output format (default: table)')
-def history(limit, output):
-    """Show scan history"""
-    try:
-        result = history_command(locals())
-        if result:
-            click.echo(format_output(result, output))
-    except Exception as e:
-        click.echo(f"Error: {e}", err=True)
-        sys.exit(1)
-
-
-@cli.command()
 @click.argument('scan_id')
 @click.option('--output', type=click.Choice(['table', 'json', 'csv', 'txt']),
               default='table',
@@ -216,24 +168,20 @@ def domain():
 @click.argument('domain')
 @click.option('--primary', is_flag=True,
               help='Mark as primary domain')
-@click.option('--notes',
-              help='Notes about the domain')
-@click.option('--tags',
-              help='Comma-separated tags (e.g., "production,critical"')
 @click.option('--contact',
               help='Contact email for this domain')
 @click.option('--frequency',
               type=click.Choice(['hourly', 'daily', 'weekly', 'monthly']),
               help='Scan frequency preference')
-def domain_add(domain, primary, notes, tags, contact, frequency):
+def domain_add(domain, primary, contact, frequency):
     """Add an apex domain
 
     Examples:
         openeasd domain add example.com --primary
-        openeasd domain add example.io --notes "Secondary domain" --tags "staging,test"
+        openeasd domain add example.io --contact admin@example.io --frequency daily
     """
     try:
-        result = domain_add_command(locals())
+        result = domain_add_command(domain, primary, contact, frequency)
         if result.get('success'):
             click.echo(result['message'])
         else:
@@ -247,24 +195,24 @@ def domain_add(domain, primary, notes, tags, contact, frequency):
 @domain.command('list')
 @click.option('--limit', default=20, type=int,
               help='Number of domains to show (default: 20)')
-@click.option('--type', 'domain_type',
-              type=click.Choice(['apex', 'subdomain']),
-              help='Filter by domain type')
 @click.option('--primary', is_flag=True,
               help='Show only primary domains')
+@click.option('--details', is_flag=True,
+              help='Show detailed information for each domain')
 @click.option('--output', type=click.Choice(['table', 'json']),
               default='table',
               help='Output format (default: table)')
-def domain_list(limit, domain_type, primary, output):
+def domain_list(limit, primary, details, output):
     """List all domains
 
     Examples:
         openeasd domain list
         openeasd domain list --primary
-        openeasd domain list --type apex --output json
+        openeasd domain list --details
+        openeasd domain list --output json
     """
     try:
-        result = domain_list_command(locals())
+        result = domain_list_command(limit, primary, details, output)
         if result.get('success'):
             if result.get('domains'):
                 click.echo(format_output(result, output))
@@ -282,27 +230,15 @@ def domain_list(limit, domain_type, primary, output):
 @click.argument('domain')
 @click.option('--primary', type=bool,
               help='Set primary status (true/false)')
-@click.option('--notes',
-              help='Update notes')
-@click.option('--tags',
-              help='Update tags (comma-separated)')
-@click.option('--contact',
-              help='Update contact email')
-@click.option('--frequency',
-              type=click.Choice(['hourly', 'daily', 'weekly', 'monthly']),
-              help='Update scan frequency')
-@click.option('--active-scan', type=bool,
-              help='Enable/disable active scanning (true/false)')
-def domain_update(domain, primary, notes, tags, contact, frequency, active_scan):
+def domain_update(domain, primary):
     """Update domain metadata
 
     Examples:
-        openeasd domain update example.com --notes "Updated notes"
         openeasd domain update example.com --primary true
-        openeasd domain update example.com --tags "prod,critical" --frequency daily
+        openeasd domain update example.com --primary false
     """
     try:
-        result = domain_update_command(locals())
+        result = domain_update_command(domain, primary)
         if result.get('success'):
             click.echo(result['message'])
         else:
@@ -325,7 +261,7 @@ def domain_remove(domain, force):
         openeasd domain remove example.io --force
     """
     try:
-        result = domain_remove_command(locals())
+        result = domain_remove_command(domain, force)
         if result.get('success'):
             click.echo()
             click.echo(result['message'])
@@ -355,117 +291,130 @@ def domain_remove(domain, force):
         sys.exit(1)
 
 
-@domain.command('show')
-@click.argument('domain')
+@cli.group()
+def analysis():
+    """Manage security findings and analysis results
+
+    View, manage, and analyze security findings from completed scans.
+
+    Examples:
+        openeasd analysis findings              # List all findings
+        openeasd analysis findings --severity high  # Filter by severity
+        openeasd analysis show <finding-id>     # Show finding details
+        openeasd analysis stats                 # Show statistics
+    """
+    pass
+
+
+@analysis.command('run')
+@click.argument('scan_id')
 @click.option('--output', type=click.Choice(['table', 'json']),
               default='table',
               help='Output format (default: table)')
-def domain_show(domain, output):
-    """Show detailed information about a domain
+def analysis_run(scan_id, output):
+    """Run analysis on a completed scan
+
+    Executes vulnerability detection detectors on scan results.
 
     Examples:
-        openeasd domain show example.com
-        openeasd domain show example.com --output json
+        openeasd analysis run <scan-id>
     """
     try:
-        result = domain_show_command(locals())
-        if result.get('success'):
-            click.echo(format_output(result, output))
-        else:
-            click.echo(f"Error: {result['message']}", err=True)
-            sys.exit(1)
+        run_analysis_command(scan_id, output)
     except Exception as e:
         click.echo(f"Error: {e}", err=True)
         sys.exit(1)
 
 
-@cli.group()
-def run():
-    """Run individual security tools
-
-    Execute tools directly without database storage.
-    Useful for quick reconnaissance and testing.
+@analysis.command('findings')
+@click.option('--scan-id', help='Filter by scan ID')
+@click.option('--asset', help='Filter by affected asset (domain/subdomain/IP)')
+@click.option('--severity', type=click.Choice(['critical', 'high', 'medium', 'low', 'info']),
+              help='Filter by minimum severity')
+@click.option('--limit', default=50, type=int,
+              help='Maximum findings to show (default: 50)')
+@click.option('--output', type=click.Choice(['table', 'json']),
+              default='table',
+              help='Output format (default: table)')
+def analysis_findings(scan_id, asset, severity, limit, output):
+    """List security findings with optional filters
 
     Examples:
-        openeasd run subfinder example.com
-        openeasd run naabu api.example.com
-        openeasd run dnsx example.com --records a --records mx
+        openeasd analysis findings
+        openeasd analysis findings --severity high
+        openeasd analysis findings --scan-id <scan-id>
+        openeasd analysis findings --asset example.com --output json
     """
-    pass
+    try:
+        result = list_findings_command(scan_id=scan_id, asset=asset, min_severity=severity,
+                                       limit=limit, output_format=output)
+        if result:
+            click.echo(format_output(result, output))
+    except Exception as e:
+        click.echo(f"Error: {e}", err=True)
+        sys.exit(1)
 
 
-@run.command('subfinder')
-@click.argument('domains', nargs=-1, required=True)
-@click.option('--timeout', default=300, type=int,
-              help='Tool timeout in seconds (default: 300)')
-@click.option('--output', type=click.Choice(['table', 'json', 'txt']),
-              default='table',
-              help='Output format (default: table)')
-def run_subfinder(domains, timeout, output):
-    """Run subfinder on one or more domains."""
-    all_subdomains = []
-    for domain in domains:
-        click.echo(f"[*] Scanning: {domain}")
-        result = run_tool_subfinder_command({'domain': domain, 'timeout': timeout})
-        if result.get('success') and result.get('subdomain_count', 0) > 0:
-            click.secho(f"  ✓ Found {result['subdomain_count']} subdomains", fg='green')
-            all_subdomains.extend(result['subdomains'])
-        else:
-            click.echo(f"  - No subdomains found")
-    
-    click.echo()
-    click.echo(f"{ '=' * 80}")
-    click.echo(f"Total Subdomains Discovered: {len(all_subdomains)}")
-    click.echo(f"{ '=' * 80}")
-
-    if output == 'json':
-        click.echo(json.dumps(sorted(set(all_subdomains)), indent=2))
-    elif output == 'txt':
-        for subdomain in sorted(set(all_subdomains)):
-            click.echo(subdomain)
-
-
-@run.command('naabu')
-@click.argument('targets', nargs=-1, required=True)
-@click.option('--top-ports', default=1000, type=int,
-              help='Number of top ports to scan (default: 1000)')
-@click.option('--timeout', default=300, type=int,
-              help='Tool timeout in seconds (default: 300)')
+@analysis.command('show')
+@click.argument('finding_id')
 @click.option('--output', type=click.Choice(['table', 'json']),
               default='table',
               help='Output format (default: table)')
-def run_naabu(targets, top_ports, timeout, output):
-    """Run naabu port scanner."""
-    _run_tool(run_tool_naabu_command, targets=list(targets), top_ports=top_ports, timeout=timeout, output=output)
+def analysis_show(finding_id, output):
+    """Show detailed information for a finding
+
+    Examples:
+        openeasd analysis show <finding-id>
+        openeasd analysis show <finding-id> --output json
+    """
+    try:
+        show_finding_command(finding_id, output)
+    except Exception as e:
+        click.echo(f"Error: {e}", err=True)
+        sys.exit(1)
 
 
-@run.command('dnsx')
-@click.argument('domains', nargs=-1, required=True)
-@click.option('--records', '-r', 'record_types', multiple=True,
-              type=click.Choice(['a', 'aaaa', 'cname', 'mx', 'ns', 'txt', 'ptr', 'soa', 'srv'], case_sensitive=False),
-              help='DNS record types to query (can specify multiple)')
-@click.option('--timeout', default=300, type=int,
-              help='Tool timeout in seconds (default: 300)')
+@analysis.command('stats')
+@click.option('--scan-id', help='Filter by scan ID')
+@click.option('--asset', help='Filter by affected asset')
 @click.option('--output', type=click.Choice(['table', 'json']),
               default='table',
               help='Output format (default: table)')
-def run_dnsx(domains, record_types, timeout, output):
-    """Run dnsx DNS toolkit."""
-    _run_tool(run_tool_dnsx_command, domains=list(domains), record_types=list(record_types), timeout=timeout, output=output)
+def analysis_stats(scan_id, asset, output):
+    """Show finding statistics
+
+    Examples:
+        openeasd analysis stats
+        openeasd analysis stats --scan-id <scan-id>
+        openeasd analysis stats --asset example.com
+    """
+    try:
+        result = findings_statistics_command(scan_id=scan_id, asset=asset, output_format=output)
+        if result:
+            click.echo(format_output(result, output))
+    except Exception as e:
+        click.echo(f"Error: {e}", err=True)
+        sys.exit(1)
 
 
-@run.command('httpx')
-@click.argument('targets', nargs=-1, required=True)
-@click.option('--threads', default=50, type=int,
-              help='Number of concurrent threads (default: 50)')
-@click.option('--timeout', default=300, type=int,
-              help='Tool timeout in seconds (default: 300)')
-@click.option('--output', type=click.Choice(['table', 'json']),
-              default='table',
-              help='Output format (default: table)')
-def run_httpx(targets, threads, timeout, output):
-    """Run httpx HTTP probe."""
-    _run_tool(run_tool_httpx_command, targets=list(targets), threads=threads, timeout=timeout, output=output)
+@analysis.command('update')
+@click.argument('finding_id')
+@click.argument('status', type=click.Choice(['open', 'acknowledged', 'resolved', 'false_positive']))
+@click.option('--notes', help='Optional notes about the status change')
+def analysis_update(finding_id, status, notes):
+    """Update finding status
+
+    Examples:
+        openeasd analysis update <finding-id> resolved
+        openeasd analysis update <finding-id> false_positive --notes "Not applicable"
+    """
+    try:
+        result = update_finding_status_command(finding_id, status, notes)
+        if result:
+            click.echo(result.get('message', 'Finding updated'))
+    except Exception as e:
+        click.echo(f"Error: {e}", err=True)
+        sys.exit(1)
 
 
 def main():
