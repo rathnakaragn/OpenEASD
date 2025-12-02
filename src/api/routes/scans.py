@@ -40,8 +40,8 @@ async def list_scans(
     except ValueError as e:
         logger.warning(f"Invalid scan list request: {e}")
         raise HTTPException(status_code=400, detail="Invalid request parameters")
-    except Exception:
-        logger.error("Error listing scans", exc_info=True)
+    except KeyError as e:
+        logger.error(f"Missing expected field in scan response: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to list scans")
 
 
@@ -66,8 +66,8 @@ async def get_scan_status(
         return ScanResponse(**scan_data)
     except ValueError:
         raise HTTPException(status_code=404, detail=f"Scan '{scan_id}' not found")
-    except Exception:
-        logger.error(f"Error retrieving scan status {scan_id}", exc_info=True)
+    except KeyError as e:
+        logger.error(f"Missing expected field in scan data {scan_id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to retrieve scan status")
 
 
@@ -92,6 +92,6 @@ async def get_scan_results(
         )
     except ValueError:
         raise HTTPException(status_code=404, detail=f"Scan '{scan_id}' not found")
-    except Exception:
-        logger.error(f"Error retrieving scan results {scan_id}", exc_info=True)
+    except KeyError as e:
+        logger.error(f"Missing expected field in scan results {scan_id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to retrieve scan results")

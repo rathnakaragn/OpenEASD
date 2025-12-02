@@ -53,8 +53,8 @@ async def list_findings(
     except ValueError as e:
         logger.warning(f"Invalid request parameters: {e}")
         raise HTTPException(status_code=400, detail="Invalid request parameters")
-    except Exception:
-        logger.error("Failed to retrieve findings", exc_info=True)
+    except KeyError as e:
+        logger.error(f"Missing expected field in findings response: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to retrieve findings")
 
 
@@ -80,8 +80,8 @@ async def get_findings_statistics(
     except ValueError as e:
         logger.warning(f"Invalid request parameters: {e}")
         raise HTTPException(status_code=400, detail="Invalid request parameters")
-    except Exception:
-        logger.error("Failed to retrieve statistics", exc_info=True)
+    except KeyError as e:
+        logger.error(f"Missing expected field in statistics response: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to retrieve statistics")
 
 
@@ -112,8 +112,8 @@ async def get_scan_findings(
 
     except ValueError:
         raise HTTPException(status_code=404, detail=f"Scan '{scan_id}' not found")
-    except Exception:
-        logger.error(f"Failed to retrieve scan findings for {scan_id}", exc_info=True)
+    except KeyError as e:
+        logger.error(f"Missing expected field in scan findings for {scan_id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to retrieve scan findings")
 
 
@@ -144,8 +144,8 @@ async def get_asset_findings(
 
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid asset name")
-    except Exception:
-        logger.error(f"Failed to retrieve asset findings for {asset_name}", exc_info=True)
+    except KeyError as e:
+        logger.error(f"Missing expected field in asset findings for {asset_name}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to retrieve asset findings")
 
 
@@ -165,6 +165,6 @@ async def get_finding(
 
     except FindingNotFound:
         raise HTTPException(status_code=404, detail=f"Finding '{finding_id}' not found")
-    except Exception:
-        logger.error(f"Failed to retrieve finding {finding_id}", exc_info=True)
+    except KeyError as e:
+        logger.error(f"Missing expected field in finding {finding_id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to retrieve finding")

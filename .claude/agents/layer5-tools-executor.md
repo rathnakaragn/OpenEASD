@@ -211,18 +211,12 @@ When reviewing Tool Layer code, evaluate:
 **Upward Integration (Tools → Service Layer)**:
 - Tools are called from `src/services/scan_service.py`
 - Results are passed to Database Layer for storage
-- Events are published via Messaging Layer
+- Error handling and retries managed by Service Layer
 
 **Downward Integration (Tools ↔ Database)**:
 - Tool results stored in tool-specific tables (subfinder_results, naabu_results, etc.)
 - Scan session ties all tool results together
 - Subdomain tracking (new/existing/removed)
-
-**Messaging Integration**:
-- Publish `tool.started` event when tool begins
-- Publish `tool.completed` event when tool finishes
-- Publish `finding.discovered` for each result
-- Use EventBus for event publishing
 
 ## Common Tasks
 

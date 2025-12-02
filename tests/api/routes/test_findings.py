@@ -92,14 +92,14 @@ def test_get_finding_not_found(mock_findings_service):
     app.dependency_overrides = {}
 
 def test_list_findings_error(mock_findings_service):
-    mock_findings_service.list_findings.side_effect = Exception("Service Error")
+    mock_findings_service.list_findings.side_effect = KeyError("Missing field")
     app.dependency_overrides[get_findings_service] = lambda: mock_findings_service
     response = client.get("/api/v1/findings/")
     assert response.status_code == 500
     app.dependency_overrides = {}
 
 def test_get_statistics_error(mock_findings_service):
-    mock_findings_service.get_statistics.side_effect = Exception("Service Error")
+    mock_findings_service.get_statistics.side_effect = KeyError("Missing field")
     app.dependency_overrides[get_findings_service] = lambda: mock_findings_service
     response = client.get("/api/v1/findings/statistics/summary")
     assert response.status_code == 500
@@ -258,7 +258,7 @@ def test_get_scan_findings_with_filters(mock_findings_service):
 
 def test_get_scan_findings_error(mock_findings_service):
     """Test scan findings endpoint error handling."""
-    mock_findings_service.get_findings_by_scan.side_effect = Exception("Database error")
+    mock_findings_service.get_findings_by_scan.side_effect = KeyError("Missing field")
     app.dependency_overrides[get_findings_service] = lambda: mock_findings_service
     response = client.get("/api/v1/findings/scan/scan_abc")
     assert response.status_code == 500
@@ -287,7 +287,7 @@ def test_get_asset_findings_with_filters(mock_findings_service):
 
 def test_get_asset_findings_error(mock_findings_service):
     """Test asset findings endpoint error handling."""
-    mock_findings_service.get_findings_by_asset.side_effect = Exception("Service error")
+    mock_findings_service.get_findings_by_asset.side_effect = KeyError("Missing field")
     app.dependency_overrides[get_findings_service] = lambda: mock_findings_service
     response = client.get("/api/v1/findings/asset/test.com")
     assert response.status_code == 500
@@ -295,7 +295,7 @@ def test_get_asset_findings_error(mock_findings_service):
 
 def test_get_finding_server_error(mock_findings_service):
     """Test getting a finding with server error."""
-    mock_findings_service.get_finding.side_effect = Exception("Database connection failed")
+    mock_findings_service.get_finding.side_effect = KeyError("Missing field")
     app.dependency_overrides[get_findings_service] = lambda: mock_findings_service
     response = client.get("/api/v1/findings/finding_123")
     assert response.status_code == 500

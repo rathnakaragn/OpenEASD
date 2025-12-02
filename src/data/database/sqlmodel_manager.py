@@ -1055,7 +1055,8 @@ class SQLModelManager(DatabaseManager):
                 session.commit()
                 return deleted
 
-            except Exception:
+            except Exception as e:
+                # Rollback transaction on any error (database, validation, etc.)
                 session.rollback()
                 raise
 

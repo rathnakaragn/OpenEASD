@@ -43,8 +43,8 @@ async def list_domains(
             total_count=result['total_count'],
             has_more=result['has_more']
         )
-    except Exception:
-        logger.error("Unexpected error listing domains", exc_info=True)
+    except (ValueError, KeyError) as e:
+        logger.error(f"Invalid response from domain service: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to list domains")
 
 
@@ -65,6 +65,6 @@ async def get_domain(
         raise HTTPException(status_code=400, detail="Invalid domain format")
     except DomainNotFound:
         raise HTTPException(status_code=404, detail=f"Domain '{domain}' not found")
-    except Exception:
-        logger.error(f"Error retrieving domain {domain}", exc_info=True)
+    except (ValueError, KeyError) as e:
+        logger.error(f"Error retrieving domain {domain}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to retrieve domain details")

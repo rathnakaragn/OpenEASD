@@ -72,21 +72,21 @@ def test_get_scan_results_not_found(mock_scan_service):
     app.dependency_overrides = {}
 
 def test_list_scans_error(mock_scan_service):
-    mock_scan_service.list_scans.side_effect = Exception("Service error")
+    mock_scan_service.list_scans.side_effect = KeyError("Missing field")
     app.dependency_overrides[get_scan_service] = lambda: mock_scan_service
     response = client.get("/api/v1/scans")
     assert response.status_code == 500
     app.dependency_overrides = {}
 
 def test_get_scan_status_error(mock_scan_service):
-    mock_scan_service.get_scan_status.side_effect = Exception("Service error")
+    mock_scan_service.get_scan_status.side_effect = KeyError("Missing field")
     app.dependency_overrides[get_scan_service] = lambda: mock_scan_service
     response = client.get(f"/api/v1/scans/{sample_scan['scan_id']}")
     assert response.status_code == 500
     app.dependency_overrides = {}
 
 def test_get_scan_results_error(mock_scan_service):
-    mock_scan_service.get_scan_results.side_effect = Exception("Service error")
+    mock_scan_service.get_scan_results.side_effect = KeyError("Missing field")
     app.dependency_overrides[get_scan_service] = lambda: mock_scan_service
     response = client.get(f"/api/v1/scans/{sample_scan['scan_id']}/results")
     assert response.status_code == 500

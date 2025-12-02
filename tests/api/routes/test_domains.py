@@ -53,14 +53,14 @@ def test_list_domains_with_params(mock_domain_service):
 
 def test_list_domains_error(mock_domain_service):
     """Test error handling when listing domains."""
-    mock_domain_service.list_domains.side_effect = Exception("Service error")
+    mock_domain_service.list_domains.side_effect = KeyError("Missing field")
     app.dependency_overrides[get_domain_service] = lambda: mock_domain_service
-    
+
     response = client.get("/api/v1/domains")
-    
+
     assert response.status_code == 500
     assert "Failed to list domains" in response.text
-    
+
     app.dependency_overrides = {}
 
 def test_get_domain_by_name(mock_domain_service):
@@ -99,12 +99,12 @@ def test_get_domain_invalid_format(mock_domain_service):
 
 def test_get_domain_generic_error(mock_domain_service):
     """Test a generic error when retrieving a domain."""
-    mock_domain_service.get_domain.side_effect = Exception("Generic error")
+    mock_domain_service.get_domain.side_effect = KeyError("Missing field")
     app.dependency_overrides[get_domain_service] = lambda: mock_domain_service
-    
+
     response = client.get("/api/v1/domains/any.com")
-    
+
     assert response.status_code == 500
     assert "Failed to retrieve domain details" in response.text
-    
+
     app.dependency_overrides = {}

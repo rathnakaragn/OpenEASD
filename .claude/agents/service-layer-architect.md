@@ -45,11 +45,10 @@ API Layer (Read-Only) ──┐
                         │      ├→ Validation, CRUD, Workflows
 CLI Layer (Full Access)─┘      ├→ Tool coordination
                                ├→ Data transformation
-                               └→ Event publishing
+                               └→ Persistence
                                   ↓
                         Database Layer (Data Persistence)
                         Tools Layer (External Executables)
-                        Messaging Layer (Event Bus)
 ```
 
 ## Design Guidelines

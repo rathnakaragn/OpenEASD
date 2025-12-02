@@ -16,6 +16,12 @@ This project is organized across multiple documentation files. When assisting wi
   - Target audience: System Architects, Technical Leads
   - Contains: 3-layer architecture diagram, technology stack, design principles
 
+### Claude Agents & Development
+- **[docs/AGENTS.md](./docs/AGENTS.md)** - Claude agents configuration and usage guide
+  - Target audience: Developers using Claude Code
+  - Contains: 9 specialized agents (Opus/Sonnet/Haiku), use cases, workflows, decision flowchart
+  - Includes: agent tier breakdown, cost-performance analysis, integration examples
+
 ## Quick Reference
 
 ### Current Implementation Status
@@ -196,6 +202,31 @@ openeasd analysis update <id> resolved    # Update finding status
 10. **FastAPI** with Pydantic v2 for API validation
 11. **Dependency injection** for service management
 12. **Deterministic risk scoring** (0-100 scale) with score breakdown
+
+## Claude Agent Usage
+
+OpenEASD is configured with **9 specialized Claude agents** for different development tasks:
+
+### Agent Tiers
+- **🔴 Opus** (4 agents): Complex reasoning, architectural decisions
+- **🟢 Sonnet** (4 agents): Layer implementation, balanced performance
+- **🟡 Haiku** (1 agent): Fast QA validation (~$0.01 per check, 2-5 seconds)
+
+### Quick Agent Reference
+
+| Need | Agent | Speed |
+|------|-------|-------|
+| **QA & Code Validation** | qa-reviewer | 🟡 Haiku - 2-5s |
+| **API Endpoint** | api-layer-builder | 🟢 Sonnet - 5-10s |
+| **CLI Command** | layer3-cli-architect | 🟢 Sonnet - 5-10s |
+| **Service Method** | service-layer-architect | 🟢 Sonnet - 5-10s |
+| **Tool Integration** | layer5-tools-executor | 🟢 Sonnet - 5-10s |
+| **Vulnerability Detection** | layer4-analysis-agent | 🔴 Opus - 10-20s |
+| **Database/Query** | layer6-database-architect | 🔴 Opus - 10-20s |
+| **Layer Design** | layer-architect | 🔴 Opus - 10-20s |
+| **Architecture Review** | design-reviewer | 🔴 Opus - 10-20s |
+
+**See [docs/AGENTS.md](./docs/AGENTS.md) for complete agent documentation, workflows, and decision flowchart.**
 
 ## Current Features
 
