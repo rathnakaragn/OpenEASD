@@ -9,10 +9,11 @@ import click
 from typing import Optional
 from src.data.database.sqlmodel_manager import SQLModelManager
 from src.analysis.analysis_service import AnalysisService
+from src.services.findings_service import FindingsService, FindingNotFound, InvalidFindingStatus
 from src.cli.formatters import format_table, format_json
 
 
-def run_analysis_command(scan_id: str, output_format: str = 'table'):
+def run_analysis_command(scan_id: str, output_format: str = 'table') -> None:
     """
     Run analysis manually on a completed scan.
 
@@ -90,7 +91,7 @@ def list_findings_command(
     min_severity: Optional[str] = None,
     limit: int = 50,
     output_format: str = 'table'
-):
+) -> None:
     """
     List security findings with optional filters.
 
@@ -105,8 +106,11 @@ def list_findings_command(
     db.initialize()
 
     try:
+        # Initialize findings service
+        findings_service = FindingsService(db_manager=db)
+
         # Get findings
-        result = db.get_findings(
+        result = findings_service.list_findings(
             scan_id=scan_id,
             affected_asset=asset,
             min_severity=min_severity,
@@ -190,7 +194,7 @@ def list_findings_command(
         db.close()
 
 
-def show_finding_command(finding_id: str, output_format: str = 'table'):
+def show_finding_command(finding_id: str, output_format: str = 'table') -> None:
     """
     Show detailed information about a specific finding.
 
@@ -202,9 +206,12 @@ def show_finding_command(finding_id: str, output_format: str = 'table'):
     db.initialize()
 
     try:
-        finding = db.get_finding_by_id(finding_id)
+        # Initialize findings service
+        findings_service = FindingsService(db_manager=db)
 
-        if not finding:
+        try:
+            finding = findings_service.get_finding(finding_id)
+        except FindingNotFound:
             click.echo(f"❌ Finding {finding_id} not found", err=True)
             return
 
@@ -286,7 +293,7 @@ def findings_statistics_command(
     scan_id: Optional[str] = None,
     asset: Optional[str] = None,
     output_format: str = 'table'
-):
+) -> None:
     """
     Show findings statistics.
 
@@ -299,7 +306,10 @@ def findings_statistics_command(
     db.initialize()
 
     try:
-        stats = db.get_findings_statistics(
+        # Initialize findings service
+        findings_service = FindingsService(db_manager=db)
+
+        stats = findings_service.get_statistics(
             scan_id=scan_id,
             affected_asset=asset
         )
@@ -342,7 +352,7 @@ def update_finding_status_command(
     finding_id: str,
     status: str,
     notes: Optional[str] = None
-):
+) -> None:
     """
     Update the status of a finding.
 
@@ -351,29 +361,31 @@ def update_finding_status_command(
         status: New status (open/acknowledged/resolved/false_positive)
         notes: Optional resolution notes
     """
-    valid_statuses = ['open', 'acknowledged', 'resolved', 'false_positive']
-
-    if status not in valid_statuses:
-        click.echo(f"❌ Invalid status. Must be one of: {', '.join(valid_statuses)}", err=True)
-        return
-
     db = SQLModelManager()
     db.initialize()
 
     try:
-        success = db.update_finding_status(
-            finding_id=finding_id,
-            status=status,
-            resolution_notes=notes
-        )
+        # Initialize findings service
+        findings_service = FindingsService(db_manager=db)
 
-        if not success:
-            click.echo(f"❌ Finding {finding_id} not found", err=True)
-            return
+        try:
+            result = findings_service.update_status(
+                finding_id=finding_id,
+                status=status,
+                resolution_notes=notes
+            )
 
-        click.echo(f"✅ Finding {finding_id} status updated to '{status}'")
-        if notes:
-            click.echo(f"📝 Resolution notes: {notes}")
+            if result['success']:
+                click.echo(f"✅ Finding {finding_id} status updated to '{status}'")
+                if notes:
+                    click.echo(f"📝 Resolution notes: {notes}")
+            else:
+                click.echo(f"❌ {result['message']}", err=True)
+
+        except InvalidFindingStatus as e:
+            click.echo(f"❌ Invalid status: {e}", err=True)
+        except FindingNotFound as e:
+            click.echo(f"❌ {e}", err=True)
 
     except Exception as e:
         click.echo(f"❌ Failed to update finding status: {e}", err=True)

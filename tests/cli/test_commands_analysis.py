@@ -89,17 +89,20 @@ def test_findings_statistics_command(mock_sql_manager, mock_db_manager, capsys):
 @patch('src.cli.commands_analysis.SQLModelManager')
 def test_update_finding_status_command(mock_sql_manager, mock_db_manager, capsys):
     """Test the 'update_finding_status' command function."""
+    # Mock the database to return a finding when checking if it exists
+    mock_db_manager.get_finding_by_id.return_value = {'id': 'finding_123', 'status': 'open'}
     mock_db_manager.update_finding_status.return_value = True
     mock_sql_manager.return_value = mock_db_manager
-    
+
     update_finding_status_command("finding_123", "resolved")
 
     captured = capsys.readouterr()
     assert "Finding finding_123 status updated to 'resolved'" in captured.out
 
 @patch('src.cli.commands_analysis.SQLModelManager')
-def test_update_finding_status_invalid(mock_sql_manager, capsys):
+def test_update_finding_status_invalid(mock_sql_manager, mock_db_manager, capsys):
     """Test updating with an invalid status."""
+    mock_sql_manager.return_value = mock_db_manager
     update_finding_status_command("any", "bad_status")
     captured = capsys.readouterr()
     assert "Invalid status" in captured.err
