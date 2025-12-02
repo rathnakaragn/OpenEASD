@@ -349,45 +349,51 @@ class ScanService:
                         })
                     self.db.store_naabu_results(naabu_results_for_db)
 
-            # Step 4: TLS verification (tlsx)
+            # Step 4: TLS verification (tlsx) - only for ports that might lack encryption
             tlsx_results = {}
+            # Ports where we need to verify TLS status (services that should/could use TLS)
+            # Skip: 443/8443 (already TLS), 22 (SSH has own encryption)
+            tls_check_ports = {21, 23, 25, 80, 110, 143, 389, 1080, 3306, 5432, 27017, 6379, 8080}
+
             if ports_found:
                 try:
-                    # Publish tool started event
-                    if self.publisher:
-                        self.publisher.publish_tool_started(
-                            scan_id=scan_id,
-                            tool_name='tlsx',
-                            domain=domain,
-                            target_count=len(ports_found)
-                        )
-
-                    tlsx_start = time.time()
-
-                    # Build targets list: (host, port) tuples
+                    # Build targets list: only ports that need TLS verification
                     tlsx_targets = []
                     for port_info in ports_found:
                         host = port_info.get('subdomain', port_info.get('host', ''))
                         port = port_info.get('port')
-                        if host and port:
+                        if host and port and port in tls_check_ports:
                             tlsx_targets.append((host, port))
 
-                    # Run tlsx to verify TLS status
-                    if tlsx_targets:
+                    if not tlsx_targets:
+                        logger.debug("No ports need TLS verification, skipping tlsx")
+                    else:
+                        # Publish tool started event
+                        if self.publisher:
+                            self.publisher.publish_tool_started(
+                                scan_id=scan_id,
+                                tool_name='tlsx',
+                                domain=domain,
+                                target_count=len(tlsx_targets)
+                            )
+
+                        tlsx_start = time.time()
+
+                        # Run tlsx to verify TLS status
                         tlsx_results = run_tlsx_parallel(tlsx_targets, timeout=timeout)
-                        logger.info(f"tlsx completed: {len(tlsx_results)} results")
+                        logger.info(f"tlsx completed: {len(tlsx_results)} results for {len(tlsx_targets)} ports")
 
-                    tlsx_duration = time.time() - tlsx_start
+                        tlsx_duration = time.time() - tlsx_start
 
-                    # Publish tool completed event
-                    if self.publisher:
-                        self.publisher.publish_tool_completed(
-                            scan_id=scan_id,
-                            tool_name='tlsx',
-                            domain=domain,
-                            results_count=len(tlsx_results),
-                            duration_seconds=tlsx_duration
-                        )
+                        # Publish tool completed event
+                        if self.publisher:
+                            self.publisher.publish_tool_completed(
+                                scan_id=scan_id,
+                                tool_name='tlsx',
+                                domain=domain,
+                                results_count=len(tlsx_results),
+                                duration_seconds=tlsx_duration
+                            )
 
                 except Exception as e:
                     logger.warning(f"tlsx scan failed (non-fatal): {e}")
