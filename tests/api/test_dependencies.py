@@ -8,12 +8,10 @@ from src.api.dependencies import (
     get_db_manager,
     get_domain_service,
     get_scan_service,
-    get_alert_service,
     get_findings_service,
 )
 from src.services.domain_service import DomainService
 from src.services.scan_service import ScanService
-from src.services.alert_service import AlertService
 from src.services.findings_service import FindingsService
 from src.data.database.sqlmodel_manager import SQLModelManager
 
@@ -29,7 +27,7 @@ def test_get_db_manager(mock_sql_manager):
 
     assert db == mock_instance
     mock_instance.initialize.assert_called_once()
-    
+
     # Test that the finally block is called
     with pytest.raises(StopIteration):
         next(db_gen)
@@ -49,12 +47,6 @@ def test_get_scan_service():
     mock_db = MagicMock()
     service = get_scan_service(db=mock_db)
     assert isinstance(service, ScanService)
-    assert service.db == mock_db
-
-def test_get_alert_service():
-    """Test the alert service dependency."""
-    mock_db = MagicMock()
-    service = get_alert_service(db=mock_db)
     assert service.db == mock_db
 
 def test_get_findings_service():
