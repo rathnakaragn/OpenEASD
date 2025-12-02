@@ -31,7 +31,7 @@ from src.data.database.sqlmodel_manager import SQLModelManager
 @click.group(invoke_without_command=True)
 @click.version_option(version='1.0.0', prog_name='openeasd')
 @click.pass_context
-def cli(ctx):
+def cli(ctx) -> None:
     """OpenEASD - Automated External Attack Surface Detection
 
     Complete reconnaissance workflow: subfinder → dnsx → naabu
@@ -56,7 +56,7 @@ def cli(ctx):
               help='Scan timeout in seconds per domain (default: 300)')
 @click.option('--primary', is_flag=True,
               help='Scan only primary domains')
-def scan(timeout, primary):
+def scan(timeout, primary) -> None:
     """Complete reconnaissance workflow: subfinder → dnsx → naabu
 
     Scans all domains from database with complete reconnaissance pipeline:
@@ -131,7 +131,7 @@ def scan(timeout, primary):
 @click.option('--output', type=click.Choice(['table', 'json']),
               default='table',
               help='Output format (default: table)')
-def scans(limit, output):
+def scans(limit, output) -> None:
     """List all scan IDs"""
     try:
         result = view_scans_command(locals())
@@ -147,7 +147,7 @@ def scans(limit, output):
 @click.option('--output', type=click.Choice(['table', 'json', 'csv', 'txt']),
               default='table',
               help='Output format (default: table)')
-def results(scan_id, output):
+def results(scan_id, output) -> None:
     """Show results for a specific scan"""
     try:
         result = results_command(locals())
@@ -159,7 +159,7 @@ def results(scan_id, output):
 
 
 @cli.group()
-def domain():
+def domain() -> None:
     """Manage domains"""
     pass
 
@@ -173,7 +173,7 @@ def domain():
 @click.option('--frequency',
               type=click.Choice(['hourly', 'daily', 'weekly', 'monthly']),
               help='Scan frequency preference')
-def domain_add(domain, primary, contact, frequency):
+def domain_add(domain, primary, contact, frequency) -> None:
     """Add an apex domain
 
     Examples:
@@ -202,7 +202,7 @@ def domain_add(domain, primary, contact, frequency):
 @click.option('--output', type=click.Choice(['table', 'json']),
               default='table',
               help='Output format (default: table)')
-def domain_list(limit, primary, details, output):
+def domain_list(limit, primary, details, output) -> None:
     """List all domains
 
     Examples:
@@ -230,7 +230,7 @@ def domain_list(limit, primary, details, output):
 @click.argument('domain')
 @click.option('--primary', type=bool,
               help='Set primary status (true/false)')
-def domain_update(domain, primary):
+def domain_update(domain, primary) -> None:
     """Update domain metadata
 
     Examples:
@@ -253,7 +253,7 @@ def domain_update(domain, primary):
 @click.argument('domain')
 @click.option('--force', is_flag=True,
               help='Skip confirmation prompt')
-def domain_remove(domain, force):
+def domain_remove(domain, force) -> None:
     """Remove a domain
 
     Examples:
@@ -292,7 +292,7 @@ def domain_remove(domain, force):
 
 
 @cli.group()
-def analysis():
+def analysis() -> None:
     """Manage security findings and analysis results
 
     View, manage, and analyze security findings from completed scans.
@@ -311,7 +311,7 @@ def analysis():
 @click.option('--output', type=click.Choice(['table', 'json']),
               default='table',
               help='Output format (default: table)')
-def analysis_run(scan_id, output):
+def analysis_run(scan_id, output) -> None:
     """Run analysis on a completed scan
 
     Executes vulnerability detection detectors on scan results.
@@ -336,7 +336,7 @@ def analysis_run(scan_id, output):
 @click.option('--output', type=click.Choice(['table', 'json']),
               default='table',
               help='Output format (default: table)')
-def analysis_findings(scan_id, asset, severity, limit, output):
+def analysis_findings(scan_id, asset, severity, limit, output) -> None:
     """List security findings with optional filters
 
     Examples:
@@ -360,7 +360,7 @@ def analysis_findings(scan_id, asset, severity, limit, output):
 @click.option('--output', type=click.Choice(['table', 'json']),
               default='table',
               help='Output format (default: table)')
-def analysis_show(finding_id, output):
+def analysis_show(finding_id, output) -> None:
     """Show detailed information for a finding
 
     Examples:
@@ -380,7 +380,7 @@ def analysis_show(finding_id, output):
 @click.option('--output', type=click.Choice(['table', 'json']),
               default='table',
               help='Output format (default: table)')
-def analysis_stats(scan_id, asset, output):
+def analysis_stats(scan_id, asset, output) -> None:
     """Show finding statistics
 
     Examples:
@@ -401,7 +401,7 @@ def analysis_stats(scan_id, asset, output):
 @click.argument('finding_id')
 @click.argument('status', type=click.Choice(['open', 'acknowledged', 'resolved', 'false_positive']))
 @click.option('--notes', help='Optional notes about the status change')
-def analysis_update(finding_id, status, notes):
+def analysis_update(finding_id, status, notes) -> None:
     """Update finding status
 
     Examples:
@@ -417,7 +417,7 @@ def analysis_update(finding_id, status, notes):
         sys.exit(1)
 
 
-def main():
+def main() -> None:
     """Main CLI entry point."""
     cli()
 
