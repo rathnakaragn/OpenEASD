@@ -8,6 +8,8 @@ import re
 import ipaddress
 from typing import List
 
+from src.core.exceptions import InvalidDomainError, InvalidPortError
+
 
 # Domain validation regex (RFC 1123)
 # Allows: alphanumeric, hyphens, dots
@@ -82,10 +84,10 @@ def validate_domain(domain: str) -> str:
         >>> validate_domain('invalid domain')
         Traceback (most recent call last):
         ...
-        ValueError: Invalid domain format: invalid domain
+        InvalidDomainError: Invalid domain format: invalid domain
     """
     if not is_valid_domain(domain):
-        raise ValueError(f"Invalid domain format: {domain}")
+        raise InvalidDomainError(domain)
     return domain
 
 

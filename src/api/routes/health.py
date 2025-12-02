@@ -3,8 +3,11 @@ Health check endpoints.
 """
 
 from fastapi import APIRouter, Depends
+from sqlmodel import Session, select, func
+
 from src.api.schemas.common import HealthResponse
 from src.data.database.sqlmodel_manager import SQLModelManager
+from src.data.models import Domain
 from src.api.dependencies import get_db_manager
 from src.api.settings import settings
 
@@ -23,8 +26,6 @@ async def health_check(db: SQLModelManager = Depends(get_db_manager)):
     db_status = "connected"
     try:
         # Simple query to test database using SQLModel
-        from sqlmodel import Session, select, func
-        from src.data.models import Domain
         with Session(db.engine) as session:
             session.exec(select(func.count(Domain.domain))).one()
     except Exception as e:

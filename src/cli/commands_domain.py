@@ -10,124 +10,115 @@ Created: October 2025
 
 from typing import Optional, Dict, Any
 import click
-from src.data.database.sqlmodel_manager import SQLModelManager
-from src.services.domain_service import DomainService
-from src.services.exceptions import DomainAlreadyExists, InvalidDomainFormat, DomainNotFound, CliCommandError
+from src.cli.context import CLIContext, cli_command
 from src.cli.formatters import format_json_with_datetime
 
 
-def domain_add_command(domain: str, primary: bool, contact: Optional[str], frequency: Optional[str]) -> Dict[str, Any]:
+@cli_command
+def domain_add_command(
+    ctx: CLIContext,
+    domain: str,
+    primary: bool,
+    contact: Optional[str],
+    frequency: Optional[str]
+) -> Dict[str, Any]:
     """
     Add an apex domain.
 
     Args:
+        ctx: CLI context with services
         domain: The domain name to add.
         primary: Whether the domain is a primary domain.
         contact: The contact email for the domain.
         frequency: The scan frequency for the domain.
     """
-    db_manager = SQLModelManager()
-    db_manager.initialize()
-    service = DomainService(db_manager)
-
-    try:
-        new_domain = service.create_domain(
-            domain=domain,
-            is_primary=primary,
-            contact_email=contact,
-            scan_frequency=frequency
-        )
-        return {
-            'success': True,
-            'message': f'✓ Added domain {new_domain.domain}',
-            'domain': new_domain
-        }
-    except (DomainAlreadyExists, InvalidDomainFormat) as e:
-        raise CliCommandError(str(e))
-    finally:
-        db_manager.close()
+    new_domain = ctx.domain_service.create_domain(
+        domain=domain,
+        is_primary=primary,
+        contact_email=contact,
+        scan_frequency=frequency
+    )
+    return {
+        'success': True,
+        'message': f'Added domain {new_domain.domain}',
+        'domain': new_domain
+    }
 
 
-def domain_list_command(limit: int, primary: bool, details: bool, output: str) -> Dict[str, Any]:
+@cli_command
+def domain_list_command(
+    ctx: CLIContext,
+    limit: int,
+    primary: bool,
+    details: bool,
+    output: str
+) -> Dict[str, Any]:
     """
     List all apex domains.
 
     Args:
+        ctx: CLI context with services
         limit: The maximum number of domains to list.
         primary: Whether to list only primary domains.
         details: Whether to show detailed information for each domain.
         output: The output format.
     """
-    db_manager = SQLModelManager()
-    db_manager.initialize()
-    service = DomainService(db_manager)
+    result = ctx.domain_service.list_domains(
+        limit=limit,
+        primary_only=primary
+    )
 
-    try:
-        result = service.list_domains(
-            limit=limit,
-            primary_only=primary
-        )
-        
-        return {
-            'success': True,
-            'domains': [domain.model_dump() for domain in result['domains']],
-            'total_count': result['total_count'],
-            'has_more': result['has_more'],
-            'show_details': details 
-        }
-    finally:
-        db_manager.close()
+    return {
+        'success': True,
+        'domains': [domain.model_dump() for domain in result['domains']],
+        'total_count': result['total_count'],
+        'has_more': result['has_more'],
+        'show_details': details
+    }
 
 
-def domain_update_command(domain: str, primary: Optional[bool]) -> Dict[str, Any]:
+@cli_command
+def domain_update_command(
+    ctx: CLIContext,
+    domain: str,
+    primary: Optional[bool]
+) -> Dict[str, Any]:
     """
     Update domain metadata.
 
     Args:
+        ctx: CLI context with services
         domain: The domain name to update.
         primary: The new primary status.
     """
-    db_manager = SQLModelManager()
-    db_manager.initialize()
-    service = DomainService(db_manager)
-
-    try:
-        updated_domain = service.update_domain(
-            domain=domain,
-            is_primary=primary
-        )
-        return {
-            'success': True,
-            'message': f'✓ Updated domain {updated_domain.domain}',
-            'updated_fields': ['is_primary'] if primary is not None else []
-        }
-    except (DomainNotFound, InvalidDomainFormat, ValueError) as e:
-        raise CliCommandError(str(e))
-    finally:
-        db_manager.close()
+    updated_domain = ctx.domain_service.update_domain(
+        domain=domain,
+        is_primary=primary
+    )
+    return {
+        'success': True,
+        'message': f'Updated domain {updated_domain.domain}',
+        'updated_fields': ['is_primary'] if primary is not None else []
+    }
 
 
-def domain_remove_command(domain: str, force: bool) -> Dict[str, Any]:
+@cli_command
+def domain_remove_command(
+    ctx: CLIContext,
+    domain: str,
+    force: bool
+) -> Dict[str, Any]:
     """
     Remove a domain.
 
     Args:
+        ctx: CLI context with services
         domain: The domain name to remove.
         force: Whether to force the deletion without confirmation.
     """
-    db_manager = SQLModelManager()
-    db_manager.initialize()
-    service = DomainService(db_manager)
+    if not force:
+        if not click.confirm(f"Delete {domain} and all its data?", default=False):
+            return {'success': False, 'message': 'Domain deletion cancelled'}
 
-    try:
-        if not force:
-            if not click.confirm(f"Delete {domain} and all its data?", default=False):
-                return {'success': False, 'message': 'Domain deletion cancelled'}
-
-        result = service.delete_domain(domain=domain)
-        return result
-
-    except (DomainNotFound, InvalidDomainFormat) as e:
-        raise CliCommandError(str(e))
-    finally:
-        db_manager.close()
+    result = ctx.domain_service.delete_domain(domain=domain)
+    return result

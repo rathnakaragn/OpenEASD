@@ -68,8 +68,8 @@ This project is organized across multiple documentation files. When assisting wi
 **Layer 4: Analysis Layer** (`src/analysis/`)
 - **What it does**: Automated vulnerability detection and risk assessment
 - **Key tasks**: Risk scoring (0-100), port vulnerability detection, finding deduplication, CVE mapping
-- **Components**: RiskScorer, PortVulnerabilityDetector, AlertManagementService
-- **Files**: `analysis_service.py`, `scoring/risk_scorer.py`, `detectors/port_detector.py`, `models.py`
+- **Components**: RiskScorer, PortVulnerabilityDetector, AnalysisService
+- **Files**: `analysis_service.py`, `scoring/risk_scorer.py`, `detectors/port_detector.py`
 
 **Layer 5: Tools Layer** (`src/tools/`)
 - **What it does**: Executes external security tools and parses results

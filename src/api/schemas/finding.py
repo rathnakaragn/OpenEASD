@@ -32,11 +32,17 @@ class FindingResponse(FindingBase):
     scan_id: str = Field(..., description="Scan session UUID")
     evidence: Optional[Dict[str, Any]] = Field(default=None, description="Technical evidence")
     score_breakdown: Optional[Dict[str, Any]] = Field(default=None, description="Score breakdown")
-    status: str = Field(default="open", description="Status (open/acknowledged/resolved/false_positive)")
+    status: str = Field(
+        default="new",
+        description="Status (new/open/acknowledged/resolved/reopened/false_positive)"
+    )
     false_positive: bool = Field(default=False, description="Marked as false positive")
     resolved_at: Optional[datetime] = Field(None, description="When finding was resolved")
+    reopened_at: Optional[datetime] = Field(None, description="When finding was reopened")
     resolution_notes: Optional[str] = Field(None, description="Resolution notes")
-    discovered_at: Optional[datetime] = Field(None, description="When finding was discovered")
+    first_seen: Optional[datetime] = Field(None, description="When finding was first discovered")
+    last_seen: Optional[datetime] = Field(None, description="When finding was last detected")
+    occurrence_count: int = Field(default=1, description="Number of times detected across scans")
     updated_at: Optional[datetime] = Field(None, description="Last update timestamp")
 
     model_config = ConfigDict(from_attributes=True)
@@ -59,20 +65,31 @@ class FindingStatisticsResponse(BaseModel):
     by_severity: Dict[str, int] = Field(..., description="Count by severity level")
     by_status: Dict[str, int] = Field(..., description="Count by status")
     average_risk_score: float = Field(..., description="Average risk score")
+    # Severity breakdown
     critical_findings: int = Field(..., description="Number of critical findings")
     high_findings: int = Field(..., description="Number of high findings")
     medium_findings: int = Field(..., description="Number of medium findings")
     low_findings: int = Field(..., description="Number of low findings")
     info_findings: int = Field(..., description="Number of info findings")
+    # Full status lifecycle
+    new_findings: int = Field(default=0, description="Number of new findings")
     open_findings: int = Field(..., description="Number of open findings")
+    acknowledged_findings: int = Field(default=0, description="Number of acknowledged findings")
     resolved_findings: int = Field(..., description="Number of resolved findings")
+    reopened_findings: int = Field(default=0, description="Number of reopened findings")
     false_positives: int = Field(..., description="Number of false positives")
+    # Aggregate counts
+    active_findings: int = Field(default=0, description="Number of active findings (new+open+acknowledged+reopened)")
+    closed_findings: int = Field(default=0, description="Number of closed findings (resolved+false_positive)")
 
 
 class FindingStatusUpdate(BaseModel):
     """Request schema for updating finding status."""
 
-    status: str = Field(..., description="New status (open/acknowledged/resolved/false_positive)")
+    status: str = Field(
+        ...,
+        description="New status (new/open/acknowledged/resolved/reopened/false_positive)"
+    )
     resolution_notes: Optional[str] = Field(None, description="Optional resolution notes")
 
 

@@ -122,7 +122,7 @@ class TestExtractCvesFromNmapOutput:
 class TestRunNmapVulnDetection:
     """Tests for nmap vulnerability detection function."""
 
-    @patch('subprocess.run')
+    @patch('src.tools.nmap.subprocess.run')
     def test_mysql_vuln_detection(self, mock_run):
         """Test successful MySQL vulnerability detection."""
         mock_output = """
@@ -147,7 +147,7 @@ class TestRunNmapVulnDetection:
         if result['status'] == 'success' or result['status'] == 'found_vulns':
             assert 'vulnerabilities' in result
 
-    @patch('subprocess.run')
+    @patch('src.tools.nmap.subprocess.run')
     def test_postgresql_vuln_detection(self, mock_run):
         """Test PostgreSQL vulnerability detection."""
         mock_output = """
@@ -162,7 +162,7 @@ class TestRunNmapVulnDetection:
         assert result['status'] in ['success', 'no_vulns', 'timeout', 'error']
         assert 'vulnerabilities' in result
 
-    @patch('subprocess.run')
+    @patch('src.tools.nmap.subprocess.run')
     def test_redis_vuln_detection(self, mock_run):
         """Test Redis vulnerability detection."""
         mock_output = """
@@ -177,7 +177,7 @@ class TestRunNmapVulnDetection:
 
         assert result['status'] in ['success', 'found_vulns', 'no_vulns']
 
-    @patch('subprocess.run')
+    @patch('src.tools.nmap.subprocess.run')
     def test_timeout_handling(self, mock_run):
         """Test timeout handling in vulnerability detection."""
         import subprocess
@@ -188,7 +188,7 @@ class TestRunNmapVulnDetection:
         assert result['status'] == 'timeout'
         assert 'vulnerabilities' in result
 
-    @patch('subprocess.run')
+    @patch('src.tools.nmap.subprocess.run')
     def test_unknown_service(self, mock_run):
         """Test handling of unknown service."""
         mock_run.return_value = MagicMock(stdout="No output")
@@ -199,13 +199,13 @@ class TestRunNmapVulnDetection:
 
     def test_nmap_not_installed(self):
         """Test error handling when nmap is not installed."""
-        with patch('subprocess.run') as mock_run:
+        with patch('src.tools.nmap.subprocess.run') as mock_run:
             mock_run.side_effect = FileNotFoundError("nmap not found")
 
             with pytest.raises(Exception):
                 run_nmap_vuln_detection('example.com', 3306, 'mysql', timeout=30)
 
-    @patch('subprocess.run')
+    @patch('src.tools.nmap.subprocess.run')
     def test_service_specific_scripts(self, mock_run):
         """Test that correct service-specific scripts are used."""
         mock_run.return_value = MagicMock(stdout="")
@@ -220,7 +220,7 @@ class TestRunNmapVulnDetection:
 class TestParallelVulnDetection:
     """Tests for parallel vulnerability detection."""
 
-    @patch('concurrent.futures.ThreadPoolExecutor')
+    @patch('src.tools.nmap.ThreadPoolExecutor')
     def test_parallel_vuln_detection_multiple_ports(self, mock_executor_class):
         """Test parallel vulnerability detection for multiple ports."""
         # Setup mock executor
@@ -249,7 +249,7 @@ class TestParallelVulnDetection:
 
         # Configure as_completed to return futures
         from concurrent.futures import as_completed
-        with patch('src.tools.runners.as_completed') as mock_as_completed:
+        with patch('src.tools.nmap.as_completed') as mock_as_completed:
             mock_as_completed.return_value = [mock_future_1, mock_future_2]
 
             ports_with_services = [
@@ -263,7 +263,7 @@ class TestParallelVulnDetection:
             # Results should be indexed by port
             assert len(result) >= 0  # Depends on success
 
-    @patch('subprocess.run')
+    @patch('src.tools.nmap.subprocess.run')
     def test_parallel_execution_error_handling(self, mock_run):
         """Test error handling in parallel execution."""
         mock_run.side_effect = Exception("Network error")
@@ -282,7 +282,7 @@ class TestParallelVulnDetection:
         """Test parallel execution with single port (edge case)."""
         ports_with_services = [('example.com', 3306, 'mysql')]
 
-        with patch('src.tools.runners.run_nmap_vuln_detection') as mock_vuln:
+        with patch('src.tools.nmap.run_nmap_vuln_detection') as mock_vuln:
             mock_vuln.return_value = {'status': 'success', 'vulnerabilities': []}
 
             result = run_nmap_vuln_detection_parallel(ports_with_services, max_workers=3)
@@ -305,13 +305,13 @@ class TestParallelVulnDetection:
             ('example.com', 6379, 'redis'),
         ]
 
-        with patch('src.tools.runners.ThreadPoolExecutor') as mock_executor_class:
+        with patch('src.tools.nmap.ThreadPoolExecutor') as mock_executor_class:
             mock_executor = MagicMock()
             mock_executor_class.return_value.__enter__.return_value = mock_executor
             mock_executor.submit.return_value = MagicMock()
 
             from concurrent.futures import as_completed
-            with patch('src.tools.runners.as_completed') as mock_as_completed:
+            with patch('src.tools.nmap.as_completed') as mock_as_completed:
                 mock_as_completed.return_value = []
 
                 run_nmap_vuln_detection_parallel(ports_with_services, max_workers=3)
@@ -323,7 +323,7 @@ class TestParallelVulnDetection:
 class TestVulnDetectionIntegration:
     """Integration tests for vulnerability detection workflow."""
 
-    @patch('subprocess.run')
+    @patch('src.tools.nmap.subprocess.run')
     def test_cve_extraction_from_detection_result(self, mock_run):
         """Test extracting CVEs from vulnerability detection result."""
         mock_output = "CVE-2012-2122 Authentication Bypass"

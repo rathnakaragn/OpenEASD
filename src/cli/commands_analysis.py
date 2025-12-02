@@ -4,391 +4,347 @@ Analysis CLI commands for OpenEASD.
 Commands for managing and viewing security findings from the Analysis Layer.
 """
 
-import asyncio
 import click
-from typing import Optional
-from src.data.database.sqlmodel_manager import SQLModelManager
+from typing import Optional, Dict, Any
+from src.cli.context import CLIContext, cli_command
 from src.analysis.analysis_service import AnalysisService
-from src.services.findings_service import FindingsService, FindingNotFound, InvalidFindingStatus
 from src.cli.formatters import format_table, format_json
 
 
-def run_analysis_command(scan_id: str, output_format: str = 'table') -> None:
+@cli_command
+def run_analysis_command(ctx: CLIContext, scan_id: str, output_format: str = 'table') -> Dict[str, Any]:
     """
     Run analysis manually on a completed scan.
 
     Args:
+        ctx: CLI context with services
         scan_id: Scan session UUID
         output_format: Output format (table/json)
     """
-    db = SQLModelManager()
-    db.initialize()
+    # Get scan data
+    scan = ctx.db.get_scan_status(scan_id)
+    if not scan:
+        click.echo(f"Scan {scan_id} not found", err=True)
+        return {'success': False}
 
-    try:
-        # Get scan data
-        scan = db.get_scan_status(scan_id)
-        if not scan:
-            click.echo(f"❌ Scan {scan_id} not found", err=True)
-            return
+    if scan['status'] != 'completed':
+        click.echo(f"Scan {scan_id} is not completed (status: {scan['status']})", err=True)
+        return {'success': False}
 
-        if scan['status'] != 'completed':
-            click.echo(f"⚠️  Scan {scan_id} is not completed (status: {scan['status']})", err=True)
-            return
+    # Get scan results
+    subfinder_results = ctx.db.get_tool_results(scan_id, tool_name='subfinder')
+    naabu_results = ctx.db.get_tool_results(scan_id, tool_name='naabu')
 
-        # Get scan results
-        subfinder_results = db.get_tool_results(scan_id, tool_name='subfinder')
-        naabu_results = db.get_tool_results(scan_id, tool_name='naabu')
+    # Prepare scan data
+    scan_data = {
+        'scan_id': scan_id,
+        'subfinder_results': subfinder_results.get('results', []),
+        'naabu_results': naabu_results.get('results', [])
+    }
 
-        # Prepare scan data
-        scan_data = {
-            'scan_id': scan_id,
-            'subfinder_results': subfinder_results.get('results', []),
-            'naabu_results': naabu_results.get('results', [])
-        }
+    # Initialize analysis service
+    analysis_service = AnalysisService(db_manager=ctx.db)
 
-        # Initialize analysis service
-        analysis_service = AnalysisService(db_manager=db)
+    if not analysis_service.is_enabled():
+        click.echo("Analysis Layer is disabled in configuration", err=True)
+        return {'success': False}
 
-        if not analysis_service.is_enabled():
-            click.echo("❌ Analysis Layer is disabled in configuration", err=True)
-            return
+    click.echo(f"Running analysis on scan {scan_id}...")
 
-        click.echo(f"🔍 Running analysis on scan {scan_id}...")
+    # Run analysis (synchronous call)
+    results = analysis_service.analyze_scan_results(scan_id, scan_data)
 
-        # Run analysis
-        results = asyncio.run(
-            analysis_service.analyze_scan_results(scan_id, scan_data)
-        )
+    # Display results
+    if output_format == 'json':
+        click.echo(format_json(results))
+    else:
+        click.echo(f"\nAnalysis completed!")
+        click.echo(f"Findings: {results['findings_count']}")
 
-        # Display results
-        if output_format == 'json':
-            click.echo(format_json(results))
-        else:
-            click.echo(f"\n✅ Analysis completed!")
-            click.echo(f"📊 Findings: {results['findings_count']}")
+        stats = results.get('statistics', {})
+        click.echo(f"\nStatistics:")
+        click.echo(f"  Critical: {stats.get('critical_findings', 0)}")
+        click.echo(f"  High:     {stats.get('high_findings', 0)}")
+        click.echo(f"  Medium:   {stats.get('medium_findings', 0)}")
+        click.echo(f"  Low:      {stats.get('low_findings', 0)}")
+        click.echo(f"  Info:     {stats.get('info_findings', 0)}")
 
-            stats = results.get('statistics', {})
-            click.echo(f"\n📈 Statistics:")
-            click.echo(f"  Critical: {stats.get('critical_findings', 0)}")
-            click.echo(f"  High:     {stats.get('high_findings', 0)}")
-            click.echo(f"  Medium:   {stats.get('medium_findings', 0)}")
-            click.echo(f"  Low:      {stats.get('low_findings', 0)}")
-            click.echo(f"  Info:     {stats.get('info_findings', 0)}")
+        if results['findings_count'] > 0:
+            click.echo(f"\nUse 'openeasd findings --scan-id {scan_id}' to view details")
 
-            if results['findings_count'] > 0:
-                click.echo(f"\n💡 Use 'openeasd findings --scan-id {scan_id}' to view details")
-
-    except Exception as e:
-        click.echo(f"❌ Analysis failed: {e}", err=True)
-        raise
-    finally:
-        db.close()
+    return {'success': True, 'results': results}
 
 
+@cli_command
 def list_findings_command(
+    ctx: CLIContext,
     scan_id: Optional[str] = None,
     asset: Optional[str] = None,
     min_severity: Optional[str] = None,
+    status: Optional[str] = None,
     limit: int = 50,
     output_format: str = 'table'
-) -> None:
+) -> Dict[str, Any]:
     """
     List security findings with optional filters.
 
     Args:
+        ctx: CLI context with services
         scan_id: Filter by scan ID
         asset: Filter by affected asset
         min_severity: Minimum severity (critical/high/medium/low/info)
+        status: Filter by status
         limit: Maximum number of findings to display
         output_format: Output format (table/json)
     """
-    db = SQLModelManager()
-    db.initialize()
+    # Get findings using service from context
+    result = ctx.findings_service.list_findings(
+        scan_id=scan_id,
+        affected_asset=asset,
+        min_severity=min_severity,
+        status=status,
+        limit=limit
+    )
 
-    try:
-        # Initialize findings service
-        findings_service = FindingsService(db_manager=db)
+    findings = result.get('findings', [])
+    total_count = result.get('total_count', 0)
 
-        # Get findings
-        result = findings_service.list_findings(
-            scan_id=scan_id,
-            affected_asset=asset,
-            min_severity=min_severity,
-            limit=limit
-        )
+    if not findings:
+        click.echo("No findings found")
+        return result
 
-        findings = result.get('findings', [])
-        total_count = result.get('total_count', 0)
+    if output_format == 'json':
+        return result
 
-        if not findings:
-            click.echo("ℹ️  No findings found")
-            return
+    # Display summary
+    click.echo(f"\nSecurity Findings ({len(findings)}/{total_count})")
 
-        if output_format == 'json':
-            click.echo(format_json(result))
-        else:
-            # Display summary
-            click.echo(f"\n🔍 Security Findings ({len(findings)}/{total_count})")
+    if min_severity:
+        click.echo(f"   Filtered by: severity >= {min_severity}")
+    if scan_id:
+        click.echo(f"   Scan ID: {scan_id}")
+    if asset:
+        click.echo(f"   Asset: {asset}")
+    click.echo()
 
-            if min_severity:
-                click.echo(f"   Filtered by: severity >= {min_severity}")
-            if scan_id:
-                click.echo(f"   Scan ID: {scan_id}")
-            if asset:
-                click.echo(f"   Asset: {asset}")
-            click.echo()
+    # Prepare table data
+    headers = ['ID', 'Severity', 'Risk', 'Type', 'Asset', 'Title', 'Status']
+    rows = []
 
-            # Prepare table data
-            headers = ['ID', 'Severity', 'Risk', 'Type', 'Asset', 'Title', 'Status']
-            rows = []
+    for finding in findings:
+        finding_id = finding['id'][:8] + '...'
+        severity = finding['severity']
+        severity_icon = {
+            'critical': '[C]', 'high': '[H]', 'medium': '[M]',
+            'low': '[L]', 'info': '[I]'
+        }.get(severity, '[?]')
 
-            for finding in findings:
-                # Truncate ID for display
-                finding_id = finding['id'][:8] + '...'
+        title = finding['title']
+        if len(title) > 50:
+            title = title[:47] + '...'
 
-                # Severity with color emoji
-                severity = finding['severity']
-                severity_icon = {
-                    'critical': '🔴',
-                    'high': '🟠',
-                    'medium': '🟡',
-                    'low': '🟢',
-                    'info': '🔵'
-                }.get(severity, '⚪')
+        rows.append([
+            finding_id,
+            f"{severity_icon} {severity}",
+            finding['risk_score'],
+            finding['finding_type'],
+            finding['affected_asset'],
+            title,
+            finding['status']
+        ])
 
-                risk_score = finding['risk_score']
-                finding_type = finding['finding_type']
-                affected_asset = finding['affected_asset']
+    # Display table
+    from texttable import Texttable
+    table = Texttable()
+    table.set_cols_width([12, 20, 6, 20, 20, 30, 10])
+    table.add_rows([headers] + rows)
+    click.echo(table.draw())
 
-                # Truncate title
-                title = finding['title']
-                if len(title) > 50:
-                    title = title[:47] + '...'
+    if result.get('has_more', False):
+        click.echo(f"\n{total_count - len(findings)} more findings available. Use --limit to see more.")
 
-                status = finding['status']
-
-                rows.append([
-                    finding_id,
-                    f"{severity_icon} {severity}",
-                    risk_score,
-                    finding_type,
-                    affected_asset,
-                    title,
-                    status
-                ])
-
-            # Display table
-            from texttable import Texttable
-            table = Texttable()
-            table.set_cols_width([12, 20, 6, 20, 20, 30, 10])
-            table.add_rows([headers] + rows)
-            click.echo(table.draw())
-
-            if result.get('has_more', False):
-                click.echo(f"\n💡 {total_count - len(findings)} more findings available. Use --limit to see more.")
-
-    except Exception as e:
-        click.echo(f"❌ Failed to retrieve findings: {e}", err=True)
-        raise
-    finally:
-        db.close()
+    return result
 
 
-def show_finding_command(finding_id: str, output_format: str = 'table') -> None:
+@cli_command
+def show_finding_command(ctx: CLIContext, finding_id: str, output_format: str = 'table') -> Dict[str, Any]:
     """
     Show detailed information about a specific finding.
 
     Args:
+        ctx: CLI context with services
         finding_id: Finding UUID
         output_format: Output format (table/json)
     """
-    db = SQLModelManager()
-    db.initialize()
+    finding = ctx.findings_service.get_finding(finding_id)
 
-    try:
-        # Initialize findings service
-        findings_service = FindingsService(db_manager=db)
+    if output_format == 'json':
+        click.echo(format_json(finding))
+        return {'success': True, 'finding': finding}
 
-        try:
-            finding = findings_service.get_finding(finding_id)
-        except FindingNotFound:
-            click.echo(f"❌ Finding {finding_id} not found", err=True)
-            return
+    # Display finding details
+    severity_icon = {
+        'critical': '[C]',
+        'high': '[H]',
+        'medium': '[M]',
+        'low': '[L]',
+        'info': '[I]'
+    }.get(finding['severity'], '[?]')
 
-        if output_format == 'json':
-            click.echo(format_json(finding))
-        else:
-            # Display finding details
-            severity_icon = {
-                'critical': '🔴',
-                'high': '🟠',
-                'medium': '🟡',
-                'low': '🟢',
-                'info': '🔵'
-            }.get(finding['severity'], '⚪')
+    click.echo(f"\n{severity_icon} Security Finding Details")
+    click.echo("=" * 80)
 
-            click.echo(f"\n{severity_icon} Security Finding Details")
-            click.echo("=" * 80)
+    click.echo(f"\nBasic Information:")
+    click.echo(f"  ID:               {finding['id']}")
+    click.echo(f"  Scan ID:          {finding['scan_id']}")
+    click.echo(f"  Finding Type:     {finding['finding_type']}")
+    click.echo(f"  Affected Asset:   {finding['affected_asset']}")
 
-            click.echo(f"\n📋 Basic Information:")
-            click.echo(f"  ID:               {finding['id']}")
-            click.echo(f"  Scan ID:          {finding['scan_id']}")
-            click.echo(f"  Finding Type:     {finding['finding_type']}")
-            click.echo(f"  Affected Asset:   {finding['affected_asset']}")
+    if finding.get('port'):
+        click.echo(f"  Port:             {finding['port']}/{finding.get('protocol', 'tcp')}")
+    if finding.get('service_name'):
+        click.echo(f"  Service:          {finding['service_name']}")
 
-            if finding.get('port'):
-                click.echo(f"  Port:             {finding['port']}/{finding.get('protocol', 'tcp')}")
-            if finding.get('service_name'):
-                click.echo(f"  Service:          {finding['service_name']}")
+    click.echo(f"\nRisk Assessment:")
+    click.echo(f"  Severity:         {severity_icon} {finding['severity'].upper()}")
+    click.echo(f"  Risk Score:       {finding['risk_score']}/100")
+    click.echo(f"  Confidence:       {finding.get('confidence_level', 'medium')}")
 
-            click.echo(f"\n📊 Risk Assessment:")
-            click.echo(f"  Severity:         {severity_icon} {finding['severity'].upper()}")
-            click.echo(f"  Risk Score:       {finding['risk_score']}/100")
-            click.echo(f"  Confidence:       {finding.get('confidence_level', 'medium')}")
+    if finding.get('cwe_id'):
+        click.echo(f"  CWE ID:           {finding['cwe_id']}")
 
-            if finding.get('cwe_id'):
-                click.echo(f"  CWE ID:           {finding['cwe_id']}")
+    # Score breakdown
+    breakdown = finding.get('score_breakdown', {})
+    if breakdown:
+        click.echo(f"\n  Score Breakdown:")
+        click.echo(f"    Base Score:     {breakdown.get('base_score', 0)}/40")
+        click.echo(f"    Context Score:  {breakdown.get('context_score', 0)}/40")
+        click.echo(f"    Exposure Score: {breakdown.get('exposure_score', 0)}/20")
 
-            # Score breakdown
-            breakdown = finding.get('score_breakdown', {})
-            if breakdown:
-                click.echo(f"\n  Score Breakdown:")
-                click.echo(f"    Base Score:     {breakdown.get('base_score', 0)}/40")
-                click.echo(f"    Context Score:  {breakdown.get('context_score', 0)}/40")
-                click.echo(f"    Exposure Score: {breakdown.get('exposure_score', 0)}/20")
+    click.echo(f"\nDetails:")
+    click.echo(f"  Title:            {finding['title']}")
+    if finding.get('description'):
+        click.echo(f"  Description:      {finding['description']}")
 
-            click.echo(f"\n📝 Details:")
-            click.echo(f"  Title:            {finding['title']}")
-            if finding.get('description'):
-                click.echo(f"  Description:      {finding['description']}")
+    if finding.get('remediation'):
+        click.echo(f"\nRemediation:")
+        click.echo(f"  {finding['remediation']}")
 
-            if finding.get('remediation'):
-                click.echo(f"\n🔧 Remediation:")
-                click.echo(f"  {finding['remediation']}")
+    click.echo(f"\nStatus:")
+    click.echo(f"  Status:           {finding['status']}")
+    click.echo(f"  False Positive:   {finding.get('false_positive', False)}")
 
-            click.echo(f"\n📌 Status:")
-            click.echo(f"  Status:           {finding['status']}")
-            click.echo(f"  False Positive:   {finding.get('false_positive', False)}")
+    if finding.get('resolved_at'):
+        click.echo(f"  Resolved At:      {finding['resolved_at']}")
+    if finding.get('resolution_notes'):
+        click.echo(f"  Resolution Notes: {finding['resolution_notes']}")
 
-            if finding.get('resolved_at'):
-                click.echo(f"  Resolved At:      {finding['resolved_at']}")
-            if finding.get('resolution_notes'):
-                click.echo(f"  Resolution Notes: {finding['resolution_notes']}")
+    click.echo(f"\nTimestamps:")
+    click.echo(f"  First Seen:       {finding['first_seen']}")
+    click.echo(f"  Last Seen:        {finding['last_seen']}")
+    click.echo(f"  Last Updated:     {finding['updated_at']}")
+    click.echo(f"  Occurrences:      {finding.get('occurrence_count', 1)}")
 
-            click.echo(f"\n⏰ Timestamps:")
-            click.echo(f"  Discovered:       {finding['discovered_at']}")
-            click.echo(f"  Last Updated:     {finding['updated_at']}")
+    if finding.get('detector'):
+        click.echo(f"\nDetected by:     {finding['detector']}")
 
-            if finding.get('detector'):
-                click.echo(f"\n🔍 Detected by:     {finding['detector']}")
-
-    except Exception as e:
-        click.echo(f"❌ Failed to retrieve finding: {e}", err=True)
-        raise
-    finally:
-        db.close()
+    return {'success': True, 'finding': finding}
 
 
+@cli_command
 def findings_statistics_command(
+    ctx: CLIContext,
     scan_id: Optional[str] = None,
     asset: Optional[str] = None,
     output_format: str = 'table'
-) -> None:
+) -> Dict[str, Any]:
     """
     Show findings statistics.
 
     Args:
+        ctx: CLI context with services
         scan_id: Filter by scan ID
         asset: Filter by affected asset
         output_format: Output format (table/json)
     """
-    db = SQLModelManager()
-    db.initialize()
+    stats = ctx.findings_service.get_statistics(
+        scan_id=scan_id,
+        affected_asset=asset
+    )
 
-    try:
-        # Initialize findings service
-        findings_service = FindingsService(db_manager=db)
+    if output_format == 'json':
+        click.echo(format_json(stats))
+        return {'success': True, 'stats': stats}
 
-        stats = findings_service.get_statistics(
-            scan_id=scan_id,
-            affected_asset=asset
-        )
+    click.echo(f"\nFindings Statistics")
+    click.echo("=" * 50)
 
-        if output_format == 'json':
-            click.echo(format_json(stats))
-        else:
-            click.echo(f"\n📊 Findings Statistics")
-            click.echo("=" * 50)
+    if scan_id:
+        click.echo(f"Scan ID: {scan_id}")
+    if asset:
+        click.echo(f"Asset: {asset}")
 
-            if scan_id:
-                click.echo(f"Scan ID: {scan_id}")
-            if asset:
-                click.echo(f"Asset: {asset}")
+    click.echo(f"\nOverview:")
+    click.echo(f"  Total Findings:      {stats['total_findings']}")
+    click.echo(f"  Average Risk Score:  {stats['average_risk_score']}/100")
 
-            click.echo(f"\n📈 Overview:")
-            click.echo(f"  Total Findings:      {stats['total_findings']}")
-            click.echo(f"  Average Risk Score:  {stats['average_risk_score']}/100")
+    click.echo(f"\nBy Severity:")
+    click.echo(f"  [C] Critical:        {stats['critical_findings']}")
+    click.echo(f"  [H] High:            {stats['high_findings']}")
+    click.echo(f"  [M] Medium:          {stats['medium_findings']}")
+    click.echo(f"  [L] Low:             {stats['low_findings']}")
+    click.echo(f"  [I] Info:            {stats['info_findings']}")
 
-            click.echo(f"\n🎯 By Severity:")
-            click.echo(f"  🔴 Critical:         {stats['critical_findings']}")
-            click.echo(f"  🟠 High:             {stats['high_findings']}")
-            click.echo(f"  🟡 Medium:           {stats['medium_findings']}")
-            click.echo(f"  🟢 Low:              {stats['low_findings']}")
-            click.echo(f"  🔵 Info:             {stats['info_findings']}")
+    click.echo(f"\nBy Status:")
+    click.echo(f"  New:                 {stats.get('new_findings', 0)}")
+    click.echo(f"  Open:                {stats['open_findings']}")
+    click.echo(f"  Acknowledged:        {stats.get('acknowledged_findings', 0)}")
+    click.echo(f"  Resolved:            {stats['resolved_findings']}")
+    click.echo(f"  Reopened:            {stats.get('reopened_findings', 0)}")
+    click.echo(f"  False Positives:     {stats['false_positives']}")
 
-            click.echo(f"\n📌 By Status:")
-            click.echo(f"  Open:                {stats['open_findings']}")
-            click.echo(f"  Resolved:            {stats['resolved_findings']}")
-            click.echo(f"  False Positives:     {stats['false_positives']}")
+    click.echo(f"\nSummary:")
+    click.echo(f"  Active (needs attention): {stats.get('active_findings', 0)}")
+    click.echo(f"  Closed (resolved/FP):     {stats.get('closed_findings', 0)}")
 
-    except Exception as e:
-        click.echo(f"❌ Failed to retrieve statistics: {e}", err=True)
-        raise
-    finally:
-        db.close()
+    return {'success': True, 'stats': stats}
 
 
+@cli_command
 def update_finding_status_command(
+    ctx: CLIContext,
     finding_id: str,
     status: str,
     notes: Optional[str] = None
-) -> None:
+) -> Dict[str, Any]:
     """
     Update the status of a finding.
 
     Args:
+        ctx: CLI context with services
         finding_id: Finding UUID
-        status: New status (open/acknowledged/resolved/false_positive)
+        status: New status (new/open/acknowledged/resolved/reopened/false_positive)
         notes: Optional resolution notes
+
+    Status lifecycle:
+        - new: First time discovered (auto-set on creation)
+        - open: Known issue, needs attention
+        - acknowledged: Team is aware, working on it
+        - resolved: Fixed/closed
+        - reopened: Was resolved but detected again (auto-set)
+        - false_positive: Not a real issue
     """
-    db = SQLModelManager()
-    db.initialize()
+    result = ctx.findings_service.update_status(
+        finding_id=finding_id,
+        status=status,
+        resolution_notes=notes
+    )
 
-    try:
-        # Initialize findings service
-        findings_service = FindingsService(db_manager=db)
+    if result['success']:
+        click.echo(f"Finding {finding_id} status updated to '{status}'")
+        if notes:
+            click.echo(f"Resolution notes: {notes}")
+    else:
+        click.echo(f"Error: {result['message']}", err=True)
 
-        try:
-            result = findings_service.update_status(
-                finding_id=finding_id,
-                status=status,
-                resolution_notes=notes
-            )
-
-            if result['success']:
-                click.echo(f"✅ Finding {finding_id} status updated to '{status}'")
-                if notes:
-                    click.echo(f"📝 Resolution notes: {notes}")
-            else:
-                click.echo(f"❌ {result['message']}", err=True)
-
-        except InvalidFindingStatus as e:
-            click.echo(f"❌ Invalid status: {e}", err=True)
-        except FindingNotFound as e:
-            click.echo(f"❌ {e}", err=True)
-
-    except Exception as e:
-        click.echo(f"❌ Failed to update finding status: {e}", err=True)
-        raise
-    finally:
-        db.close()
+    return result

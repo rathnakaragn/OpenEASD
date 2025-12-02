@@ -64,13 +64,23 @@ class Finding(SQLModel, table=True, extend_existing=True):
     score_breakdown_json: Optional[str] = None  # JSON: {base, context, exposure, total}
 
     # Status tracking
-    status: str = Field(default='open', max_length=20)  # open/acknowledged/resolved/false_positive
+    # Status lifecycle: new → open → acknowledged → resolved → reopened (if detected again)
+    # - new: First time discovered (never seen before)
+    # - open: Known issue, needs attention
+    # - acknowledged: Team is aware, working on it
+    # - resolved: Fixed/closed
+    # - reopened: Was resolved but detected again
+    # - false_positive: Not a real issue
+    status: str = Field(default='new', max_length=20)
     false_positive: bool = Field(default=False)
     resolved_at: Optional[datetime] = None
+    reopened_at: Optional[datetime] = None  # When finding was reopened
     resolution_notes: Optional[str] = None
 
     # Timestamps
-    discovered_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+    first_seen: datetime = Field(default_factory=datetime.utcnow, index=True)  # When first discovered
+    last_seen: datetime = Field(default_factory=datetime.utcnow, index=True)   # When last detected
+    occurrence_count: int = Field(default=1)  # How many times seen across scans
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 
 

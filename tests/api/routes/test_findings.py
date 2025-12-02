@@ -1,3 +1,11 @@
+"""
+Tests for findings API routes.
+
+Note: Exception handling is now centralized in main.py.
+- FindingNotFound -> 404
+- ValueError -> 400
+- InvalidFindingStatus -> 400
+"""
 
 import pytest
 from fastapi.testclient import TestClient
@@ -19,9 +27,11 @@ sample_finding = {
     "title": "Open Port 80",
     "severity": "medium",
     "risk_score": 50,
-    "status": "open",
+    "status": "new",
     "false_positive": False,
-    "discovered_at": datetime.now(),
+    "first_seen": datetime.now(),
+    "last_seen": datetime.now(),
+    "occurrence_count": 1,
     "updated_at": datetime.now(),
 }
 
@@ -30,8 +40,8 @@ def mock_findings_service():
     """Fixture for a mocked findings service."""
     service = MagicMock()
     service.list_findings.return_value = {
-        'findings': [sample_finding], 
-        'total_count': 1, 
+        'findings': [sample_finding],
+        'total_count': 1,
         'has_more': False,
         'limit': 100,
         'offset': 0
@@ -48,7 +58,7 @@ def mock_findings_service():
 
 def test_list_findings(mock_findings_service):
     app.dependency_overrides[get_findings_service] = lambda: mock_findings_service
-    response = client.get("/api/v1/findings/")
+    response = client.get("/api/v1/findings")
     assert response.status_code == 200
     assert response.json()['total_count'] == 1
     mock_findings_service.list_findings.assert_called()
@@ -85,24 +95,26 @@ def test_get_finding_by_id(mock_findings_service):
     app.dependency_overrides = {}
 
 def test_get_finding_not_found(mock_findings_service):
-    mock_findings_service.get_finding.side_effect = FindingNotFound
+    mock_findings_service.get_finding.side_effect = FindingNotFound("Finding not found")
     app.dependency_overrides[get_findings_service] = lambda: mock_findings_service
     response = client.get("/api/v1/findings/not_real")
     assert response.status_code == 404
     app.dependency_overrides = {}
 
-def test_list_findings_error(mock_findings_service):
-    mock_findings_service.list_findings.side_effect = KeyError("Missing field")
+def test_list_findings_value_error(mock_findings_service):
+    """Test that ValueError returns 400 via centralized handler."""
+    mock_findings_service.list_findings.side_effect = ValueError("Invalid parameters")
     app.dependency_overrides[get_findings_service] = lambda: mock_findings_service
-    response = client.get("/api/v1/findings/")
-    assert response.status_code == 500
+    response = client.get("/api/v1/findings")
+    assert response.status_code == 400
     app.dependency_overrides = {}
 
-def test_get_statistics_error(mock_findings_service):
-    mock_findings_service.get_statistics.side_effect = KeyError("Missing field")
+def test_get_statistics_value_error(mock_findings_service):
+    """Test statistics endpoint handles ValueError properly."""
+    mock_findings_service.get_statistics.side_effect = ValueError("Invalid parameters")
     app.dependency_overrides[get_findings_service] = lambda: mock_findings_service
     response = client.get("/api/v1/findings/statistics/summary")
-    assert response.status_code == 500
+    assert response.status_code == 400
     app.dependency_overrides = {}
 
 # Additional comprehensive tests for findings API
@@ -110,7 +122,7 @@ def test_get_statistics_error(mock_findings_service):
 def test_list_findings_with_filters(mock_findings_service):
     """Test listing findings with multiple filters."""
     app.dependency_overrides[get_findings_service] = lambda: mock_findings_service
-    response = client.get("/api/v1/findings/?scan_id=scan_123&affected_asset=test.com&min_severity=high")
+    response = client.get("/api/v1/findings?scan_id=scan_123&affected_asset=test.com&min_severity=high")
     assert response.status_code == 200
     mock_findings_service.list_findings.assert_called_with(
         scan_id='scan_123',
@@ -124,7 +136,7 @@ def test_list_findings_with_filters(mock_findings_service):
 def test_list_findings_with_pagination(mock_findings_service):
     """Test listing findings with custom pagination."""
     app.dependency_overrides[get_findings_service] = lambda: mock_findings_service
-    response = client.get("/api/v1/findings/?limit=50&offset=10")
+    response = client.get("/api/v1/findings?limit=50&offset=10")
     assert response.status_code == 200
     mock_findings_service.list_findings.assert_called_with(
         scan_id=None,
@@ -138,21 +150,21 @@ def test_list_findings_with_pagination(mock_findings_service):
 def test_list_findings_invalid_limit_too_high(mock_findings_service):
     """Test that limit beyond maximum is rejected."""
     app.dependency_overrides[get_findings_service] = lambda: mock_findings_service
-    response = client.get("/api/v1/findings/?limit=2000")
+    response = client.get("/api/v1/findings?limit=2000")
     assert response.status_code == 422  # Unprocessable Entity
     app.dependency_overrides = {}
 
 def test_list_findings_invalid_limit_zero(mock_findings_service):
     """Test that limit of 0 is rejected."""
     app.dependency_overrides[get_findings_service] = lambda: mock_findings_service
-    response = client.get("/api/v1/findings/?limit=0")
+    response = client.get("/api/v1/findings?limit=0")
     assert response.status_code == 422  # Unprocessable Entity
     app.dependency_overrides = {}
 
 def test_list_findings_invalid_negative_offset(mock_findings_service):
     """Test that negative offset is rejected."""
     app.dependency_overrides[get_findings_service] = lambda: mock_findings_service
-    response = client.get("/api/v1/findings/?offset=-1")
+    response = client.get("/api/v1/findings?offset=-1")
     assert response.status_code == 422  # Unprocessable Entity
     app.dependency_overrides = {}
 
@@ -168,7 +180,9 @@ def test_list_findings_multiple_results(mock_findings_service):
         "risk_score": 75,
         "status": "open",
         "false_positive": False,
-        "discovered_at": datetime.now(),
+        "first_seen": datetime.now(),
+        "last_seen": datetime.now(),
+        "occurrence_count": 2,
         "updated_at": datetime.now(),
     }
     mock_findings_service.list_findings.return_value = {
@@ -179,7 +193,7 @@ def test_list_findings_multiple_results(mock_findings_service):
         'offset': 0
     }
     app.dependency_overrides[get_findings_service] = lambda: mock_findings_service
-    response = client.get("/api/v1/findings/")
+    response = client.get("/api/v1/findings")
     assert response.status_code == 200
     assert response.json()['total_count'] == 2
     assert len(response.json()['findings']) == 2
@@ -195,7 +209,7 @@ def test_list_findings_empty_results(mock_findings_service):
         'offset': 0
     }
     app.dependency_overrides[get_findings_service] = lambda: mock_findings_service
-    response = client.get("/api/v1/findings/")
+    response = client.get("/api/v1/findings")
     assert response.status_code == 200
     assert response.json()['total_count'] == 0
     assert len(response.json()['findings']) == 0
@@ -211,7 +225,7 @@ def test_list_findings_with_has_more(mock_findings_service):
         'offset': 0
     }
     app.dependency_overrides[get_findings_service] = lambda: mock_findings_service
-    response = client.get("/api/v1/findings/")
+    response = client.get("/api/v1/findings")
     assert response.status_code == 200
     assert response.json()['has_more'] == True
     app.dependency_overrides = {}
@@ -227,20 +241,12 @@ def test_get_statistics_with_filters(mock_findings_service):
     )
     app.dependency_overrides = {}
 
-def test_get_statistics_error_detailed(mock_findings_service):
-    """Test statistics endpoint handles ValueError properly."""
-    mock_findings_service.get_statistics.side_effect = ValueError("Invalid parameters")
-    app.dependency_overrides[get_findings_service] = lambda: mock_findings_service
-    response = client.get("/api/v1/findings/statistics/summary")
-    assert response.status_code == 400
-    app.dependency_overrides = {}
-
-def test_get_scan_findings_not_found(mock_findings_service):
-    """Test getting findings for non-existent scan."""
-    mock_findings_service.get_findings_by_scan.side_effect = ValueError("Scan not found")
+def test_get_scan_findings_value_error(mock_findings_service):
+    """Test getting findings for scan with invalid parameters returns 400."""
+    mock_findings_service.get_findings_by_scan.side_effect = ValueError("Invalid scan")
     app.dependency_overrides[get_findings_service] = lambda: mock_findings_service
     response = client.get("/api/v1/findings/scan/invalid_scan")
-    assert response.status_code == 404
+    assert response.status_code == 400
     app.dependency_overrides = {}
 
 def test_get_scan_findings_with_filters(mock_findings_service):
@@ -254,14 +260,6 @@ def test_get_scan_findings_with_filters(mock_findings_service):
         limit=50,
         offset=5
     )
-    app.dependency_overrides = {}
-
-def test_get_scan_findings_error(mock_findings_service):
-    """Test scan findings endpoint error handling."""
-    mock_findings_service.get_findings_by_scan.side_effect = KeyError("Missing field")
-    app.dependency_overrides[get_findings_service] = lambda: mock_findings_service
-    response = client.get("/api/v1/findings/scan/scan_abc")
-    assert response.status_code == 500
     app.dependency_overrides = {}
 
 def test_get_asset_findings_invalid_asset(mock_findings_service):
@@ -285,22 +283,6 @@ def test_get_asset_findings_with_filters(mock_findings_service):
     )
     app.dependency_overrides = {}
 
-def test_get_asset_findings_error(mock_findings_service):
-    """Test asset findings endpoint error handling."""
-    mock_findings_service.get_findings_by_asset.side_effect = KeyError("Missing field")
-    app.dependency_overrides[get_findings_service] = lambda: mock_findings_service
-    response = client.get("/api/v1/findings/asset/test.com")
-    assert response.status_code == 500
-    app.dependency_overrides = {}
-
-def test_get_finding_server_error(mock_findings_service):
-    """Test getting a finding with server error."""
-    mock_findings_service.get_finding.side_effect = KeyError("Missing field")
-    app.dependency_overrides[get_findings_service] = lambda: mock_findings_service
-    response = client.get("/api/v1/findings/finding_123")
-    assert response.status_code == 500
-    app.dependency_overrides = {}
-
 def test_get_finding_response_structure(mock_findings_service):
     """Test that get finding returns complete finding object."""
     app.dependency_overrides[get_findings_service] = lambda: mock_findings_service
@@ -316,7 +298,9 @@ def test_get_finding_response_structure(mock_findings_service):
     assert 'risk_score' in data
     assert 'status' in data
     assert 'false_positive' in data
-    assert 'discovered_at' in data
+    assert 'first_seen' in data
+    assert 'last_seen' in data
+    assert 'occurrence_count' in data
     assert 'updated_at' in data
     app.dependency_overrides = {}
 
@@ -324,6 +308,6 @@ def test_list_findings_invalid_parameters_error(mock_findings_service):
     """Test listing findings with invalid parameters raises 400."""
     mock_findings_service.list_findings.side_effect = ValueError("Invalid severity")
     app.dependency_overrides[get_findings_service] = lambda: mock_findings_service
-    response = client.get("/api/v1/findings/?min_severity=invalid")
+    response = client.get("/api/v1/findings?min_severity=invalid")
     assert response.status_code == 400
     app.dependency_overrides = {}

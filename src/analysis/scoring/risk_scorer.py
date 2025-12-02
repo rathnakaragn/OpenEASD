@@ -6,16 +6,26 @@ Implements deterministic risk scoring based on:
 - Context Score (0-40): Business context and asset criticality
 - Exposure Score (0-20): Public accessibility and active status
 
-Total score: 0-100, mapped to severity levels:
+Total score: 0-100, mapped to severity levels (using RiskThresholds):
 - 80-100: Critical
 - 60-79:  High
 - 40-59:  Medium
 - 20-39:  Low
 - 0-19:   Info
+
+Refactored to use centralized constants from src/core/constants.py
+and src/analysis/constants.py
 """
 
 from typing import Dict, Any
 from src.analysis.config import get_analysis_config
+from src.core.constants import (
+    Severity,
+    RiskThresholds,
+    FindingStatus,
+    get_severity_from_score
+)
+from src.analysis.constants import KEYWORD_RISK_SCORES
 
 
 class RiskScorer:
@@ -102,6 +112,8 @@ class RiskScorer:
         Base score represents the inherent risk of the finding type,
         independent of context or exposure.
 
+        Uses centralized KEYWORD_RISK_SCORES from constants for consistency.
+
         Args:
             finding: Finding dictionary
 
@@ -114,18 +126,16 @@ class RiskScorer:
         if finding_type in self.base_risk_map:
             return self.base_risk_map[finding_type]
 
-        # Dynamic scoring based on characteristics
-        score = 20  # Default moderate risk
+        # Dynamic scoring based on keywords using centralized scores
+        # Default moderate risk (20 points base score, not threshold)
+        score = 20
 
-        # Adjust based on keywords in finding type
-        if any(keyword in finding_type.lower() for keyword in ['database', 'credential', 'rce', 'injection']):
-            score = 38  # Very high
-        elif any(keyword in finding_type.lower() for keyword in ['exposed', 'vulnerable', 'weak']):
-            score = 30  # High
-        elif any(keyword in finding_type.lower() for keyword in ['missing', 'misconfiguration']):
-            score = 25  # Medium-high
-        elif any(keyword in finding_type.lower() for keyword in ['discovered', 'identified']):
-            score = 10  # Low
+        finding_lower = finding_type.lower()
+
+        # Check for keywords in finding type and use highest matching score
+        for keyword, keyword_score in KEYWORD_RISK_SCORES.items():
+            if keyword in finding_lower:
+                score = max(score, keyword_score)
 
         return min(40, score)
 
@@ -196,8 +206,16 @@ class RiskScorer:
             score += 15
 
         # Active/responsive service (+5 points)
+        # Check both standard status enum values and common status strings
         status = finding.get('status', '').lower()
-        if status in ['active', 'up', 'responsive', 'online']:
+        active_statuses = [
+            FindingStatus.OPEN.value,
+            'active',
+            'up',
+            'responsive',
+            'online'
+        ]
+        if status in active_statuses:
             score += 5
 
         # Has open port or responding service
@@ -250,22 +268,26 @@ class RiskScorer:
         """
         Map numeric risk score to severity label.
 
+        Uses configurable thresholds from config (with RiskThresholds as defaults).
+        Returns Severity enum values for consistency.
+
         Args:
             score: Risk score (0-100)
 
         Returns:
             Severity label: critical/high/medium/low/info
         """
-        if score >= self.thresholds.get('critical', 80):
-            return 'critical'
-        elif score >= self.thresholds.get('high', 60):
-            return 'high'
-        elif score >= self.thresholds.get('medium', 40):
-            return 'medium'
-        elif score >= self.thresholds.get('low', 20):
-            return 'low'
+        # Use configurable thresholds with RiskThresholds as fallback defaults
+        if score >= self.thresholds.get('critical', RiskThresholds.CRITICAL_MIN):
+            return Severity.CRITICAL.value
+        elif score >= self.thresholds.get('high', RiskThresholds.HIGH_MIN):
+            return Severity.HIGH.value
+        elif score >= self.thresholds.get('medium', RiskThresholds.MEDIUM_MIN):
+            return Severity.MEDIUM.value
+        elif score >= self.thresholds.get('low', RiskThresholds.LOW_MIN):
+            return Severity.LOW.value
         else:
-            return 'info'
+            return Severity.INFO.value
 
     def score_finding(self, finding: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -281,10 +303,11 @@ class RiskScorer:
             - score_breakdown: Component scores for transparency
         """
         risk_score = self.calculate_risk_score(finding)
-        
+
         # Override score if severity_hint is critical to ensure it meets the threshold
-        if finding.get('severity_hint') == 'critical' and risk_score < self.thresholds.get('critical', 80):
-            risk_score = self.thresholds.get('critical', 80)
+        if (finding.get('severity_hint') == Severity.CRITICAL.value and
+            risk_score < self.thresholds.get('critical', RiskThresholds.CRITICAL_MIN)):
+            risk_score = self.thresholds.get('critical', RiskThresholds.CRITICAL_MIN)
 
         severity = self.map_score_to_severity(risk_score)
 

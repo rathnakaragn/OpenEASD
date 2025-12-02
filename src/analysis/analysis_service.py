@@ -6,7 +6,7 @@ This service coordinates all detectors and integrates with the database layer.
 """
 
 import logging
-import time
+import uuid
 from typing import Dict, List, Any, Optional
 from datetime import datetime
 
@@ -41,7 +41,6 @@ class AnalysisService:
         """
         self.config = get_analysis_config()
         self.db_manager = db_manager
-        self.publisher = None  # Messaging layer removed
 
         # Initialize risk scorer
         self.risk_scorer = RiskScorer()
@@ -74,7 +73,7 @@ class AnalysisService:
 
         return detectors
 
-    async def analyze_scan_results(
+    def analyze_scan_results(
         self,
         scan_id: str,
         scan_data: Dict[str, Any]
@@ -107,15 +106,6 @@ class AnalysisService:
             }
         """
         logger.info(f"Starting analysis for scan_id: {scan_id}")
-
-        # Publish analysis started event
-        if self.publisher:
-            self.publisher.publish_analysis_started(
-                scan_id=scan_id,
-                detector_count=len(self.detectors)
-            )
-
-        analysis_start_time = time.time()
 
         try:
             # Step 1: Collect findings from all detectors
@@ -179,44 +169,13 @@ class AnalysisService:
             # Step 5: Store findings in database (if db_manager available)
             if self.db_manager:
                 try:
-                    await self._store_findings(scan_id, deduplicated_findings)
+                    self._store_findings(scan_id, deduplicated_findings)
                     logger.info(f"Stored {len(deduplicated_findings)} findings in database")
                 except Exception as e:
                     logger.error(f"Error storing findings: {e}", exc_info=True)
 
-            # Step 6: Publish finding discovered events
-            if self.publisher:
-                for finding in deduplicated_findings:
-                    # Generate finding ID if not present
-                    finding_id = finding.get('finding_id', f"{scan_id}_{finding.get('finding_type', 'unknown')}_{finding.get('affected_asset', 'unknown')}")
-
-                    self.publisher.publish_finding_discovered(
-                        scan_id=scan_id,
-                        finding_id=finding_id,
-                        finding_type=finding.get('finding_type', 'unknown'),
-                        severity=finding.get('severity', 'info'),
-                        affected_asset=finding.get('affected_asset', 'unknown'),
-                        risk_score=finding.get('risk_score', 0),
-                        port=finding.get('port'),
-                        protocol=finding.get('protocol'),
-                        title=finding.get('title')
-                    )
-
-            # Step 7: Generate statistics
+            # Step 6: Generate statistics
             statistics = self._generate_statistics(deduplicated_findings, detector_stats)
-
-            # Calculate analysis duration
-            analysis_duration = time.time() - analysis_start_time
-
-            # Publish analysis completed event
-            if self.publisher:
-                detector_names = [d.get_name() for d in self.detectors if d.is_enabled()]
-                self.publisher.publish_analysis_completed(
-                    scan_id=scan_id,
-                    findings_count=len(deduplicated_findings),
-                    duration_seconds=analysis_duration,
-                    detectors_run=detector_names
-                )
 
             return {
                 'scan_id': scan_id,
@@ -228,14 +187,6 @@ class AnalysisService:
 
         except Exception as e:
             logger.error(f"Analysis failed for scan_id {scan_id}: {e}", exc_info=True)
-
-            # Publish analysis failed event
-            if self.publisher:
-                self.publisher.publish_analysis_failed(
-                    scan_id=scan_id,
-                    error=str(e)
-                )
-
             raise
 
     def _deduplicate_findings(self, findings: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -288,7 +239,7 @@ class AnalysisService:
 
         return deduplicated
 
-    async def _store_findings(self, scan_id: str, findings: List[Dict[str, Any]]) -> None:
+    def _store_findings(self, scan_id: str, findings: List[Dict[str, Any]]) -> None:
         """
         Store findings in database.
 
@@ -304,7 +255,6 @@ class AnalysisService:
             # Ensure each finding has an ID
             for finding in findings:
                 if 'id' not in finding:
-                    import uuid
                     finding['id'] = str(uuid.uuid4())
 
             # Store findings using SQLModelManager
@@ -374,7 +324,7 @@ class AnalysisService:
             'info_findings': severity_counts.get('info', 0)
         }
 
-    async def get_scan_findings(
+    def get_scan_findings(
         self,
         scan_id: str,
         min_severity: Optional[str] = None
@@ -404,7 +354,7 @@ class AnalysisService:
             logger.error(f"Failed to retrieve findings for scan {scan_id}: {e}", exc_info=True)
             return []
 
-    async def get_findings_by_asset(
+    def get_findings_by_asset(
         self,
         asset: str,
         limit: int = 100

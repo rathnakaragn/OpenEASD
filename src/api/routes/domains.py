@@ -3,19 +3,19 @@ Domain management endpoints (read-only).
 
 This module provides read-only API endpoints for domain information.
 Write operations are handled through the CLI.
+
+Exception handling is centralized in main.py via @app.exception_handler.
 """
 
-import logging
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Query
 from src.api.schemas.domain import (
     DomainResponse,
     DomainListResponse,
+    DomainDetailResponse,
 )
 from src.services.domain_service import DomainService
-from src.services.exceptions import DomainNotFound, InvalidDomainFormat
 from src.api.dependencies import get_domain_service
 
-logger = logging.getLogger(__name__)
 
 router = APIRouter(redirect_slashes=False)
 
@@ -32,23 +32,19 @@ async def list_domains(
     Returns a paginated list of domains with optional filters
     for primary status.
     """
-    try:
-        result = service.list_domains(
-            limit=limit,
-            primary_only=primary_only
-        )
+    result = service.list_domains(
+        limit=limit,
+        primary_only=primary_only
+    )
 
-        return DomainListResponse(
-            domains=result['domains'],
-            total_count=result['total_count'],
-            has_more=result['has_more']
-        )
-    except (ValueError, KeyError) as e:
-        logger.error(f"Invalid response from domain service: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Failed to list domains")
+    return DomainListResponse(
+        domains=result['domains'],
+        total_count=result['total_count'],
+        has_more=result['has_more']
+    )
 
 
-@router.get("/{domain}", response_model=DomainResponse)
+@router.get("/{domain}", response_model=DomainDetailResponse)
 async def get_domain(
     domain: str,
     service: DomainService = Depends(get_domain_service)
@@ -58,13 +54,5 @@ async def get_domain(
 
     Returns domain metadata, scan history, and recent subdomains.
     """
-    try:
-        domain_obj = service.get_domain(domain)
-        return domain_obj
-    except InvalidDomainFormat:
-        raise HTTPException(status_code=400, detail="Invalid domain format")
-    except DomainNotFound:
-        raise HTTPException(status_code=404, detail=f"Domain '{domain}' not found")
-    except (ValueError, KeyError) as e:
-        logger.error(f"Error retrieving domain {domain}: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Failed to retrieve domain details")
+    domain_obj = service.get_domain(domain)
+    return domain_obj

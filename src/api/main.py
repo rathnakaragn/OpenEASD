@@ -5,16 +5,27 @@ Main application entry point for the read-only REST API.
 Write operations are handled through the CLI.
 """
 
+import logging
+import os
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+
+from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+
 from src.api.routes import domains, scans, health, findings
 from src.api.settings import settings
+from src.services.exceptions import (
+    DomainNotFound,
+    InvalidDomainFormat,
+    ScanNotFound,
+)
+from src.services.findings_service import FindingNotFound, InvalidFindingStatus
 from src.utils.config import Config
 from src.utils.logging import setup_logging
-import os
+
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
@@ -56,6 +67,66 @@ app.add_middleware(
     allow_methods=settings.cors_allow_methods,
     allow_headers=settings.cors_allow_headers,
 )
+
+
+# =============================================================================
+# Centralized Exception Handlers
+# =============================================================================
+
+@app.exception_handler(FindingNotFound)
+async def finding_not_found_handler(request: Request, exc: FindingNotFound):
+    """Handle FindingNotFound exceptions with 404 response."""
+    return JSONResponse(
+        status_code=status.HTTP_404_NOT_FOUND,
+        content={"detail": str(exc)},
+    )
+
+
+@app.exception_handler(InvalidFindingStatus)
+async def invalid_finding_status_handler(request: Request, exc: InvalidFindingStatus):
+    """Handle InvalidFindingStatus exceptions with 400 response."""
+    return JSONResponse(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        content={"detail": str(exc)},
+    )
+
+
+@app.exception_handler(DomainNotFound)
+async def domain_not_found_handler(request: Request, exc: DomainNotFound):
+    """Handle DomainNotFound exceptions with 404 response."""
+    return JSONResponse(
+        status_code=status.HTTP_404_NOT_FOUND,
+        content={"detail": str(exc)},
+    )
+
+
+@app.exception_handler(InvalidDomainFormat)
+async def invalid_domain_format_handler(request: Request, exc: InvalidDomainFormat):
+    """Handle InvalidDomainFormat exceptions with 400 response."""
+    return JSONResponse(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        content={"detail": str(exc)},
+    )
+
+
+@app.exception_handler(ScanNotFound)
+async def scan_not_found_handler(request: Request, exc: ScanNotFound):
+    """Handle ScanNotFound exceptions with 404 response."""
+    return JSONResponse(
+        status_code=status.HTTP_404_NOT_FOUND,
+        content={"detail": str(exc)},
+    )
+
+
+@app.exception_handler(ValueError)
+async def value_error_handler(request: Request, exc: ValueError):
+    """Handle ValueError exceptions with 400 response."""
+    logger.warning(f"ValueError in request {request.url}: {exc}")
+    return JSONResponse(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        content={"detail": str(exc)},
+    )
+
 
 # API Routers
 app.include_router(health.router, prefix="/api/v1", tags=["health"])

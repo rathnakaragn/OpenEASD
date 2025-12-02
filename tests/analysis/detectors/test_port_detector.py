@@ -7,9 +7,25 @@ from src.analysis.detectors.port_detector import PortVulnerabilityDetector
 def mock_analysis_config():
     """Fixture for a mocked analysis configuration."""
     config = MagicMock()
-    config.get_high_risk_ports.return_value = [21, 3389]
-    config.get_medium_risk_ports.return_value = [8080]
-    config.get.return_value = {} # Default for port_info
+    config.get_high_risk_ports.return_value = [21, 23, 3389, 5900, 5432, 3306, 27017, 6379]
+    config.get_medium_risk_ports.return_value = [8080, 8443, 9090, 9200]
+    config.get_database_ports.return_value = [3306, 5432, 27017, 6379, 1433, 5984, 9042, 7000, 7001]
+    config.get_admin_ports.return_value = [2082, 2083, 2086, 2087, 8443, 10000]
+    config.get_remote_access_ports.return_value = [21, 22, 23, 3389, 5900, 5901]
+    config.get_unencrypted_protocols.return_value = {
+        21: {'name': 'FTP', 'encrypted_port': 990, 'encrypted_name': 'FTPS', 'severity': 'high'},
+        23: {'name': 'Telnet', 'encrypted_port': 22, 'encrypted_name': 'SSH', 'severity': 'critical'},
+        25: {'name': 'SMTP', 'encrypted_port': 465, 'encrypted_name': 'SMTPS', 'severity': 'high'},
+        80: {'name': 'HTTP', 'encrypted_port': 443, 'encrypted_name': 'HTTPS', 'severity': 'medium'},
+        110: {'name': 'POP3', 'encrypted_port': 995, 'encrypted_name': 'POP3S', 'severity': 'high'},
+        143: {'name': 'IMAP', 'encrypted_port': 993, 'encrypted_name': 'IMAPS', 'severity': 'high'},
+        389: {'name': 'LDAP', 'encrypted_port': 636, 'encrypted_name': 'LDAPS', 'severity': 'high'},
+        5432: {'name': 'PostgreSQL', 'encrypted_port': None, 'encrypted_name': 'PostgreSQL SSL', 'severity': 'critical'},
+        3306: {'name': 'MySQL', 'encrypted_port': None, 'encrypted_name': 'MySQL SSL', 'severity': 'critical'},
+        27017: {'name': 'MongoDB', 'encrypted_port': None, 'encrypted_name': 'MongoDB TLS', 'severity': 'critical'},
+        6379: {'name': 'Redis', 'encrypted_port': None, 'encrypted_name': 'Redis TLS', 'severity': 'critical'},
+    }
+    config.get.return_value = {}  # Default for port_info
     return config
 
 @patch('src.analysis.detectors.port_detector.get_analysis_config')
@@ -47,8 +63,8 @@ def test_analyze_with_various_ports(mock_analysis_config):
 
         findings = detector.analyze({'naabu_results': naabu_results})
 
-        # Count: 3306(2) + 21(3) + 8080(1) + 10000(1) + 23(2) + 443(0) = 9
-        assert len(findings) == 9
+        # Count: 3306(high+db+unenc=3) + 21(high+remote+unenc=3) + 8080(medium=1) + 10000(admin=1) + 23(high+remote+unenc=3) + 443(0) = 11
+        assert len(findings) == 11
 
         finding_types = [f['finding_type'] for f in findings]
         assert 'database_port_exposed' in finding_types
@@ -59,9 +75,9 @@ def test_analyze_with_various_ports(mock_analysis_config):
         assert 'unencrypted_protocol' in finding_types
         assert finding_types.count('unencrypted_protocol') == 3  # MySQL, FTP, Telnet
 
-        # Check telnet findings (both remote_access and unencrypted should be critical)
+        # Check telnet findings (high_risk, remote_access, and unencrypted)
         telnet_findings = [f for f in findings if f['port'] == 23]
-        assert len(telnet_findings) == 2
+        assert len(telnet_findings) == 3  # high_risk + remote_access + unencrypted
         telnet_remote = next(f for f in telnet_findings if f['finding_type'] == 'remote_access_exposed')
         assert telnet_remote['severity_hint'] == 'critical'
         telnet_unenc = next(f for f in telnet_findings if f['finding_type'] == 'unencrypted_protocol')

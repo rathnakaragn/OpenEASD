@@ -15,7 +15,7 @@ from src.tools.runners import run_subfinder, run_naabu, run_dnsx, run_httpx
 class TestSubfinderRunner:
     """Test Subfinder runner function."""
 
-    @patch('src.tools.runners.subprocess.run')
+    @patch('src.tools.subfinder.subprocess.run')
     def test_run_subfinder_success(self, mock_run):
         """Test successful subfinder execution."""
         mock_output = '{"host":"test.example.com"}\n{"host":"api.example.com"}\n'
@@ -30,7 +30,7 @@ class TestSubfinderRunner:
         assert "test.example.com" in result
         assert "api.example.com" in result
 
-    @patch('src.tools.runners.subprocess.run')
+    @patch('src.tools.subfinder.subprocess.run')
     def test_run_subfinder_empty_result(self, mock_run):
         """Test subfinder with no subdomains found."""
         mock_run.return_value = MagicMock(
@@ -42,7 +42,7 @@ class TestSubfinderRunner:
 
         assert result == []
 
-    @patch('src.tools.runners.subprocess.run')
+    @patch('src.tools.subfinder.subprocess.run')
     def test_run_subfinder_timeout(self, mock_run):
         """Test subfinder timeout handling."""
         mock_run.side_effect = subprocess.TimeoutExpired('subfinder', 300)
@@ -51,7 +51,7 @@ class TestSubfinderRunner:
             run_subfinder("example.com", timeout=300)
         assert "timed out" in str(exc_info.value)
 
-    @patch('src.tools.runners.subprocess.run')
+    @patch('src.tools.subfinder.subprocess.run')
     def test_run_subfinder_not_found(self, mock_run):
         """Test subfinder when executable not found."""
         mock_run.side_effect = FileNotFoundError("subfinder not found")
@@ -60,7 +60,7 @@ class TestSubfinderRunner:
             run_subfinder("example.com")
         assert "not found" in str(exc_info.value).lower()
 
-    @patch('src.tools.runners.subprocess.run')
+    @patch('src.tools.subfinder.subprocess.run')
     def test_run_subfinder_large_output(self, mock_run):
         """Test subfinder with large number of subdomains."""
         subdomains = "\n".join([f'{{"host":"sub{i}.example.com"}}' for i in range(1000)])
@@ -76,7 +76,7 @@ class TestSubfinderRunner:
 class TestNaabuRunner:
     """Test Naabu runner function."""
 
-    @patch('src.tools.runners.subprocess.run')
+    @patch('src.tools.naabu.subprocess.run')
     def test_run_naabu_success(self, mock_run):
         """Test successful naabu execution."""
         mock_output = json.dumps({"host": "example.com", "port": 80}) + "\n"
@@ -91,7 +91,7 @@ class TestNaabuRunner:
         assert result is not None
         assert len(result) >= 1
 
-    @patch('src.tools.runners.subprocess.run')
+    @patch('src.tools.naabu.subprocess.run')
     def test_run_naabu_no_ports(self, mock_run):
         """Test naabu when no ports found."""
         mock_run.return_value = MagicMock(
@@ -102,7 +102,7 @@ class TestNaabuRunner:
         result = run_naabu(["internal.example.com"])
         assert result == []
 
-    @patch('src.tools.runners.subprocess.run')
+    @patch('src.tools.naabu.subprocess.run')
     def test_run_naabu_timeout(self, mock_run):
         """Test naabu timeout handling."""
         mock_run.side_effect = subprocess.TimeoutExpired('naabu', 600)
@@ -111,7 +111,7 @@ class TestNaabuRunner:
             run_naabu(["example.com"], timeout=600)
         assert "timed out" in str(exc_info.value)
 
-    @patch('src.tools.runners.subprocess.run')
+    @patch('src.tools.naabu.subprocess.run')
     def test_run_naabu_multiple_targets(self, mock_run):
         """Test naabu with multiple targets."""
         mock_output = json.dumps({"host": "example.com", "port": 80}) + "\n"
@@ -124,7 +124,7 @@ class TestNaabuRunner:
         result = run_naabu(["example.com", "test.com"])
         assert len(result) >= 1
 
-    @patch('src.tools.runners.subprocess.run')
+    @patch('src.tools.naabu.subprocess.run')
     def test_run_naabu_with_top_ports(self, mock_run):
         """Test naabu with top ports option."""
         mock_run.return_value = MagicMock(
@@ -139,7 +139,7 @@ class TestNaabuRunner:
 class TestDnsxRunner:
     """Test Dnsx runner function."""
 
-    @patch('src.tools.runners.subprocess.run')
+    @patch('src.tools.dnsx.subprocess.run')
     def test_run_dnsx_success(self, mock_run):
         """Test successful dnsx execution."""
         mock_output = json.dumps({"host": "example.com", "a": ["192.0.2.1"]})
@@ -152,7 +152,7 @@ class TestDnsxRunner:
 
         assert result is not None
 
-    @patch('src.tools.runners.subprocess.run')
+    @patch('src.tools.dnsx.subprocess.run')
     def test_run_dnsx_no_resolution(self, mock_run):
         """Test dnsx when DNS resolution fails."""
         mock_run.return_value = MagicMock(
@@ -163,7 +163,7 @@ class TestDnsxRunner:
         result = run_dnsx(["nonexistent.invalid"])
         assert result == []
 
-    @patch('src.tools.runners.subprocess.run')
+    @patch('src.tools.dnsx.subprocess.run')
     def test_run_dnsx_timeout(self, mock_run):
         """Test dnsx timeout handling."""
         mock_run.side_effect = subprocess.TimeoutExpired('dnsx', 60)
@@ -176,7 +176,7 @@ class TestDnsxRunner:
 class TestHttpxRunner:
     """Test Httpx runner function."""
 
-    @patch('src.tools.runners.subprocess.run')
+    @patch('src.tools.httpx.subprocess.run')
     def test_run_httpx_success(self, mock_run):
         """Test successful httpx execution."""
         mock_output = json.dumps({"url": "http://example.com", "status": 200})
@@ -189,7 +189,7 @@ class TestHttpxRunner:
 
         assert result is not None
 
-    @patch('src.tools.runners.subprocess.run')
+    @patch('src.tools.httpx.subprocess.run')
     def test_run_httpx_no_response(self, mock_run):
         """Test httpx when no HTTP response."""
         mock_run.return_value = MagicMock(
@@ -200,7 +200,7 @@ class TestHttpxRunner:
         result = run_httpx(["unreachable.internal"])
         assert result == []
 
-    @patch('src.tools.runners.subprocess.run')
+    @patch('src.tools.httpx.subprocess.run')
     def test_run_httpx_timeout(self, mock_run):
         """Test httpx timeout handling."""
         mock_run.side_effect = subprocess.TimeoutExpired('httpx', 300)
@@ -213,7 +213,7 @@ class TestHttpxRunner:
 class TestRunnerEdgeCases:
     """Test edge cases across all runners."""
 
-    @patch('src.tools.runners.subprocess.run')
+    @patch('src.tools.naabu.subprocess.run')
     def test_runner_with_invalid_json(self, mock_run):
         """Test runners with invalid JSON in output."""
         mock_run.return_value = MagicMock(
@@ -225,7 +225,7 @@ class TestRunnerEdgeCases:
         result = run_naabu(["example.com"])
         assert result == [] or result is not None
 
-    @patch('src.tools.runners.subprocess.run')
+    @patch('src.tools.naabu.subprocess.run')
     def test_runner_with_empty_targets(self, mock_run):
         """Test runners with empty target list."""
         mock_run.return_value = MagicMock(
@@ -236,7 +236,7 @@ class TestRunnerEdgeCases:
         result = run_naabu([])
         # Should handle empty list
 
-    @patch('src.tools.runners.subprocess.run')
+    @patch('src.tools.subfinder.subprocess.run')
     def test_runner_with_special_characters(self, mock_run):
         """Test runners with special characters in domain."""
         mock_run.return_value = MagicMock(

@@ -8,7 +8,7 @@ creation, updates, listing, and deletion.
 from typing import List, Dict, Any, Optional
 from src.data.database.sqlmodel_manager import SQLModelManager
 from src.utils.validation import validate_domain
-from src.services.exceptions import DomainNotFound, DomainAlreadyExists, InvalidDomainFormat
+from src.services.exceptions import DomainNotFound, DomainAlreadyExists, InvalidDomainFormat, InvalidUpdateOperation
 from src.data.models.domain import Domain
 
 
@@ -89,7 +89,7 @@ class DomainService:
             'has_more': result['has_more']
         }
 
-    def get_domain(self, domain: str) -> Domain:
+    def get_domain(self, domain: str) -> Dict[str, Any]:
         """
         Get detailed information about a specific domain.
 
@@ -97,7 +97,7 @@ class DomainService:
             domain: Domain name to retrieve
 
         Returns:
-            The domain object.
+            Dictionary containing domain details, subdomain count, and recent subdomains.
 
         Raises:
             DomainNotFound: If domain doesn't exist
@@ -110,12 +110,34 @@ class DomainService:
         if not self.db.domain_exists(domain):
             raise DomainNotFound(f'Domain {domain} not found')
 
+        # Get the core domain object
         result = self.db.get_domains(domain_name=domain, limit=1)
 
         if not result['domains']:
             raise DomainNotFound(f'Could not retrieve details for {domain}')
 
-        return result['domains'][0]
+        domain_obj = result['domains'][0]
+
+        # Get discovered subdomains from subfinder_results (actual scan data)
+        # Return all unique subdomains (up to 1000)
+        discovered_subdomains = self.db.get_discovered_subdomains(domain=domain, limit=1000)
+
+        # Construct the response dictionary
+        return {
+            "domain": domain_obj.domain,
+            "is_primary": domain_obj.is_primary,
+            "scan_count": domain_obj.scan_count,
+            "contact_email": domain_obj.contact_email,
+            "scan_frequency": domain_obj.scan_frequency,
+            "created_at": domain_obj.created_at,
+            "last_scanned_at": domain_obj.last_scanned_at,
+            "active_scan": domain_obj.active_scan_enabled,  # Schema expects active_scan
+            "subdomain_count": discovered_subdomains['total_count'],
+            "recent_subdomains": [
+                {"subdomain": s['subdomain'], "discovered_at": s['first_seen']}
+                for s in discovered_subdomains['subdomains']
+            ]
+        }
 
     def update_domain(
         self,
@@ -149,7 +171,7 @@ class DomainService:
             update_fields['is_primary'] = is_primary
 
         if not update_fields:
-            raise ValueError('No fields provided to update. Use is_primary')
+            raise InvalidUpdateOperation('No fields provided to update domain. Use is_primary parameter.')
 
         return self.db.update_domain(domain, **update_fields)
 

@@ -34,6 +34,12 @@ from src.data.models.finding import (
     CVEMapping,
     FindingGroup
 )
+# Import converters for model-to-dict conversion (eliminates duplicate code)
+from src.data.converters import (
+    ScanConverter,
+    ToolResultConverter,
+    FindingConverter
+)
 from src.utils.timezone import get_ist_now, to_ist
 from src.utils.config import Config
 
@@ -195,6 +201,35 @@ class SQLModelManager(DatabaseManager):
                     setattr(domain_obj, key, value)
 
             # Update timestamp
+            domain_obj.updated_at = get_ist_now()
+
+            session.add(domain_obj)
+            session.commit()
+            session.refresh(domain_obj)
+
+            return domain_obj
+
+    def increment_domain_scan_count(self, domain: str) -> Domain:
+        """
+        Increment scan count and update last_scanned_at for a domain.
+
+        Called after a successful scan completion.
+
+        Args:
+            domain: Domain name to update
+
+        Returns:
+            The updated domain object.
+        """
+        with Session(self.engine) as session:
+            domain_obj = session.get(Domain, domain)
+
+            if not domain_obj:
+                raise ValueError(f"Domain {domain} not found")
+
+            # Increment scan count
+            domain_obj.scan_count += 1
+            domain_obj.last_scanned_at = get_ist_now()
             domain_obj.updated_at = get_ist_now()
 
             session.add(domain_obj)
@@ -710,6 +745,65 @@ class SQLModelManager(DatabaseManager):
 
             return changes
 
+    def get_discovered_subdomains(
+        self,
+        domain: str,
+        limit: int = 100,
+        offset: int = 0
+    ) -> Dict[str, Any]:
+        """
+        Get discovered subdomains for a domain from subfinder_results.
+
+        This queries the actual scan results rather than the history table.
+
+        Args:
+            domain: Apex domain
+            limit: Maximum number of records to return
+            offset: Number of records to skip
+
+        Returns:
+            Dictionary with subdomains list, total count, and pagination info
+        """
+        with Session(self.engine) as session:
+            # Get unique subdomains with most recent discovery time
+            # Using subquery to get distinct subdomains with their latest discovery
+            subquery = (
+                select(
+                    SubfinderResult.subdomain,
+                    func.max(SubfinderResult.discovered_at).label('discovered_at')
+                )
+                .where(SubfinderResult.apex_domain == domain)
+                .group_by(SubfinderResult.subdomain)
+                .subquery()
+            )
+
+            # Get total count of unique subdomains
+            count_query = select(func.count(func.distinct(SubfinderResult.subdomain))).where(
+                SubfinderResult.apex_domain == domain
+            )
+            total_count = session.exec(count_query).one()
+
+            # Get paginated results ordered by discovery time
+            query = (
+                select(subquery.c.subdomain, subquery.c.discovered_at)
+                .order_by(subquery.c.discovered_at.desc())
+                .offset(offset)
+                .limit(limit)
+            )
+
+            results = session.exec(query).all()
+
+            return {
+                'subdomains': [
+                    {'subdomain': r[0], 'first_seen': r[1]}
+                    for r in results
+                ],
+                'total_count': total_count,
+                'has_more': (offset + len(results)) < total_count,
+                'limit': limit,
+                'offset': offset
+            }
+
     # ============================================================================
     # Tool Results Storage
     # ============================================================================
@@ -938,7 +1032,6 @@ class SQLModelManager(DatabaseManager):
                 )
             ).one()
             preview['totals']['findings'] = finding_count
-            preview['totals']['security_alerts'] = finding_count  # Backward compat
 
             # Count subdomain history
             subdomain_history_count = session.exec(
@@ -1032,7 +1125,6 @@ class SQLModelManager(DatabaseManager):
                     )
                 )
                 deleted['findings'] = result.rowcount
-                deleted['security_alerts'] = result.rowcount  # Backward compat
 
                 # Delete tool results
                 result = session.exec(
@@ -1230,9 +1322,12 @@ class SQLModelManager(DatabaseManager):
     # Findings and Analysis Layer
     # ============================================================================
 
-    def store_findings(self, findings: List[Dict[str, Any]]) -> None:
+    def store_findings(self, findings: List[Dict[str, Any]]) -> Dict[str, int]:
         """
-        Store analysis findings in database.
+        Store analysis findings in database with deduplication.
+
+        Checks for existing findings with same (finding_type, affected_asset, port)
+        and updates them instead of creating duplicates.
 
         Args:
             findings: List of finding dictionaries with fields:
@@ -1248,42 +1343,95 @@ class SQLModelManager(DatabaseManager):
                 - remediation: Remediation guidance
                 - detector: Detector name
                 - And other optional fields...
+
+        Returns:
+            Dictionary with counts: {'new': N, 'updated': M}
         """
+        now = get_ist_now()
+        new_count = 0
+        updated_count = 0
+
         with Session(self.engine) as session:
             for finding_data in findings:
-                # Create Finding object
-                finding = Finding(
-                    id=finding_data.get('id', str(uuid.uuid4())),
-                    scan_id=finding_data['scan_id'],
-                    finding_type=finding_data['finding_type'],
-                    affected_asset=finding_data['affected_asset'],
-                    port=finding_data.get('port'),
-                    protocol=finding_data.get('protocol'),
-                    title=finding_data['title'],
-                    description=finding_data.get('description'),
-                    service_name=finding_data.get('service_name'),
-                    severity=finding_data.get('severity', 'medium'),
-                    risk_score=finding_data.get('risk_score', 50),
-                    confidence_level=finding_data.get('confidence_level', 'medium'),
-                    evidence_json=json.dumps(finding_data.get('evidence', {})),
-                    cwe_id=finding_data.get('cwe_id'),
-                    remediation=finding_data.get('remediation'),
-                    detector=finding_data.get('detector'),
-                    score_breakdown_json=json.dumps(finding_data.get('score_breakdown', {})),
-                    status='open',
-                    false_positive=False,
-                    discovered_at=get_ist_now(),
-                    updated_at=get_ist_now()
+                finding_type = finding_data['finding_type']
+                affected_asset = finding_data['affected_asset']
+                port = finding_data.get('port')
+
+                # Check for existing finding with same deduplication key
+                query = select(Finding).where(
+                    and_(
+                        Finding.finding_type == finding_type,
+                        Finding.affected_asset == affected_asset,
+                        Finding.port == port if port is not None else Finding.port.is_(None)
+                    )
                 )
-                session.add(finding)
+                existing = session.exec(query).first()
+
+                if existing:
+                    # Update existing finding
+                    existing.last_seen = now
+                    existing.occurrence_count += 1
+                    existing.updated_at = now
+                    existing.scan_id = finding_data['scan_id']  # Update to latest scan
+
+                    # Update severity if new one is higher
+                    new_severity = finding_data.get('severity', 'medium')
+                    if self.SEVERITY_ORDER.get(new_severity, 0) > self.SEVERITY_ORDER.get(existing.severity, 0):
+                        existing.severity = new_severity
+                        existing.risk_score = finding_data.get('risk_score', existing.risk_score)
+
+                    # Status transition: if resolved → reopen
+                    if existing.status == 'resolved':
+                        existing.status = 'reopened'
+                        existing.reopened_at = now
+                        existing.resolved_at = None  # Clear resolved timestamp
+
+                    # Status transition: new → open (seen multiple times now)
+                    elif existing.status == 'new':
+                        existing.status = 'open'
+
+                    session.add(existing)
+                    updated_count += 1
+                else:
+                    # Create new finding with status='new' (first time discovered)
+                    finding = Finding(
+                        id=finding_data.get('id', str(uuid.uuid4())),
+                        scan_id=finding_data['scan_id'],
+                        finding_type=finding_type,
+                        affected_asset=affected_asset,
+                        port=port,
+                        protocol=finding_data.get('protocol'),
+                        title=finding_data['title'],
+                        description=finding_data.get('description'),
+                        service_name=finding_data.get('service_name'),
+                        severity=finding_data.get('severity', 'medium'),
+                        risk_score=finding_data.get('risk_score', 50),
+                        confidence_level=finding_data.get('confidence_level', 'medium'),
+                        evidence_json=json.dumps(finding_data.get('evidence', {})),
+                        cwe_id=finding_data.get('cwe_id'),
+                        remediation=finding_data.get('remediation'),
+                        detector=finding_data.get('detector'),
+                        score_breakdown_json=json.dumps(finding_data.get('score_breakdown', {})),
+                        status='new',  # First time discovered
+                        false_positive=False,
+                        first_seen=now,
+                        last_seen=now,
+                        occurrence_count=1,
+                        updated_at=now
+                    )
+                    session.add(finding)
+                    new_count += 1
 
             session.commit()
+
+        return {'new': new_count, 'updated': updated_count}
 
     def get_findings(
         self,
         scan_id: Optional[str] = None,
         affected_asset: Optional[str] = None,
         min_severity: Optional[str] = None,
+        status: Optional[str] = None,
         limit: int = 100,
         offset: int = 0
     ) -> Dict[str, Any]:
@@ -1294,20 +1442,13 @@ class SQLModelManager(DatabaseManager):
             scan_id: Filter by scan ID
             affected_asset: Filter by affected asset
             min_severity: Minimum severity (critical/high/medium/low/info)
+            status: Filter by status (new/open/acknowledged/resolved/reopened/false_positive)
             limit: Maximum number of findings to return
             offset: Number of findings to skip
 
         Returns:
             Dictionary with findings list, total count, and pagination info
         """
-        severity_order = {
-            'critical': 5,
-            'high': 4,
-            'medium': 3,
-            'low': 2,
-            'info': 1
-        }
-
         with Session(self.engine) as session:
             # Build query
             query = select(Finding)
@@ -1318,10 +1459,12 @@ class SQLModelManager(DatabaseManager):
                 filters.append(Finding.scan_id == scan_id)
             if affected_asset:
                 filters.append(Finding.affected_asset == affected_asset)
-            if min_severity and min_severity in severity_order:
-                min_order = severity_order[min_severity]
-                valid_severities = [s for s, o in severity_order.items() if o >= min_order]
+            if min_severity and min_severity in self.SEVERITY_ORDER:
+                min_order = self.SEVERITY_ORDER[min_severity]
+                valid_severities = [s for s, o in self.SEVERITY_ORDER.items() if o >= min_order]
                 filters.append(Finding.severity.in_(valid_severities))
+            if status and status in self.VALID_STATUSES:
+                filters.append(Finding.status == status)
 
             if filters:
                 query = query.where(and_(*filters))
@@ -1332,8 +1475,8 @@ class SQLModelManager(DatabaseManager):
                 count_query = count_query.where(and_(*filters))
             total_count = session.exec(count_query).one()
 
-            # Apply pagination and ordering (highest risk first)
-            query = query.order_by(Finding.risk_score.desc(), Finding.discovered_at.desc())
+            # Apply pagination and ordering (highest risk first, then most recent)
+            query = query.order_by(Finding.risk_score.desc(), Finding.first_seen.desc())
             query = query.offset(offset).limit(limit)
 
             # Execute query
@@ -1363,6 +1506,12 @@ class SQLModelManager(DatabaseManager):
                 return self._finding_to_dict(finding)
             return None
 
+    # Valid status values for findings
+    VALID_STATUSES = {'new', 'open', 'acknowledged', 'resolved', 'reopened', 'false_positive'}
+
+    # Severity ordering for comparison (higher number = more severe)
+    SEVERITY_ORDER = {'critical': 5, 'high': 4, 'medium': 3, 'low': 2, 'info': 1}
+
     def update_finding_status(
         self,
         finding_id: str,
@@ -1370,28 +1519,59 @@ class SQLModelManager(DatabaseManager):
         resolution_notes: Optional[str] = None
     ) -> bool:
         """
-        Update finding status.
+        Update finding status with proper lifecycle handling.
+
+        Status lifecycle:
+        - new: First time discovered (auto-set on creation)
+        - open: Known issue, needs attention
+        - acknowledged: Team is aware, working on it
+        - resolved: Fixed/closed
+        - reopened: Was resolved but detected again (auto-set)
+        - false_positive: Not a real issue
 
         Args:
             finding_id: Finding UUID
-            status: New status (open/acknowledged/resolved/false_positive)
+            status: New status (new/open/acknowledged/resolved/reopened/false_positive)
             resolution_notes: Optional resolution notes
 
         Returns:
             True if updated, False if finding not found
+
+        Raises:
+            ValueError: If status is not valid
         """
+        # Validate status
+        if status not in self.VALID_STATUSES:
+            raise ValueError(f"Invalid status '{status}'. Valid: {self.VALID_STATUSES}")
+
         with Session(self.engine) as session:
             finding = session.get(Finding, finding_id)
             if not finding:
                 return False
 
+            now = get_ist_now()
+            old_status = finding.status
             finding.status = status
-            finding.updated_at = get_ist_now()
+            finding.updated_at = now
 
+            # Handle status-specific logic
             if status == 'resolved':
-                finding.resolved_at = get_ist_now()
-            if status == 'false_positive':
+                finding.resolved_at = now
+                finding.reopened_at = None  # Clear reopen timestamp
+
+            elif status == 'reopened':
+                finding.reopened_at = now
+                finding.resolved_at = None  # Clear resolved timestamp
+
+            elif status == 'false_positive':
                 finding.false_positive = True
+                finding.resolved_at = now  # Also mark as resolved
+
+            elif status in ('new', 'open', 'acknowledged'):
+                # Clear resolved/reopened timestamps when going back to active states
+                if old_status in ('resolved', 'false_positive'):
+                    finding.reopened_at = now
+                    finding.resolved_at = None
 
             if resolution_notes:
                 finding.resolution_notes = resolution_notes
@@ -1453,14 +1633,30 @@ class SQLModelManager(DatabaseManager):
                 'by_severity': by_severity,
                 'by_status': by_status,
                 'average_risk_score': round(total_risk_score / total, 2) if total > 0 else 0,
+                # Severity breakdown
                 'critical_findings': by_severity.get('critical', 0),
                 'high_findings': by_severity.get('high', 0),
                 'medium_findings': by_severity.get('medium', 0),
                 'low_findings': by_severity.get('low', 0),
                 'info_findings': by_severity.get('info', 0),
+                # Status breakdown (full lifecycle)
+                'new_findings': by_status.get('new', 0),
                 'open_findings': by_status.get('open', 0),
+                'acknowledged_findings': by_status.get('acknowledged', 0),
                 'resolved_findings': by_status.get('resolved', 0),
-                'false_positives': by_status.get('false_positive', 0)
+                'reopened_findings': by_status.get('reopened', 0),
+                'false_positives': by_status.get('false_positive', 0),
+                # Aggregate counts
+                'active_findings': (
+                    by_status.get('new', 0) +
+                    by_status.get('open', 0) +
+                    by_status.get('acknowledged', 0) +
+                    by_status.get('reopened', 0)
+                ),
+                'closed_findings': (
+                    by_status.get('resolved', 0) +
+                    by_status.get('false_positive', 0)
+                )
             }
 
     # ============================================================================
@@ -1468,130 +1664,30 @@ class SQLModelManager(DatabaseManager):
     # ============================================================================
 
     def _scan_to_dict(self, scan: ScanSession) -> Dict[str, Any]:
-        """Convert ScanSession object to dictionary."""
-        # Parse domains_scanned JSON string to list
-        domains = json.loads(scan.domains_scanned) if scan.domains_scanned else []
-
-        return {
-            'scan_id': scan.scan_id,
-            'scan_type': scan.scan_type,
-            'tool_name': scan.tool_name,
-            'domains_scanned': domains,
-            'start_time': scan.start_time,
-            'end_time': scan.end_time,
-            'status': scan.status,
-            'findings_count': scan.findings_count
-        }
+        """Convert ScanSession object to dictionary using centralized converter."""
+        return ScanConverter.scan_to_dict(scan)
 
     def _subdomain_history_to_dict(self, history: SubdomainHistory) -> Dict[str, Any]:
-        """Convert SubdomainHistory object to dictionary."""
-        # Parse metadata JSON string to dict
-        metadata = json.loads(history.meta_data) if history.meta_data else {}
-
-        return {
-            'id': history.id,
-            'apex_domain': history.apex_domain,
-            'subdomain': history.subdomain,
-            'scan_id': history.scan_id,
-            'status': history.status,
-            'first_seen': history.first_seen,
-            'last_seen': history.last_seen,
-            'tool_source': history.tool_source,
-            'metadata': metadata
-        }
+        """Convert SubdomainHistory object to dictionary using centralized converter."""
+        return ScanConverter.subdomain_history_to_dict(history)
 
     def _subfinder_result_to_dict(self, result: SubfinderResult) -> Dict[str, Any]:
-        """Convert SubfinderResult object to dictionary."""
-        return {
-            'id': result.id,
-            'scan_id': result.scan_id,
-            'apex_domain': result.apex_domain,
-            'subdomain': result.subdomain,
-            'source': result.source,
-            'discovered_at': result.discovered_at,
-            'raw_json': result.raw_json
-        }
+        """Convert SubfinderResult object to dictionary using centralized converter."""
+        return ToolResultConverter.subfinder_result_to_dict(result)
 
     def _amass_result_to_dict(self, result: AmassResult) -> Dict[str, Any]:
-        """Convert AmassResult object to dictionary."""
-        return {
-            'id': result.id,
-            'scan_id': result.scan_id,
-            'apex_domain': result.apex_domain,
-            'subdomain': result.subdomain,
-            'source': result.source,
-            'discovered_at': result.discovered_at,
-            'raw_json': result.raw_json
-        }
+        """Convert AmassResult object to dictionary using centralized converter."""
+        return ToolResultConverter.amass_result_to_dict(result)
 
     def _nmap_result_to_dict(self, result: NmapResult) -> Dict[str, Any]:
-        """Convert NmapResult object to dictionary."""
-        return {
-            'id': result.id,
-            'scan_id': result.scan_id,
-            'target_host': result.target_host,
-            'port': result.port,
-            'protocol': result.protocol,
-            'service_name': result.service_name,
-            'service_version': result.service_version,
-            'discovered_at': result.discovered_at,
-            'raw_json': result.raw_json
-        }
+        """Convert NmapResult object to dictionary using centralized converter."""
+        return ToolResultConverter.nmap_result_to_dict(result)
 
     def _naabu_result_to_dict(self, result: NaabuResult) -> Dict[str, Any]:
-        """Convert NaabuResult object to dictionary."""
-        return {
-            'id': result.id,
-            'scan_id': result.scan_id,
-            'target_host': result.target_host,
-            'port': result.port,
-            'protocol': result.protocol,
-            'ip': result.ip,
-            'discovered_at': result.discovered_at,
-            'raw_json': result.raw_json
-        }
+        """Convert NaabuResult object to dictionary using centralized converter."""
+        return ToolResultConverter.naabu_result_to_dict(result)
 
     def _finding_to_dict(self, finding: Finding) -> Dict[str, Any]:
-        """Convert Finding object to dictionary."""
-        # Parse JSON fields
-        evidence = {}
-        score_breakdown = {}
-
-        try:
-            if finding.evidence_json:
-                evidence = json.loads(finding.evidence_json)
-        except (json.JSONDecodeError, TypeError):
-            pass
-
-        try:
-            if finding.score_breakdown_json:
-                score_breakdown = json.loads(finding.score_breakdown_json)
-        except (json.JSONDecodeError, TypeError):
-            pass
-
-        return {
-            'id': finding.id,
-            'scan_id': finding.scan_id,
-            'finding_type': finding.finding_type,
-            'affected_asset': finding.affected_asset,
-            'port': finding.port,
-            'protocol': finding.protocol,
-            'title': finding.title,
-            'description': finding.description,
-            'service_name': finding.service_name,
-            'severity': finding.severity,
-            'risk_score': finding.risk_score,
-            'confidence_level': finding.confidence_level,
-            'evidence': evidence,
-            'cwe_id': finding.cwe_id,
-            'remediation': finding.remediation,
-            'detector': finding.detector,
-            'score_breakdown': score_breakdown,
-            'status': finding.status,
-            'false_positive': finding.false_positive,
-            'resolved_at': finding.resolved_at,
-            'resolution_notes': finding.resolution_notes,
-            'discovered_at': finding.discovered_at,
-            'updated_at': finding.updated_at
-        }
+        """Convert Finding object to dictionary using centralized converter."""
+        return FindingConverter.finding_to_dict(finding)
 

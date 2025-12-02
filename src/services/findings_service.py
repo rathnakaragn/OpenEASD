@@ -28,7 +28,7 @@ class InvalidFindingStatus(Exception):
     pass
 
 
-VALID_STATUSES = ['open', 'acknowledged', 'resolved', 'false_positive']
+VALID_STATUSES = ['new', 'open', 'acknowledged', 'resolved', 'reopened', 'false_positive']
 VALID_SEVERITIES = ['critical', 'high', 'medium', 'low', 'info']
 
 
@@ -65,7 +65,7 @@ class FindingsService:
             scan_id: Filter by scan ID
             affected_asset: Filter by affected asset (domain/subdomain/IP)
             min_severity: Minimum severity level (critical/high/medium/low/info)
-            status: Filter by status (open/acknowledged/resolved/false_positive)
+            status: Filter by status (new/open/acknowledged/resolved/reopened/false_positive)
             limit: Maximum results to return (1-1000)
             offset: Number of results to skip for pagination
 
@@ -86,6 +86,7 @@ class FindingsService:
             scan_id=scan_id,
             affected_asset=affected_asset,
             min_severity=min_severity,
+            status=status,
             limit=limit,
             offset=offset
         )

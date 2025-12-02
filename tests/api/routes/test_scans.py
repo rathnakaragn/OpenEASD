@@ -6,6 +6,7 @@ from datetime import datetime
 
 from src.api.main import app
 from src.api.dependencies import get_scan_service
+from src.services.exceptions import ScanNotFound
 
 client = TestClient(app)
 
@@ -50,7 +51,7 @@ def test_get_scan_status(mock_scan_service):
     app.dependency_overrides = {}
 
 def test_get_scan_status_not_found(mock_scan_service):
-    mock_scan_service.get_scan_status.side_effect = ValueError("Not found")
+    mock_scan_service.get_scan_status.side_effect = ScanNotFound("Scan not found")
     app.dependency_overrides[get_scan_service] = lambda: mock_scan_service
     response = client.get("/api/v1/scans/not-real")
     assert response.status_code == 404
@@ -65,29 +66,32 @@ def test_get_scan_results(mock_scan_service):
     app.dependency_overrides = {}
 
 def test_get_scan_results_not_found(mock_scan_service):
-    mock_scan_service.get_scan_results.side_effect = ValueError("Not found")
+    mock_scan_service.get_scan_results.side_effect = ScanNotFound("Scan not found")
     app.dependency_overrides[get_scan_service] = lambda: mock_scan_service
     response = client.get("/api/v1/scans/not-real/results")
     assert response.status_code == 404
     app.dependency_overrides = {}
 
-def test_list_scans_error(mock_scan_service):
-    mock_scan_service.list_scans.side_effect = KeyError("Missing field")
+def test_list_scans_value_error(mock_scan_service):
+    """Test that ValueError returns 400 via centralized handler."""
+    mock_scan_service.list_scans.side_effect = ValueError("Invalid parameters")
     app.dependency_overrides[get_scan_service] = lambda: mock_scan_service
     response = client.get("/api/v1/scans")
-    assert response.status_code == 500
+    assert response.status_code == 400
     app.dependency_overrides = {}
 
-def test_get_scan_status_error(mock_scan_service):
-    mock_scan_service.get_scan_status.side_effect = KeyError("Missing field")
+def test_get_scan_status_value_error(mock_scan_service):
+    """Test that ValueError returns 400 via centralized handler."""
+    mock_scan_service.get_scan_status.side_effect = ValueError("Invalid parameters")
     app.dependency_overrides[get_scan_service] = lambda: mock_scan_service
     response = client.get(f"/api/v1/scans/{sample_scan['scan_id']}")
-    assert response.status_code == 500
+    assert response.status_code == 400
     app.dependency_overrides = {}
 
-def test_get_scan_results_error(mock_scan_service):
-    mock_scan_service.get_scan_results.side_effect = KeyError("Missing field")
+def test_get_scan_results_value_error(mock_scan_service):
+    """Test that ValueError returns 400 via centralized handler."""
+    mock_scan_service.get_scan_results.side_effect = ValueError("Invalid parameters")
     app.dependency_overrides[get_scan_service] = lambda: mock_scan_service
     response = client.get(f"/api/v1/scans/{sample_scan['scan_id']}/results")
-    assert response.status_code == 500
+    assert response.status_code == 400
     app.dependency_overrides = {}

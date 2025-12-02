@@ -6,11 +6,22 @@ Analyzes open ports from Naabu scan results to identify security risks:
 - Publicly exposed sensitive services
 - Unnecessary open ports
 - Port-based vulnerabilities
+
+Refactored to use centralized constants from src/analysis/constants.py
 """
 
 from typing import Dict, List, Any
 from src.analysis.detectors.base_detector import BaseDetector
 from src.analysis.config import get_analysis_config
+from src.analysis.constants import (
+    PORT_INFO,
+    DATABASE_PORTS,
+    ADMIN_PORTS,
+    REMOTE_ACCESS_PORTS,
+    UNENCRYPTED_PROTOCOL_PORTS,
+    get_port_risk_level,
+    get_port_category
+)
 
 
 class PortVulnerabilityDetector(BaseDetector):
@@ -26,70 +37,34 @@ class PortVulnerabilityDetector(BaseDetector):
         super().__init__(config)
         self.analysis_config = get_analysis_config()
 
-        # Load port lists from configuration
+        # Load port classifications from config methods with constants as fallback
+        # This maintains backward compatibility while centralizing defaults
+        try:
+            self.database_ports = self.analysis_config.get_database_ports()
+        except AttributeError:
+            self.database_ports = DATABASE_PORTS
+
+        try:
+            self.admin_ports = self.analysis_config.get_admin_ports()
+        except AttributeError:
+            self.admin_ports = ADMIN_PORTS
+
+        try:
+            self.remote_access_ports = self.analysis_config.get_remote_access_ports()
+        except AttributeError:
+            self.remote_access_ports = REMOTE_ACCESS_PORTS
+
+        self.unencrypted_protocols_set = UNENCRYPTED_PROTOCOL_PORTS
+
+        # Load high/medium risk ports from config (for backwards compatibility)
         self.high_risk_ports = self.analysis_config.get_high_risk_ports()
         self.medium_risk_ports = self.analysis_config.get_medium_risk_ports()
 
-        # Additional port classifications
-        self.database_ports = [3306, 5432, 27017, 6379, 1433, 5984, 9042, 7000, 7001]
-        self.admin_ports = [2082, 2083, 2086, 2087, 8443, 10000]
-        self.remote_access_ports = [21, 22, 23, 3389, 5900, 5901]
+        # Get unencrypted protocol config (for encrypted alternatives info)
+        self.unencrypted_protocols = self.analysis_config.get_unencrypted_protocols()
 
-        # Unencrypted protocols that have encrypted alternatives
-        # Format: plaintext_port -> {'name': ..., 'encrypted_port': ..., 'encrypted_name': ...}
-        self.unencrypted_protocols = {
-            21: {'name': 'FTP', 'encrypted_port': 990, 'encrypted_name': 'FTPS', 'severity': 'high'},
-            23: {'name': 'Telnet', 'encrypted_port': 22, 'encrypted_name': 'SSH', 'severity': 'critical'},
-            25: {'name': 'SMTP', 'encrypted_port': 465, 'encrypted_name': 'SMTPS', 'severity': 'high'},
-            80: {'name': 'HTTP', 'encrypted_port': 443, 'encrypted_name': 'HTTPS', 'severity': 'medium'},
-            110: {'name': 'POP3', 'encrypted_port': 995, 'encrypted_name': 'POP3S', 'severity': 'high'},
-            143: {'name': 'IMAP', 'encrypted_port': 993, 'encrypted_name': 'IMAPS', 'severity': 'high'},
-            389: {'name': 'LDAP', 'encrypted_port': 636, 'encrypted_name': 'LDAPS', 'severity': 'high'},
-            1080: {'name': 'SOCKS', 'encrypted_port': None, 'encrypted_name': 'SOCKS5 over TLS', 'severity': 'high'},
-            5432: {'name': 'PostgreSQL', 'encrypted_port': None, 'encrypted_name': 'PostgreSQL SSL', 'severity': 'critical'},
-            3306: {'name': 'MySQL', 'encrypted_port': None, 'encrypted_name': 'MySQL SSL', 'severity': 'critical'},
-            27017: {'name': 'MongoDB', 'encrypted_port': None, 'encrypted_name': 'MongoDB TLS', 'severity': 'critical'},
-            6379: {'name': 'Redis', 'encrypted_port': None, 'encrypted_name': 'Redis TLS', 'severity': 'critical'},
-        }
-
-        # Port information map (loaded from config or defaults)
-        self.port_info = self._load_port_info()
-
-    def _load_port_info(self) -> Dict[int, Dict[str, str]]:
-        """Load port information from configuration."""
-        # Default port information
-        default_info = {
-            21: {'name': 'FTP', 'risk': 'high', 'desc': 'File Transfer Protocol - transmits credentials in plain text'},
-            22: {'name': 'SSH', 'risk': 'low', 'desc': 'Secure Shell - encrypted remote access'},
-            23: {'name': 'Telnet', 'risk': 'critical', 'desc': 'Unencrypted remote access protocol'},
-            25: {'name': 'SMTP', 'risk': 'medium', 'desc': 'Mail server - potential spam relay'},
-            80: {'name': 'HTTP', 'risk': 'low', 'desc': 'Unencrypted web traffic'},
-            443: {'name': 'HTTPS', 'risk': 'info', 'desc': 'Encrypted web traffic'},
-            3306: {'name': 'MySQL', 'risk': 'critical', 'desc': 'MySQL database server'},
-            5432: {'name': 'PostgreSQL', 'risk': 'critical', 'desc': 'PostgreSQL database server'},
-            27017: {'name': 'MongoDB', 'risk': 'critical', 'desc': 'MongoDB database server'},
-            6379: {'name': 'Redis', 'risk': 'critical', 'desc': 'Redis in-memory data store'},
-            3389: {'name': 'RDP', 'risk': 'high', 'desc': 'Remote Desktop Protocol'},
-            5900: {'name': 'VNC', 'risk': 'high', 'desc': 'Virtual Network Computing'},
-            8080: {'name': 'HTTP-Alt', 'risk': 'medium', 'desc': 'Alternative HTTP port'},
-            9200: {'name': 'Elasticsearch', 'risk': 'high', 'desc': 'Elasticsearch HTTP API'}
-        }
-
-        # Load from config if available
-        config_port_info = self.analysis_config.get('port_info', {})
-        if config_port_info:
-            for port_num, info in config_port_info.items():
-                try:
-                    default_info[int(port_num)] = {
-                        'name': info.get('name', f'Port {port_num}'),
-                        'risk': info.get('risk_level', 'medium'),
-                        'desc': info.get('description', ''),
-                        'remediation': info.get('remediation', '')
-                    }
-                except (ValueError, TypeError):
-                    continue
-
-        return default_info
+        # Use centralized port info
+        self.port_info = PORT_INFO
 
     def analyze(self, scan_data: Dict[str, Any]) -> List[Dict[str, Any]]:
         """
@@ -151,7 +126,7 @@ class PortVulnerabilityDetector(BaseDetector):
                 findings.append(finding)
 
             # Check for unencrypted protocols (plaintext services without TLS)
-            if port in self.unencrypted_protocols:
+            if port in self.unencrypted_protocols_set:
                 # Check if tlsx verified TLS status for this host:port
                 tlsx_key = f"{host}:{port}"
                 tlsx_probe = tlsx_results.get(tlsx_key, {})
@@ -184,7 +159,7 @@ class PortVulnerabilityDetector(BaseDetector):
         """Create finding for high-risk port exposure."""
         port_data = self.port_info.get(port, {})
         service_name = port_data.get('name', f'Port {port}')
-        description = port_data.get('desc', 'High-risk service exposed')
+        description = port_data.get('description', 'High-risk service exposed')
 
         return self._create_finding(
             finding_type='high_risk_port_exposed',
@@ -349,13 +324,16 @@ class PortVulnerabilityDetector(BaseDetector):
         service_name = proto_info.get('name', f'Port {port}')
         encrypted_name = proto_info.get('encrypted_name', 'TLS')
         encrypted_port = proto_info.get('encrypted_port')
-        severity = proto_info.get('severity', 'high')
+        config_severity = proto_info.get('severity', 'high')
 
-        # Build description with verification info
-        verification_note = ""
+        # Severity based on TLS verification status:
+        # - Verified no TLS by tlsx → CRITICAL (confirmed cleartext transmission)
+        # - Unverified (fallback) → Use configured severity (lower confidence)
         if verified_by_tlsx:
+            severity = 'critical'  # tlsx confirmed NO TLS - definitely unencrypted
             verification_note = " (Verified by tlsx - TLS handshake failed)"
         else:
+            severity = config_severity  # Fallback to configured severity
             verification_note = " (Based on port number - unverified)"
 
         # Build remediation text
@@ -410,7 +388,7 @@ class PortVulnerabilityDetector(BaseDetector):
 
     def get_port_risk_level(self, port: int) -> str:
         """
-        Get risk level for a port.
+        Get risk level for a port using centralized constants.
 
         Args:
             port: Port number
@@ -418,13 +396,5 @@ class PortVulnerabilityDetector(BaseDetector):
         Returns:
             Risk level: critical/high/medium/low/info
         """
-        if port in self.database_ports:
-            return 'critical'
-        elif port in self.high_risk_ports:
-            return 'high'
-        elif port in self.medium_risk_ports:
-            return 'medium'
-        elif port in [80, 443]:
-            return 'low'
-        else:
-            return 'info'
+        # Use centralized helper function from constants
+        return get_port_risk_level(port)

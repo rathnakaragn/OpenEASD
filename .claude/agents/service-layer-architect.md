@@ -25,8 +25,8 @@ Understand the current Service Layer architecture:
 ### Existing Services
 - **DomainService** (`src/services/domain_service.py`): Domain CRUD, validation, metadata management
 - **ScanService** (`src/services/scan_service.py`): Scan creation, execution, status tracking, tool orchestration
-- **AlertService** (`src/services/alert_service.py`): Alert retrieval, statistics, filtering
-- **AnalysisService** (`src/services/analysis_service.py`): Vulnerability detection orchestration, risk scoring
+- **FindingsService** (`src/services/findings_service.py`): Findings retrieval, statistics, filtering, status updates
+- **AnalysisService** (`src/analysis/analysis_service.py`): Vulnerability detection orchestration, risk scoring
 
 ### Service Layer Principles
 - **Single Responsibility**: Each service handles one business domain

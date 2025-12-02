@@ -87,8 +87,8 @@ class TestDomainOperations:
 
         result = db_manager.get_domains(limit=100, primary_only=True)
 
-        # Count primary domains
-        primary_domains = [d for d in result['domains'] if d.get('is_primary')]
+        # Count primary domains (Domain objects have is_primary attribute, not dict .get())
+        primary_domains = [d for d in result['domains'] if d.is_primary]
         assert len(primary_domains) >= 2
 
     def test_get_domains_pagination(self, db_manager):
@@ -194,7 +194,8 @@ class TestScanSessionOperations:
             domains=["example.com"]
         )
 
-        history = db_manager.get_scan_history(domain="example.com", limit=10)
+        result = db_manager.get_scan_history(domain="example.com", limit=10)
+        history = result['scans']
 
         assert len(history) >= 2
         assert any(s['scan_id'] == scan_id1 for s in history)
@@ -270,6 +271,7 @@ class TestFindingsOperations:
                 "scan_id": scan_id,
                 "affected_asset": "api.example.com",
                 "finding_type": "open_port",
+                "port": 80,  # Add port to differentiate findings
                 "title": "Port 80 Open",
                 "description": "Port 80 is open",
                 "severity": "medium",
@@ -279,6 +281,7 @@ class TestFindingsOperations:
                 "scan_id": scan_id,
                 "affected_asset": "api.example.com",
                 "finding_type": "open_port",
+                "port": 443,  # Different port = different finding
                 "title": "Port 443 Open",
                 "description": "Port 443 is open",
                 "severity": "high",
@@ -286,9 +289,10 @@ class TestFindingsOperations:
             },
         ]
 
-        db_manager.store_findings(findings)
+        result = db_manager.store_findings(findings)
 
-        # Verify findings are stored
+        # Verify findings are stored (returns new/updated counts now)
+        assert result['new'] == 2
         retrieved = db_manager.get_findings(limit=100)
         assert len(retrieved['findings']) >= 2
 
@@ -408,11 +412,13 @@ class TestFindingsOperations:
             updated = db_manager.update_finding_status(
                 finding_id=finding_id,
                 status="resolved",
-                notes="Fixed by security team"
+                resolution_notes="Fixed by security team"  # Fixed: was 'notes'
             )
 
-            assert updated is not None
-            assert updated['status'] == "resolved"
+            assert updated is True  # Returns bool, not dict
+            # Verify the status was updated
+            updated_finding = db_manager.get_finding_by_id(finding_id)
+            assert updated_finding['status'] == "resolved"
 
     def test_get_findings_by_severity(self, db_manager):
         """Test filtering findings by severity."""

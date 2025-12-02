@@ -52,6 +52,7 @@ class DomainResponse(BaseModel):
     scan_frequency: Optional[str] = None
     created_at: Optional[datetime] = None
     last_scanned_at: Optional[datetime] = None
+    active_scan: bool = Field(False, description="Whether active scanning is enabled for the domain")
 
 
 class DomainListResponse(BaseModel):
@@ -65,7 +66,8 @@ class DomainListResponse(BaseModel):
                     "scan_count": 5,
                     "scan_frequency": "daily",
                     "created_at": "2025-01-15T10:30:00",
-                    "last_scanned_at": "2025-01-20T15:45:00"
+                    "last_scanned_at": "2025-01-20T15:45:00",
+                    "active_scan": True
                 }
             ],
             "total_count": 1,

@@ -272,7 +272,7 @@ def domain_remove(domain, force) -> None:
                 click.echo()
                 click.echo("Deleted records:")
                 click.echo(f"  Scan Sessions:        {deleted.get('scan_sessions', 0):>6}")
-                click.echo(f"  Security Alerts:      {deleted.get('security_alerts', 0):>6}")
+                click.echo(f"  Findings:             {deleted.get('findings', 0):>6}")
                 click.echo(f"  Subfinder Results:    {deleted.get('subfinder_results', 0):>6}")
                 click.echo(f"  Amass Results:        {deleted.get('amass_results', 0):>6}")
                 click.echo(f"  Nmap Results:         {deleted.get('nmap_results', 0):>6}")
@@ -331,23 +331,26 @@ def analysis_run(scan_id, output) -> None:
 @click.option('--asset', help='Filter by affected asset (domain/subdomain/IP)')
 @click.option('--severity', type=click.Choice(['critical', 'high', 'medium', 'low', 'info']),
               help='Filter by minimum severity')
+@click.option('--status', type=click.Choice(['new', 'open', 'acknowledged', 'resolved', 'reopened', 'false_positive']),
+              help='Filter by status')
 @click.option('--limit', default=50, type=int,
               help='Maximum findings to show (default: 50)')
 @click.option('--output', type=click.Choice(['table', 'json']),
               default='table',
               help='Output format (default: table)')
-def analysis_findings(scan_id, asset, severity, limit, output) -> None:
+def analysis_findings(scan_id, asset, severity, status, limit, output) -> None:
     """List security findings with optional filters
 
     Examples:
         openeasd analysis findings
         openeasd analysis findings --severity high
+        openeasd analysis findings --status open
         openeasd analysis findings --scan-id <scan-id>
         openeasd analysis findings --asset example.com --output json
     """
     try:
         result = list_findings_command(scan_id=scan_id, asset=asset, min_severity=severity,
-                                       limit=limit, output_format=output)
+                                       status=status, limit=limit, output_format=output)
         if result:
             click.echo(format_output(result, output))
     except Exception as e:
@@ -399,13 +402,20 @@ def analysis_stats(scan_id, asset, output) -> None:
 
 @analysis.command('update')
 @click.argument('finding_id')
-@click.argument('status', type=click.Choice(['open', 'acknowledged', 'resolved', 'false_positive']))
+@click.argument('status', type=click.Choice(['new', 'open', 'acknowledged', 'resolved', 'reopened', 'false_positive']))
 @click.option('--notes', help='Optional notes about the status change')
 def analysis_update(finding_id, status, notes) -> None:
     """Update finding status
 
+    Status lifecycle:
+        new → open → acknowledged → resolved
+                                  ↓
+                              reopened (if detected again after resolved)
+
     Examples:
-        openeasd analysis update <finding-id> resolved
+        openeasd analysis update <finding-id> open
+        openeasd analysis update <finding-id> acknowledged
+        openeasd analysis update <finding-id> resolved --notes "Fixed in v2.1"
         openeasd analysis update <finding-id> false_positive --notes "Not applicable"
     """
     try:

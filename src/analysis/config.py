@@ -104,6 +104,50 @@ class AnalysisConfig:
         """Get list of medium-risk ports."""
         return self.get('analysis.detectors.port_detector.medium_risk_ports', [])
 
+    def get_database_ports(self) -> List[int]:
+        """Get list of database ports."""
+        return self.get('analysis.detectors.port_detector.database_ports',
+                       [3306, 5432, 27017, 6379, 1433, 5984, 9042, 7000, 7001])
+
+    def get_admin_ports(self) -> List[int]:
+        """Get list of admin interface ports."""
+        return self.get('analysis.detectors.port_detector.admin_ports',
+                       [2082, 2083, 2086, 2087, 8443, 10000])
+
+    def get_remote_access_ports(self) -> List[int]:
+        """Get list of remote access service ports."""
+        return self.get('analysis.detectors.port_detector.remote_access_ports',
+                       [21, 22, 23, 3389, 5900, 5901])
+
+    def get_unencrypted_protocols(self) -> Dict[int, Dict[str, Any]]:
+        """Get unencrypted protocols configuration."""
+        config = self.get('analysis.detectors.port_detector.unencrypted_protocols', {})
+        # Convert string keys to int if loaded from YAML
+        result = {}
+        for port, info in config.items():
+            try:
+                result[int(port)] = info
+            except (ValueError, TypeError):
+                continue
+        return result
+
+    # Service Detector configuration methods
+    def get_critical_services(self) -> List[str]:
+        """Get list of critical services (databases, etc.)."""
+        return self.get('analysis.detectors.service_detector.critical_services',
+                       ['mysql', 'postgresql', 'mongodb', 'redis', 'memcached',
+                        'elasticsearch', 'cassandra', 'couchdb', 'mariadb', 'oracle', 'mssql'])
+
+    def get_high_risk_services(self) -> List[str]:
+        """Get list of high-risk services."""
+        return self.get('analysis.detectors.service_detector.high_risk_services',
+                       ['telnet', 'ftp', 'rsh', 'rlogin', 'vnc', 'rdp', 'smb', 'netbios'])
+
+    def get_medium_risk_services(self) -> List[str]:
+        """Get list of medium-risk services."""
+        return self.get('analysis.detectors.service_detector.medium_risk_services',
+                       ['ssh', 'smtp', 'dns', 'snmp', 'ldap', 'nfs', 'rpc'])
+
     def get_severity_thresholds(self) -> Dict[str, int]:
         """Get severity threshold mapping."""
         return {

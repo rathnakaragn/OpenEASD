@@ -9,7 +9,7 @@ from src.services.exceptions import DomainNotFound, InvalidDomainFormat
 
 client = TestClient(app)
 
-# A sample domain that conforms to the DomainResponse schema
+# A sample domain that conforms to the DomainResponse schema (for list)
 sample_domain = {
     "domain": "example.com",
     "is_primary": True,
@@ -19,12 +19,28 @@ sample_domain = {
     "last_scanned_at": "2025-01-01T12:00:00"
 }
 
+# A sample domain detail that conforms to DomainDetailResponse schema (for get)
+sample_domain_detail = {
+    "domain": "example.com",
+    "is_primary": True,
+    "scan_count": 5,
+    "created_at": "2025-01-01T12:00:00",
+    "updated_at": "2025-01-01T12:00:00",
+    "last_scanned_at": "2025-01-01T12:00:00",
+    "active_scan": True,
+    "subdomain_count": 2,
+    "recent_subdomains": [
+        {"subdomain": "api.example.com", "discovered_at": "2025-01-01T12:00:00"},
+        {"subdomain": "www.example.com", "discovered_at": "2025-01-01T11:00:00"}
+    ]
+}
+
 @pytest.fixture
 def mock_domain_service():
     """Fixture for a mocked domain service."""
     service = MagicMock()
     service.list_domains.return_value = {'domains': [sample_domain], 'total_count': 1, 'has_more': False}
-    service.get_domain.return_value = sample_domain
+    service.get_domain.return_value = sample_domain_detail  # Use detail schema for single domain
     return service
 
 def test_list_domains(mock_domain_service):
@@ -51,15 +67,14 @@ def test_list_domains_with_params(mock_domain_service):
     
     app.dependency_overrides = {}
 
-def test_list_domains_error(mock_domain_service):
-    """Test error handling when listing domains."""
-    mock_domain_service.list_domains.side_effect = KeyError("Missing field")
+def test_list_domains_value_error(mock_domain_service):
+    """Test that ValueError returns 400 via centralized handler."""
+    mock_domain_service.list_domains.side_effect = ValueError("Invalid parameters")
     app.dependency_overrides[get_domain_service] = lambda: mock_domain_service
 
     response = client.get("/api/v1/domains")
 
-    assert response.status_code == 500
-    assert "Failed to list domains" in response.text
+    assert response.status_code == 400
 
     app.dependency_overrides = {}
 
@@ -97,14 +112,13 @@ def test_get_domain_invalid_format(mock_domain_service):
     
     app.dependency_overrides = {}
 
-def test_get_domain_generic_error(mock_domain_service):
-    """Test a generic error when retrieving a domain."""
-    mock_domain_service.get_domain.side_effect = KeyError("Missing field")
+def test_get_domain_value_error(mock_domain_service):
+    """Test that ValueError returns 400 via centralized handler."""
+    mock_domain_service.get_domain.side_effect = ValueError("Invalid domain format")
     app.dependency_overrides[get_domain_service] = lambda: mock_domain_service
 
     response = client.get("/api/v1/domains/any.com")
 
-    assert response.status_code == 500
-    assert "Failed to retrieve domain details" in response.text
+    assert response.status_code == 400
 
     app.dependency_overrides = {}

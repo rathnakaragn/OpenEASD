@@ -24,10 +24,86 @@ analysis:
   detectors:
     port_detector:
       enabled: true
+      # Port classifications by risk level
       high_risk_ports: [21, 23, 3389, 5900, 5432, 3306, 27017, 6379]  # FTP, Telnet, RDP, VNC, PostgreSQL, MySQL, MongoDB, Redis
       medium_risk_ports: [8080, 8443, 9090, 9200]                      # Alternative HTTP, Elasticsearch
-      database_ports: [3306, 5432, 27017, 6379, 1433, 5984]           # MySQL, PostgreSQL, MongoDB, Redis, MSSQL, CouchDB
+
+      # Port classifications by service type
+      database_ports: [3306, 5432, 27017, 6379, 1433, 5984, 9042, 7000, 7001]  # MySQL, PostgreSQL, MongoDB, Redis, MSSQL, CouchDB, Cassandra
+      admin_ports: [2082, 2083, 2086, 2087, 8443, 10000]              # cPanel, Webmin, admin interfaces
+      remote_access_ports: [21, 22, 23, 3389, 5900, 5901]             # FTP, SSH, Telnet, RDP, VNC
       auth_ports: [389, 636, 88, 464]                                  # LDAP, LDAPS, Kerberos
+
+      # Unencrypted protocols that should use TLS
+      # Format: port -> {name, encrypted_port, encrypted_name, severity}
+      unencrypted_protocols:
+        21:
+          name: "FTP"
+          encrypted_port: 990
+          encrypted_name: "FTPS"
+          severity: "high"
+        23:
+          name: "Telnet"
+          encrypted_port: 22
+          encrypted_name: "SSH"
+          severity: "critical"
+        25:
+          name: "SMTP"
+          encrypted_port: 465
+          encrypted_name: "SMTPS"
+          severity: "high"
+        80:
+          name: "HTTP"
+          encrypted_port: 443
+          encrypted_name: "HTTPS"
+          severity: "medium"
+        110:
+          name: "POP3"
+          encrypted_port: 995
+          encrypted_name: "POP3S"
+          severity: "high"
+        143:
+          name: "IMAP"
+          encrypted_port: 993
+          encrypted_name: "IMAPS"
+          severity: "high"
+        389:
+          name: "LDAP"
+          encrypted_port: 636
+          encrypted_name: "LDAPS"
+          severity: "high"
+        1080:
+          name: "SOCKS"
+          encrypted_port: null
+          encrypted_name: "SOCKS5 over TLS"
+          severity: "high"
+        5432:
+          name: "PostgreSQL"
+          encrypted_port: null
+          encrypted_name: "PostgreSQL SSL"
+          severity: "critical"
+        3306:
+          name: "MySQL"
+          encrypted_port: null
+          encrypted_name: "MySQL SSL"
+          severity: "critical"
+        27017:
+          name: "MongoDB"
+          encrypted_port: null
+          encrypted_name: "MongoDB TLS"
+          severity: "critical"
+        6379:
+          name: "Redis"
+          encrypted_port: null
+          encrypted_name: "Redis TLS"
+          severity: "critical"
+
+    service_detector:
+      enabled: true
+      # Service risk classifications
+      critical_services: [mysql, postgresql, mongodb, redis, memcached, elasticsearch, cassandra, couchdb, mariadb, oracle, mssql]
+      high_risk_services: [telnet, ftp, rsh, rlogin, vnc, rdp, smb, netbios]
+      medium_risk_services: [ssh, smtp, dns, snmp, ldap, nfs, rpc]
 
     web_detector:
       enabled: false                       # Disabled for now (requires Nuclei)
