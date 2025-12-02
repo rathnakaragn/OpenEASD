@@ -349,20 +349,29 @@ class ScanService:
                         })
                     self.db.store_naabu_results(naabu_results_for_db)
 
-            # Step 4: TLS verification (tlsx) - only for ports that might lack encryption
+            # Step 4: TLS verification (tlsx) - check all ports except known encrypted
             tlsx_results = {}
-            # Ports where we need to verify TLS status (services that should/could use TLS)
-            # Skip: 443/8443 (already TLS), 22 (SSH has own encryption)
-            tls_check_ports = {21, 23, 25, 80, 110, 143, 389, 1080, 3306, 5432, 27017, 6379, 8080}
+            # Skip ports that are already encrypted (no need to verify TLS)
+            skip_tls_check_ports = {
+                22,    # SSH - has own encryption protocol
+                443,   # HTTPS - already TLS
+                8443,  # HTTPS alternate - already TLS
+                990,   # FTPS - already TLS
+                993,   # IMAPS - already TLS
+                995,   # POP3S - already TLS
+                636,   # LDAPS - already TLS
+                465,   # SMTPS - already TLS
+            }
 
             if ports_found:
                 try:
-                    # Build targets list: only ports that need TLS verification
+                    # Build targets list: all ports except known encrypted ones
+                    # This handles custom ports (e.g., MySQL on 13306, HTTP on 9000)
                     tlsx_targets = []
                     for port_info in ports_found:
                         host = port_info.get('subdomain', port_info.get('host', ''))
                         port = port_info.get('port')
-                        if host and port and port in tls_check_ports:
+                        if host and port and port not in skip_tls_check_ports:
                             tlsx_targets.append((host, port))
 
                     if not tlsx_targets:
