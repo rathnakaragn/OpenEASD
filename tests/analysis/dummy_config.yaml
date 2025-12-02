@@ -1,0 +1,11 @@
+
+analysis:
+  enabled: true
+  auto_analyze_on_scan: true
+  scoring:
+    algorithm: custom
+    critical_threshold: 85
+  detectors:
+    port_detector:
+      enabled: false
+      high_risk_ports: [21, 22]
