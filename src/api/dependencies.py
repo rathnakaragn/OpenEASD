@@ -10,7 +10,6 @@ from fastapi import Depends
 from src.data.database.sqlmodel_manager import SQLModelManager
 from src.services.domain_service import DomainService
 from src.services.scan_service import ScanService
-from src.services.alert_service import AlertService
 from src.services.findings_service import FindingsService
 
 
@@ -56,19 +55,6 @@ def get_scan_service(db: SQLModelManager = Depends(get_db_manager)) -> ScanServi
         ScanService instance
     """
     return ScanService(db)
-
-
-def get_alert_service(db: SQLModelManager = Depends(get_db_manager)) -> AlertService:
-    """
-    Dependency to get alert service instance.
-
-    Args:
-        db: Database manager (injected by FastAPI)
-
-    Returns:
-        AlertService instance
-    """
-    return AlertService(db)
 
 
 def get_findings_service(db: SQLModelManager = Depends(get_db_manager)) -> FindingsService:

@@ -55,9 +55,9 @@ This project is organized across multiple documentation files. When assisting wi
 
 **Layer 2: Service Layer** (`src/services/`)
 - **What it does**: Shared business logic between API and CLI
-- **Key tasks**: Domain CRUD, scan orchestration, alert management, analysis coordination
-- **Services**: DomainService, ScanService, AlertService, AnalysisService
-- **Files**: `domain_service.py`, `scan_service.py`, `alert_service.py`
+- **Key tasks**: Domain CRUD, scan orchestration, findings management, analysis coordination
+- **Services**: DomainService, ScanService, FindingsService
+- **Files**: `domain_service.py`, `scan_service.py`, `findings_service.py`
 
 **Layer 3: CLI Layer** (`src/cli/`)
 - **What it does**: Full-access command-line interface for operations
@@ -88,7 +88,7 @@ This project is organized across multiple documentation files. When assisting wi
 | Layer | Status | Progress | Test Coverage | Notes |
 |-------|--------|----------|--------|-------|
 | API Layer | ✅ Complete | 100% | 77% | Read-only FastAPI, Pydantic schemas |
-| Service Layer | ✅ Complete | 100% | 85% | Domain, Scan, Alert, Analysis services |
+| Service Layer | ✅ Complete | 100% | 85% | Domain, Scan, Findings services |
 | CLI Layer | ✅ Complete | 100% | 92% | Domain, scan, and analysis commands |
 | Analysis Layer | ✅ Complete | 100% | 95% | Risk scoring, vulnerability detection, 56+ unit tests |
 | Tools Layer | ✅ Complete | 100% | 93% | Direct subprocess calls, JSON parsing |
@@ -119,7 +119,7 @@ This project is organized across multiple documentation files. When assisting wi
 **Use Cases**:
 - View domains and scan status
 - Monitor scan results and subdomains
-- Check security alerts
+- Check security findings
 - Dashboard and reporting integrations
 - Third-party monitoring tools
 
@@ -131,8 +131,6 @@ GET /api/v1/domains/{domain}                # Domain details
 GET /api/v1/scans                           # List scans
 GET /api/v1/scans/{scan_id}                 # Scan status
 GET /api/v1/scans/{scan_id}/results         # Scan results
-GET /api/v1/alerts                          # List alerts
-GET /api/v1/alerts/statistics               # Alert statistics
 GET /api/v1/findings                        # List findings
 GET /api/v1/findings/{finding_id}           # Finding details
 GET /api/v1/findings/statistics/summary     # Finding statistics
@@ -238,7 +236,7 @@ OpenEASD is configured with **9 specialized Claude agents** for different develo
 - Health check endpoint
 - Domain listing and details
 - Scan status and results
-- Security alerts and statistics
+- Security findings and statistics
 - Findings management (5 endpoints)
 - Pydantic v2 schemas for validation
 - CORS middleware for cross-origin requests
@@ -248,12 +246,12 @@ OpenEASD is configured with **9 specialized Claude agents** for different develo
 **Service Layer**:
 - **DomainService**: Domain CRUD operations, validation
 - **ScanService**: Scan creation, execution, status tracking, analysis integration
-- **AlertService**: Alert retrieval, statistics, filtering
+- **FindingsService**: Findings retrieval, statistics, filtering
 - **AnalysisService**: Vulnerability detection orchestration (NEW)
 - Shared business logic between API and CLI
 - Domain validation and duplicate checking
 - Scan workflow orchestration
-- Alert aggregation and analysis
+- Findings aggregation and analysis
 
 **CLI Layer (Full Access)**:
 - Scan commands: `scan domain`, `scan` (batch mode)
@@ -294,7 +292,7 @@ OpenEASD is configured with **9 specialized Claude agents** for different develo
 - Domain registry with metadata (notes, tags, scan frequency)
 - Scan session tracking with status management
 - Subdomain history tracking (new/existing/removed)
-- Security alerts generation
+- Security findings generation
 - Tool-specific result tables
 - **4 new analysis tables: findings, vulnerabilities, cve_mappings, finding_groups (NEW)**
 - Timezone-aware timestamps (IST)
@@ -373,7 +371,7 @@ User Command: openeasd scan domain example.com
 │ - Store scan session         │
 │ - Store subfinder results    │
 │ - Track subdomain changes    │
-│ - Generate security alerts   │
+│ - Generate security findings │
 └──────────────────────────────┘
     ↓
 ┌──────────────────────────────┐
@@ -413,17 +411,16 @@ src/
 │   ├── routes/       # API endpoints
 │   │   ├── domains.py   # GET /api/v1/domains
 │   │   ├── scans.py     # GET /api/v1/scans
-│   │   ├── alerts.py    # GET /api/v1/alerts
 │   │   ├── findings.py  # GET /api/v1/findings (5 endpoints)
 │   │   └── health.py    # GET /api/v1/health
 │   └── schemas/      # Pydantic models
 │       ├── domain.py
 │       ├── scan.py
-│       └── alert.py
+│       └── finding.py
 ├── services/         # Layer 2 ✅ - Business logic
 │   ├── domain_service.py   # Domain operations
 │   ├── scan_service.py     # Scan orchestration
-│   └── alert_service.py    # Alert management
+│   └── findings_service.py # Findings management
 ├── cli/              # Layer 3 ✅ - Full-access CLI
 │   ├── main.py
 │   ├── commands_scan.py

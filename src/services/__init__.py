@@ -7,6 +7,6 @@ between the API/CLI layer and the database/tools layers.
 
 from src.services.domain_service import DomainService
 from src.services.scan_service import ScanService
-from src.services.alert_service import AlertService
+from src.services.findings_service import FindingsService
 
-__all__ = ['DomainService', 'ScanService', 'AlertService']
+__all__ = ['DomainService', 'ScanService', 'FindingsService']

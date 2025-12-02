@@ -14,10 +14,10 @@ from src.api.schemas.scan import (
     ScanResultsResponse,
     ScanListResponse
 )
-from src.api.schemas.alert import (
-    AlertResponse,
-    AlertListResponse,
-    AlertStatisticsResponse
+from src.api.schemas.finding import (
+    FindingResponse,
+    FindingListResponse,
+    FindingStatisticsResponse
 )
 from src.api.schemas.common import (
     HealthResponse,
@@ -33,9 +33,9 @@ __all__ = [
     'ScanResponse',
     'ScanResultsResponse',
     'ScanListResponse',
-    'AlertResponse',
-    'AlertListResponse',
-    'AlertStatisticsResponse',
+    'FindingResponse',
+    'FindingListResponse',
+    'FindingStatisticsResponse',
     'HealthResponse',
     'ErrorResponse',
 ]

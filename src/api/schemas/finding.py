@@ -30,14 +30,14 @@ class FindingResponse(FindingBase):
 
     id: str = Field(..., description="Finding UUID")
     scan_id: str = Field(..., description="Scan session UUID")
-    evidence: Dict[str, Any] = Field(default_factory=dict, description="Technical evidence")
-    score_breakdown: Dict[str, Any] = Field(default_factory=dict, description="Score breakdown")
-    status: str = Field(..., description="Status (open/acknowledged/resolved/false_positive)")
-    false_positive: bool = Field(..., description="Marked as false positive")
+    evidence: Optional[Dict[str, Any]] = Field(default=None, description="Technical evidence")
+    score_breakdown: Optional[Dict[str, Any]] = Field(default=None, description="Score breakdown")
+    status: str = Field(default="open", description="Status (open/acknowledged/resolved/false_positive)")
+    false_positive: bool = Field(default=False, description="Marked as false positive")
     resolved_at: Optional[datetime] = Field(None, description="When finding was resolved")
     resolution_notes: Optional[str] = Field(None, description="Resolution notes")
-    discovered_at: datetime = Field(..., description="When finding was discovered")
-    updated_at: datetime = Field(..., description="Last update timestamp")
+    discovered_at: Optional[datetime] = Field(None, description="When finding was discovered")
+    updated_at: Optional[datetime] = Field(None, description="Last update timestamp")
 
     model_config = ConfigDict(from_attributes=True)
 

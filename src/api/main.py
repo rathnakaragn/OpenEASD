@@ -10,7 +10,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
-from src.api.routes import domains, scans, alerts, health, findings
+from src.api.routes import domains, scans, health, findings
 from src.api.settings import settings
 from src.utils.config import Config
 from src.utils.logging import setup_logging
@@ -61,7 +61,6 @@ app.add_middleware(
 app.include_router(health.router, prefix="/api/v1", tags=["health"])
 app.include_router(domains.router, prefix="/api/v1/domains", tags=["domains"])
 app.include_router(scans.router, prefix="/api/v1/scans", tags=["scans"])
-app.include_router(alerts.router, prefix="/api/v1/alerts", tags=["alerts"])
 app.include_router(findings.router, prefix="/api/v1/findings", tags=["findings"])
 
 # --- Frontend Serving ---

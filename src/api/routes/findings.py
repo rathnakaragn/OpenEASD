@@ -19,9 +19,10 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-router = APIRouter(tags=["findings"], redirect_slashes=False)
+router = APIRouter(tags=["findings"])
 
 
+@router.get("", response_model=FindingListResponse)
 @router.get("/", response_model=FindingListResponse)
 async def list_findings(
     scan_id: Optional[str] = Query(None, description="Filter by scan ID"),
