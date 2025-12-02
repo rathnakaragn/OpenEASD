@@ -219,7 +219,7 @@ def batch_scan_subfinder_command(args) -> Dict[str, Any]:
 
         # Scan each domain
         for idx, domain_obj in enumerate(domains, 1):
-            domain = domain_obj['domain']
+            domain = domain_obj.domain
             print(f"[{idx}/{len(domains)}] Scanning: {domain}")
             print("-" * 60)
 
