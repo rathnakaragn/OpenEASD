@@ -37,28 +37,35 @@ def test_analyze_with_various_ports(mock_analysis_config):
     with patch('src.analysis.detectors.port_detector.get_analysis_config', return_value=mock_analysis_config):
         detector = PortVulnerabilityDetector()
         naabu_results = [
-            {'port': 3306, 'target_host': 'db.example.com'},        # Database
-            {'port': 21, 'target_host': 'ftp.example.com'},         # High-risk & Remote access
+            {'port': 3306, 'target_host': 'db.example.com'},        # Database + unencrypted
+            {'port': 21, 'target_host': 'ftp.example.com'},         # High-risk + Remote access + unencrypted
             {'port': 8080, 'target_host': 'dev.example.com'},       # Medium-risk
             {'port': 10000, 'target_host': 'admin.example.com'},     # Admin
-            {'port': 23, 'target_host': 'telnet.example.com'},      # Remote access (critical)
-            {'port': 443, 'target_host': 'secure.example.com'},     # Benign
+            {'port': 23, 'target_host': 'telnet.example.com'},      # Remote access (critical) + unencrypted
+            {'port': 443, 'target_host': 'secure.example.com'},     # Benign (encrypted)
         ]
-        
+
         findings = detector.analyze({'naabu_results': naabu_results})
-        
-        assert len(findings) == 6
-        
+
+        # Count: 3306(2) + 21(3) + 8080(1) + 10000(1) + 23(2) + 443(0) = 9
+        assert len(findings) == 9
+
         finding_types = [f['finding_type'] for f in findings]
         assert 'database_port_exposed' in finding_types
         assert 'high_risk_port_exposed' in finding_types
         assert 'medium_risk_port_exposed' in finding_types
         assert 'admin_interface_exposed' in finding_types
         assert finding_types.count('remote_access_exposed') == 2
-        
-        # Check telnet severity
-        telnet_finding = next(f for f in findings if f['port'] == 23)
-        assert telnet_finding['severity_hint'] == 'critical'
+        assert 'unencrypted_protocol' in finding_types
+        assert finding_types.count('unencrypted_protocol') == 3  # MySQL, FTP, Telnet
+
+        # Check telnet findings (both remote_access and unencrypted should be critical)
+        telnet_findings = [f for f in findings if f['port'] == 23]
+        assert len(telnet_findings) == 2
+        telnet_remote = next(f for f in telnet_findings if f['finding_type'] == 'remote_access_exposed')
+        assert telnet_remote['severity_hint'] == 'critical'
+        telnet_unenc = next(f for f in telnet_findings if f['finding_type'] == 'unencrypted_protocol')
+        assert telnet_unenc['severity_hint'] == 'critical'
 
 def test_finding_creation_methods(mock_analysis_config):
     """Test the individual finding creation helper methods."""
@@ -84,6 +91,19 @@ def test_finding_creation_methods(mock_analysis_config):
         medium_risk = detector._create_medium_risk_port_finding(8080, 'host', 'tcp', 'ip')
         assert medium_risk['severity_hint'] == 'medium'
         assert medium_risk['finding_type'] == 'medium_risk_port_exposed'
+
+        # Test unencrypted protocol finding
+        unenc_ftp = detector._create_unencrypted_protocol_finding(21, 'host', 'tcp', 'ip')
+        assert unenc_ftp['severity_hint'] == 'high'
+        assert unenc_ftp['finding_type'] == 'unencrypted_protocol'
+        assert unenc_ftp['cwe_id'] == 'CWE-319'
+        assert 'encryption' in unenc_ftp['evidence']
+        assert unenc_ftp['evidence']['encryption'] == 'none'
+
+        # Test unencrypted protocol finding for critical service (Telnet)
+        unenc_telnet = detector._create_unencrypted_protocol_finding(23, 'host', 'tcp', 'ip')
+        assert unenc_telnet['severity_hint'] == 'critical'
+        assert unenc_telnet['finding_type'] == 'unencrypted_protocol'
 
 def test_get_port_risk_level(mock_analysis_config):
     """Test the get_port_risk_level method."""

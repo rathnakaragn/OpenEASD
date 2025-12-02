@@ -35,6 +35,23 @@ class PortVulnerabilityDetector(BaseDetector):
         self.admin_ports = [2082, 2083, 2086, 2087, 8443, 10000]
         self.remote_access_ports = [21, 22, 23, 3389, 5900, 5901]
 
+        # Unencrypted protocols that have encrypted alternatives
+        # Format: plaintext_port -> {'name': ..., 'encrypted_port': ..., 'encrypted_name': ...}
+        self.unencrypted_protocols = {
+            21: {'name': 'FTP', 'encrypted_port': 990, 'encrypted_name': 'FTPS', 'severity': 'high'},
+            23: {'name': 'Telnet', 'encrypted_port': 22, 'encrypted_name': 'SSH', 'severity': 'critical'},
+            25: {'name': 'SMTP', 'encrypted_port': 465, 'encrypted_name': 'SMTPS', 'severity': 'high'},
+            80: {'name': 'HTTP', 'encrypted_port': 443, 'encrypted_name': 'HTTPS', 'severity': 'medium'},
+            110: {'name': 'POP3', 'encrypted_port': 995, 'encrypted_name': 'POP3S', 'severity': 'high'},
+            143: {'name': 'IMAP', 'encrypted_port': 993, 'encrypted_name': 'IMAPS', 'severity': 'high'},
+            389: {'name': 'LDAP', 'encrypted_port': 636, 'encrypted_name': 'LDAPS', 'severity': 'high'},
+            1080: {'name': 'SOCKS', 'encrypted_port': None, 'encrypted_name': 'SOCKS5 over TLS', 'severity': 'high'},
+            5432: {'name': 'PostgreSQL', 'encrypted_port': None, 'encrypted_name': 'PostgreSQL SSL', 'severity': 'critical'},
+            3306: {'name': 'MySQL', 'encrypted_port': None, 'encrypted_name': 'MySQL SSL', 'severity': 'critical'},
+            27017: {'name': 'MongoDB', 'encrypted_port': None, 'encrypted_name': 'MongoDB TLS', 'severity': 'critical'},
+            6379: {'name': 'Redis', 'encrypted_port': None, 'encrypted_name': 'Redis TLS', 'severity': 'critical'},
+        }
+
         # Port information map (loaded from config or defaults)
         self.port_info = self._load_port_info()
 
@@ -125,6 +142,11 @@ class PortVulnerabilityDetector(BaseDetector):
             # Check for medium-risk ports
             if port in self.medium_risk_ports and port not in self.high_risk_ports:
                 finding = self._create_medium_risk_port_finding(port, host, protocol, ip)
+                findings.append(finding)
+
+            # Check for unencrypted protocols (plaintext services without TLS)
+            if port in self.unencrypted_protocols:
+                finding = self._create_unencrypted_protocol_finding(port, host, protocol, ip)
                 findings.append(finding)
 
         return findings
@@ -280,6 +302,60 @@ class PortVulnerabilityDetector(BaseDetector):
             },
             remediation=f'Review if {service_name} needs to be publicly accessible. '
                        f'Implement authentication and use TLS/SSL if available.'
+        )
+
+    def _create_unencrypted_protocol_finding(
+        self, port: int, host: str, protocol: str, ip: str
+    ) -> Dict[str, Any]:
+        """Create finding for unencrypted protocol that should use TLS."""
+        proto_info = self.unencrypted_protocols.get(port, {})
+        service_name = proto_info.get('name', f'Port {port}')
+        encrypted_name = proto_info.get('encrypted_name', 'TLS')
+        encrypted_port = proto_info.get('encrypted_port')
+        severity = proto_info.get('severity', 'high')
+
+        # Build remediation text
+        if encrypted_port:
+            remediation = (
+                f'Migrate from {service_name} (port {port}) to {encrypted_name} (port {encrypted_port}). '
+                f'Enable TLS/SSL encryption to protect data in transit. '
+                f'Credentials and sensitive data are exposed in plaintext without encryption.'
+            )
+        else:
+            remediation = (
+                f'Enable TLS/SSL encryption for {service_name}. '
+                f'Configure the service to require encrypted connections. '
+                f'Credentials and sensitive data are exposed in plaintext without encryption.'
+            )
+
+        return self._create_finding(
+            finding_type='unencrypted_protocol',
+            title=f'Unencrypted Protocol: {service_name} (Port {port}) - No TLS',
+            description=(
+                f'{service_name} is running without encryption on port {port}. '
+                f'This service transmits data in plaintext, exposing credentials, '
+                f'authentication tokens, and sensitive information to interception (MITM attacks). '
+                f'Use {encrypted_name} instead for secure communication.'
+            ),
+            affected_asset=host,
+            severity_hint=severity,
+            port=port,
+            protocol=protocol,
+            ip=ip,
+            service_name=service_name,
+            cwe_id='CWE-319',  # Cleartext Transmission of Sensitive Information
+            evidence={
+                'port': port,
+                'protocol': protocol,
+                'host': host,
+                'ip': ip,
+                'service': service_name,
+                'encryption': 'none',
+                'recommended_service': encrypted_name,
+                'recommended_port': encrypted_port,
+                'vulnerability': 'cleartext_transmission'
+            },
+            remediation=remediation
         )
 
     def get_port_risk_level(self, port: int) -> str:
