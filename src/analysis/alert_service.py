@@ -387,6 +387,11 @@ class AlertManagementService:
         Returns:
             Alert-formatted dictionary
         """
+        # Convert datetime to ISO string for Pydantic serialization
+        discovered_at = finding.get('discovered_at')
+        if isinstance(discovered_at, datetime):
+            discovered_at = discovered_at.isoformat()
+
         return {
             'alert_id': finding.get('id'),
             'id': finding.get('id'),
@@ -396,7 +401,7 @@ class AlertManagementService:
             'severity': finding.get('severity'),
             'description': finding.get('title') or finding.get('description'),
             'tool_source': finding.get('detector', ''),
-            'discovered_at': finding.get('discovered_at'),
+            'discovered_at': discovered_at,
             'status': finding.get('status', 'open'),
             'remediation': finding.get('remediation'),
             'risk_score': finding.get('risk_score'),
