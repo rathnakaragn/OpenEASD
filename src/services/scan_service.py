@@ -6,13 +6,23 @@ creation, execution, status tracking, and results retrieval.
 """
 
 import asyncio
+import json
 import logging
 import time
-from typing import List, Dict, Any, Optional, Union
+from typing import List, Dict, Any, Optional, Union, Tuple
 from datetime import datetime
 from src.data.database.sqlmodel_manager import SQLModelManager
 from src.utils.validation import validate_domain, is_private_ip
-from src.tools.runners import run_subfinder, run_naabu, run_dnsx, run_httpx
+from src.tools.runners import (
+    run_subfinder,
+    run_naabu,
+    run_dnsx,
+    run_httpx,
+    run_nmap_service_detection,
+    run_nmap_service_detection_parallel,
+    run_nmap_vuln_detection_parallel,
+    _extract_cves_from_nmap_output
+)
 from src.utils.timezone import get_ist_now
 from src.analysis.analysis_service import AnalysisService
 
@@ -94,6 +104,45 @@ class ScanService:
         if isinstance(dt, datetime):
             return dt.isoformat()
         return str(dt) if dt else ''
+
+    def _map_service_to_severity(self, service: str) -> str:
+        """
+        Map detected service name to severity level.
+
+        Args:
+            service: Service name (e.g., 'mysql', 'ssh', 'unknown')
+
+        Returns:
+            Severity level: 'critical', 'high', 'medium', or 'low'
+        """
+        service_lower = service.lower().strip()
+
+        # Critical services (exposed = critical risk)
+        critical_services = [
+            'mysql', 'postgresql', 'mongodb', 'mariadb', 'oracle',
+            'sql server', 'redis', 'memcached', 'cassandra', 'couchdb',
+            'elasticsearch', 'solr'
+        ]
+        if any(svc in service_lower for svc in critical_services):
+            return 'critical'
+
+        # High risk (unencrypted protocols, old services)
+        high_risk_services = ['telnet', 'ftp', 'rsh', 'rlogin']
+        if any(svc in service_lower for svc in high_risk_services):
+            return 'high'
+
+        # Medium risk (expected but need verification)
+        medium_risk_services = ['ssh', 'smtp', 'dns', 'snmp', 'http', 'https']
+        if any(svc in service_lower for svc in medium_risk_services):
+            return 'medium'
+
+        # Low risk (generally safe)
+        low_risk_services = ['ntp', 'ntp-time']
+        if any(svc in service_lower for svc in low_risk_services):
+            return 'low'
+
+        # Default to medium for unknown services
+        return 'medium'
 
     def _run_analysis_safely(self, scan_id: str, scan_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """
@@ -372,14 +421,17 @@ class ScanService:
                             error=str(e)
                         )
 
-            # Alert for open ports (separated by web service status)
+            # Phase 3: Parallel Service Detection for Non-Web Ports
+            # Collect all non-web ports for batch parallel detection
+            non_web_ports = []
+            non_web_port_mapping = {}  # Map "host:port" to port_info
+
             for target_url, port_info in httpx_targets:
                 httpx_result = httpx_results.get(target_url)
 
+                # Check if this is a web service
                 if httpx_result:
-                    # Check if it's a web service
                     is_web, confidence = is_web_service(httpx_result)
-
                     if is_web:
                         # Alert for web service
                         alert = {
@@ -392,30 +444,143 @@ class ScanService:
                             'discovered_at': get_ist_now()
                         }
                         alerts.append(alert)
-                    else:
-                        # Alert for non-web service (suspicious!)
-                        alert = {
-                            'scan_id': scan_id,
-                            'domain': port_info.get('host', ''),
-                            'vulnerability_type': 'non_web_service_port',
-                            'severity': 'medium',  # Higher severity - unexpected
-                            'description': f"Non-web service port open: {port_info.get('port')} ({port_info.get('protocol', 'tcp')})",
-                            'tool_source': 'naabu+httpx',
-                            'discovered_at': get_ist_now()
-                        }
-                        alerts.append(alert)
-                else:
-                    # No httpx result means port didn't respond to HTTP - it's a non-web service (suspicious!)
+                        continue  # Skip non-web processing
+
+                # Collect non-web port for parallel detection
+                host = port_info.get('host', '')
+                port = port_info.get('port')
+                non_web_ports.append((host, port))
+                non_web_port_mapping[f"{host}:{port}"] = port_info
+
+            # Run parallel service detection for all non-web ports
+            nmap_service_results = {}
+            if non_web_ports:
+                try:
+                    logger.info(f"Running parallel service detection for {len(non_web_ports)} non-web ports (5 workers)")
+                    nmap_start = time.time()
+                    nmap_service_results = run_nmap_service_detection_parallel(
+                        non_web_ports,
+                        max_workers=5
+                    )
+                    nmap_duration = time.time() - nmap_start
+                    logger.info(f"Parallel service detection completed in {nmap_duration:.2f}s")
+                except Exception as e:
+                    logger.warning(f"Parallel service detection failed: {e}")
+
+            # Phase 3.5: Parallel Vulnerability Detection for services found
+            vuln_results = {}
+            ports_with_services = []
+
+            for port_key, service_result in nmap_service_results.items():
+                if service_result.get('status') == 'success':
+                    host, port = port_key.split(':')
+                    port = int(port)
+                    service = service_result['service']
+                    # Only run vuln detection for known services (skip 'unknown')
+                    if service != 'unknown':
+                        ports_with_services.append((host, port, service))
+
+            if ports_with_services:
+                try:
+                    logger.info(f"Running parallel vulnerability detection for {len(ports_with_services)} services (3 workers)")
+                    vuln_start = time.time()
+                    vuln_results = run_nmap_vuln_detection_parallel(
+                        ports_with_services,
+                        max_workers=3
+                    )
+                    vuln_duration = time.time() - vuln_start
+                    logger.info(f"Parallel vulnerability detection completed in {vuln_duration:.2f}s")
+                except Exception as e:
+                    logger.warning(f"Parallel vulnerability detection failed: {e}")
+
+            # Generate alerts from parallel service detection results
+            for port_key, nmap_result in nmap_service_results.items():
+                port_info = non_web_port_mapping.get(port_key)
+                if not port_info:
+                    continue
+
+                host = port_info.get('host', '')
+                port = port_info.get('port')
+
+                # Create alert with service details if nmap successful
+                if nmap_result and nmap_result.get('status') == 'success':
+                    service = nmap_result['service']
+                    version = nmap_result['version']
+                    confidence_level = nmap_result['confidence']
+
+                    # Map service to severity
+                    severity = self._map_service_to_severity(service)
+
+                    # Check for vulnerabilities
+                    vuln_key = f"{host}:{port}"
+                    vuln_data = vuln_results.get(vuln_key, {})
+
+                    cve_ids = None
+                    cvss_score = None
+                    vulnerability_description = None
+                    remediation_steps = None
+
+                    if vuln_data.get('vulnerabilities'):
+                        vulnerabilities = vuln_data['vulnerabilities']
+                        # Extract CVE IDs
+                        cve_list = [v.get('cve_id') for v in vulnerabilities if v.get('cve_id')]
+                        if cve_list:
+                            cve_ids = json.dumps(cve_list)
+                            # Get highest CVSS score
+                            cvss_scores = [v.get('cvss_score', 0) for v in vulnerabilities]
+                            if cvss_scores:
+                                cvss_score = max(cvss_scores)
+
+                            # Create vulnerability description
+                            vuln_descriptions = [
+                                f"{v.get('cve_id', 'Unknown')} (CVSS {v.get('cvss_score', 'N/A')}): {v.get('severity', 'Unknown').upper()}"
+                                for v in vulnerabilities
+                            ]
+                            vulnerability_description = " | ".join(vuln_descriptions)
+
+                            # Suggest remediation
+                            if service.lower() == 'mysql':
+                                remediation_steps = "Update MySQL to the latest stable version. Current version has known vulnerabilities."
+                            elif service.lower() == 'postgresql':
+                                remediation_steps = "Update PostgreSQL to the latest stable version."
+                            elif service.lower() in ['redis', 'mongodb']:
+                                remediation_steps = f"Update {service} and enable authentication. Restrict network access to trusted sources only."
+                            else:
+                                remediation_steps = f"Update {service} to the latest version and restrict network access."
+
                     alert = {
                         'scan_id': scan_id,
-                        'domain': port_info.get('host', ''),
-                        'vulnerability_type': 'non_web_service_port',
-                        'severity': 'medium',  # Higher severity - unexpected service
-                        'description': f"Non-web service port open: {port_info.get('port')} ({port_info.get('protocol', 'tcp')})",
-                        'tool_source': 'naabu+httpx',
+                        'domain': host,
+                        'vulnerability_type': f'exposed_{service}_service',
+                        'service_type': service,
+                        'service_version': version,
+                        'service_confidence': confidence_level,
+                        'severity': severity,
+                        'description': f'{service.upper()} {version} exposed on port {port}',
+                        'tool_source': 'naabu+httpx+nmap',
+                        'cve_ids': cve_ids,
+                        'cvss_score': cvss_score,
+                        'vulnerability_description': vulnerability_description,
+                        'remediation_steps': remediation_steps,
+                        'port': port,
+                        'protocol': port_info.get('protocol', 'tcp'),
                         'discovered_at': get_ist_now()
                     }
-                    alerts.append(alert)
+                else:
+                    # Fallback to generic alert if nmap failed
+                    alert = {
+                        'scan_id': scan_id,
+                        'domain': host,
+                        'vulnerability_type': 'non_web_service_port',
+                        'severity': 'medium',
+                        'description': f'Non-web service port open: {port} ({port_info.get("protocol", "tcp")})',
+                        'tool_source': 'naabu+httpx',
+                        'port': port,
+                        'protocol': port_info.get('protocol', 'tcp'),
+                        'discovered_at': get_ist_now()
+                    }
+
+                alerts.append(alert)
 
             # Store alerts
             if alerts:

@@ -419,9 +419,15 @@ class SQLModelManager(DatabaseManager):
                 - vulnerability_type: Type of vulnerability (maps to finding_type)
                 - severity: Severity level (critical, high, medium, low, info)
                 - description: Alert description (maps to title)
-                - remediation: Optional remediation steps
+                - remediation_steps: Optional remediation steps (FIXED: was 'remediation')
                 - tool_source: Tool that generated the alert (maps to detector)
                 - discovered_at: Discovery timestamp
+                - service_type: Detected service name (NEW: nmap integration)
+                - service_version: Service version (NEW: nmap integration)
+                - service_confidence: Detection confidence 0-100 (NEW: nmap integration)
+                - cve_ids: JSON list of CVE IDs (NEW: vulnerability detection)
+                - cvss_score: Highest CVSS score 0-10 (NEW: vulnerability detection)
+                - vulnerability_description: CVE details (NEW: vulnerability detection)
 
         Returns:
             Dictionary with success status and count of stored alerts
@@ -429,6 +435,27 @@ class SQLModelManager(DatabaseManager):
         # Map old alert schema to new finding schema
         findings = []
         for alert in alerts:
+            # Build evidence dictionary with service and CVE data
+            evidence = {}
+
+            # Service detection data (from Phase 1)
+            if alert.get('service_type'):
+                evidence['service_type'] = alert.get('service_type')
+            if alert.get('service_version'):
+                evidence['service_version'] = alert.get('service_version')
+            if alert.get('service_confidence') is not None:
+                evidence['service_confidence'] = alert.get('service_confidence')
+
+            # CVE vulnerability detection data (from Phase 3.5)
+            if alert.get('cve_ids'):
+                evidence['cve_ids'] = alert.get('cve_ids')  # Already JSON string
+            if alert.get('cvss_score') is not None:
+                evidence['cvss_score'] = alert.get('cvss_score')
+            if alert.get('cvss_vector'):
+                evidence['cvss_vector'] = alert.get('cvss_vector')
+            if alert.get('vulnerability_description'):
+                evidence['vulnerability_description'] = alert.get('vulnerability_description')
+
             finding = {
                 'scan_id': alert['scan_id'],
                 'finding_type': alert.get('vulnerability_type', 'unknown'),  # Map field name
@@ -440,8 +467,9 @@ class SQLModelManager(DatabaseManager):
                 'detector': alert.get('tool_source', alert.get('detector')),
                 'port': alert.get('port'),
                 'protocol': alert.get('protocol'),
-                'remediation': alert.get('remediation'),
-                'discovered_at': alert.get('discovered_at')
+                'remediation': alert.get('remediation_steps', alert.get('remediation')),  # FIXED: Try both keys
+                'discovered_at': alert.get('discovered_at'),
+                'evidence': json.dumps(evidence) if evidence else None  # NEW: Store evidence
             }
             findings.append(finding)
 
