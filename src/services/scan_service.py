@@ -18,6 +18,7 @@ from src.tools.runners import (
     run_naabu,
     run_dnsx,
     run_httpx,
+    run_tlsx_parallel,
     run_nmap_service_detection,
     run_nmap_service_detection_parallel,
     run_nmap_vuln_detection_parallel,
@@ -348,6 +349,50 @@ class ScanService:
                         })
                     self.db.store_naabu_results(naabu_results_for_db)
 
+            # Step 4: TLS verification (tlsx)
+            tlsx_results = {}
+            if ports_found:
+                try:
+                    # Publish tool started event
+                    if self.publisher:
+                        self.publisher.publish_tool_started(
+                            scan_id=scan_id,
+                            tool_name='tlsx',
+                            domain=domain,
+                            target_count=len(ports_found)
+                        )
+
+                    tlsx_start = time.time()
+
+                    # Build targets list: (host, port) tuples
+                    tlsx_targets = []
+                    for port_info in ports_found:
+                        host = port_info.get('subdomain', port_info.get('host', ''))
+                        port = port_info.get('port')
+                        if host and port:
+                            tlsx_targets.append((host, port))
+
+                    # Run tlsx to verify TLS status
+                    if tlsx_targets:
+                        tlsx_results = run_tlsx_parallel(tlsx_targets, timeout=timeout)
+                        logger.info(f"tlsx completed: {len(tlsx_results)} results")
+
+                    tlsx_duration = time.time() - tlsx_start
+
+                    # Publish tool completed event
+                    if self.publisher:
+                        self.publisher.publish_tool_completed(
+                            scan_id=scan_id,
+                            tool_name='tlsx',
+                            domain=domain,
+                            results_count=len(tlsx_results),
+                            duration_seconds=tlsx_duration
+                        )
+
+                except Exception as e:
+                    logger.warning(f"tlsx scan failed (non-fatal): {e}")
+                    # Continue without tlsx results - analysis will fall back to port-based detection
+
             # Add domain if it doesn't exist
             if not self.db.domain_exists(domain):
                 self.db.add_domain(domain, is_primary=True)
@@ -597,7 +642,8 @@ class ScanService:
                     'domain': domain,
                     'subfinder_results': [{'subdomain': s} for s in subdomains],
                     'dnsx_results': dns_results if 'dns_results' in locals() else [],
-                    'naabu_results': ports_found
+                    'naabu_results': ports_found,
+                    'tlsx_results': tlsx_results  # TLS verification results for port analysis
                 }
 
                 # Run analysis safely (handles async context)
@@ -636,6 +682,8 @@ class ScanService:
                     tools_executed.append('dnsx')
                 if active_subdomains:
                     tools_executed.append('naabu')
+                if tlsx_results:
+                    tools_executed.append('tlsx')
                 if httpx_targets:
                     tools_executed.append('httpx')
 

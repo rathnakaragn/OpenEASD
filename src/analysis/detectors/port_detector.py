@@ -97,7 +97,9 @@ class PortVulnerabilityDetector(BaseDetector):
 
         Args:
             scan_data: Dictionary containing scan results
-                Expected key: 'naabu_results' - List of open port dictionaries
+                Expected keys:
+                - 'naabu_results': List of open port dictionaries
+                - 'tlsx_results': Optional dict mapping "host:port" to TLS probe results
 
         Returns:
             List of finding dictionaries
@@ -108,6 +110,10 @@ class PortVulnerabilityDetector(BaseDetector):
         naabu_results = scan_data.get('naabu_results', [])
         if not naabu_results:
             return findings
+
+        # Get tlsx results for TLS verification (optional)
+        # Format: {"host:port": {"tls_enabled": True/False, "tls_version": "...", ...}}
+        tlsx_results = scan_data.get('tlsx_results', {})
 
         # Analyze each open port
         for port_info in naabu_results:
@@ -146,8 +152,29 @@ class PortVulnerabilityDetector(BaseDetector):
 
             # Check for unencrypted protocols (plaintext services without TLS)
             if port in self.unencrypted_protocols:
-                finding = self._create_unencrypted_protocol_finding(port, host, protocol, ip)
-                findings.append(finding)
+                # Check if tlsx verified TLS status for this host:port
+                tlsx_key = f"{host}:{port}"
+                tlsx_probe = tlsx_results.get(tlsx_key, {})
+
+                # Determine if TLS is enabled
+                tls_enabled = tlsx_probe.get('tls_enabled')
+
+                if tls_enabled is False:
+                    # tlsx confirmed NO TLS - definitely unencrypted
+                    finding = self._create_unencrypted_protocol_finding(
+                        port, host, protocol, ip,
+                        verified_by_tlsx=True,
+                        tlsx_error=tlsx_probe.get('error')
+                    )
+                    findings.append(finding)
+                elif tls_enabled is None and not tlsx_results:
+                    # No tlsx data available - fall back to port-based assumption
+                    finding = self._create_unencrypted_protocol_finding(
+                        port, host, protocol, ip,
+                        verified_by_tlsx=False
+                    )
+                    findings.append(finding)
+                # If tls_enabled is True, service has TLS - no finding needed
 
         return findings
 
@@ -305,14 +332,31 @@ class PortVulnerabilityDetector(BaseDetector):
         )
 
     def _create_unencrypted_protocol_finding(
-        self, port: int, host: str, protocol: str, ip: str
+        self, port: int, host: str, protocol: str, ip: str,
+        verified_by_tlsx: bool = False, tlsx_error: str = None
     ) -> Dict[str, Any]:
-        """Create finding for unencrypted protocol that should use TLS."""
+        """Create finding for unencrypted protocol that should use TLS.
+
+        Args:
+            port: Port number
+            host: Target hostname
+            protocol: Protocol (tcp/udp)
+            ip: IP address
+            verified_by_tlsx: Whether tlsx was used to verify no TLS
+            tlsx_error: Error from tlsx if any
+        """
         proto_info = self.unencrypted_protocols.get(port, {})
         service_name = proto_info.get('name', f'Port {port}')
         encrypted_name = proto_info.get('encrypted_name', 'TLS')
         encrypted_port = proto_info.get('encrypted_port')
         severity = proto_info.get('severity', 'high')
+
+        # Build description with verification info
+        verification_note = ""
+        if verified_by_tlsx:
+            verification_note = " (Verified by tlsx - TLS handshake failed)"
+        else:
+            verification_note = " (Based on port number - unverified)"
 
         # Build remediation text
         if encrypted_port:
@@ -328,9 +372,25 @@ class PortVulnerabilityDetector(BaseDetector):
                 f'Credentials and sensitive data are exposed in plaintext without encryption.'
             )
 
+        evidence = {
+            'port': port,
+            'protocol': protocol,
+            'host': host,
+            'ip': ip,
+            'service': service_name,
+            'encryption': 'none',
+            'recommended_service': encrypted_name,
+            'recommended_port': encrypted_port,
+            'vulnerability': 'cleartext_transmission',
+            'verified_by_tlsx': verified_by_tlsx
+        }
+
+        if tlsx_error:
+            evidence['tlsx_error'] = tlsx_error
+
         return self._create_finding(
             finding_type='unencrypted_protocol',
-            title=f'Unencrypted Protocol: {service_name} (Port {port}) - No TLS',
+            title=f'Unencrypted Protocol: {service_name} (Port {port}) - No TLS{verification_note}',
             description=(
                 f'{service_name} is running without encryption on port {port}. '
                 f'This service transmits data in plaintext, exposing credentials, '
@@ -344,17 +404,7 @@ class PortVulnerabilityDetector(BaseDetector):
             ip=ip,
             service_name=service_name,
             cwe_id='CWE-319',  # Cleartext Transmission of Sensitive Information
-            evidence={
-                'port': port,
-                'protocol': protocol,
-                'host': host,
-                'ip': ip,
-                'service': service_name,
-                'encryption': 'none',
-                'recommended_service': encrypted_name,
-                'recommended_port': encrypted_port,
-                'vulnerability': 'cleartext_transmission'
-            },
+            evidence=evidence,
             remediation=remediation
         )
 
