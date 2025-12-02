@@ -363,6 +363,8 @@ def batch_scan_subfinder_command(args) -> Dict[str, Any]:
                             'severity': 'low' if port in [80, 443] else 'medium',
                             'description': f"Open port {port}/{port_info['protocol']} on {subdomain} (IP: {port_info.get('ip', 'N/A')})",
                             'tool_source': 'naabu',
+                            'port': port,
+                            'protocol': port_info['protocol'],
                             'discovered_at': get_ist_now()
                         })
 
