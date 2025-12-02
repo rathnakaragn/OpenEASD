@@ -412,7 +412,7 @@ class ScanService:
                     'discovered_at': get_ist_now()
                 })
 
-            # Step 4: Probe open ports for web services
+            # Step 5: Probe open ports for web services (httpx)
             httpx_targets = []
             for port_info in ports_found:
                 host = port_info.get('host', '')
