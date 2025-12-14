@@ -122,15 +122,15 @@ def test_analyze_with_medium_risk_service(mock_get_config, mock_analysis_config)
 
 
 @patch('src.analysis.detectors.service_detector.get_analysis_config')
-def test_analyze_with_outdated_version(mock_get_config, mock_analysis_config):
-    """Test analyze method detects outdated service versions."""
+def test_analyze_with_vulnerable_version(mock_get_config, mock_analysis_config):
+    """Test analyze method detects vulnerable service versions using regex patterns."""
     mock_get_config.return_value = mock_analysis_config
     detector = ServiceVulnerabilityDetector()
 
     nmap_results = {
         'old.example.com:22': {
             'status': 'success',
-            'service': 'openssh',
+            'service': 'ssh',
             'version': '5.3',
             'product': 'OpenSSH',
             'confidence': 100
@@ -139,11 +139,12 @@ def test_analyze_with_outdated_version(mock_get_config, mock_analysis_config):
 
     findings = detector.analyze({'nmap_service_results': nmap_results})
 
-    # Should detect outdated version
-    outdated_findings = [f for f in findings if f['finding_type'] == 'outdated_service_version']
-    assert len(outdated_findings) == 1
-    assert outdated_findings[0]['severity_hint'] == 'high'
-    assert '5.3' in outdated_findings[0]['title']
+    # Should detect vulnerable version (OpenSSH < 7.0 matches pattern ^[1-6]\.)
+    vuln_findings = [f for f in findings if f['finding_type'] == 'vulnerable_service_version']
+    assert len(vuln_findings) == 1
+    assert vuln_findings[0]['severity_hint'] == 'critical'
+    assert '5.3' in vuln_findings[0]['title']
+    assert 'CVE' in vuln_findings[0]['title'] or 'CVE' in vuln_findings[0]['evidence'].get('cve', '')
 
 
 @patch('src.analysis.detectors.service_detector.get_analysis_config')
@@ -297,4 +298,112 @@ def test_service_info_metadata(mock_get_config, mock_analysis_config):
     assert 'telnet' in detector.service_info
     assert detector.service_info['telnet']['type'] == 'remote_access'
     assert detector.service_info['telnet']['cwe_id'] == 'CWE-319'
+
+
+@patch('src.analysis.detectors.service_detector.get_analysis_config')
+def test_analyze_with_weak_tls(mock_get_config, mock_analysis_config):
+    """Test analyze method detects weak TLS versions."""
+    mock_get_config.return_value = mock_analysis_config
+    detector = ServiceVulnerabilityDetector()
+
+    tlsx_results = {
+        'secure.example.com:443': {
+            'status': 'success',
+            'tls_enabled': True,
+            'tls_version': 'TLS 1.0',
+            'cipher': 'TLS_RSA_WITH_AES_128_CBC_SHA'
+        }
+    }
+
+    findings = detector.analyze({'tlsx_results': tlsx_results})
+
+    # Should detect weak TLS version
+    tls_findings = [f for f in findings if f['finding_type'] == 'weak_tls_version']
+    assert len(tls_findings) == 1
+    assert tls_findings[0]['severity_hint'] == 'high'
+    assert 'TLS 1.0' in tls_findings[0]['title']
+
+
+@patch('src.analysis.detectors.service_detector.get_analysis_config')
+def test_analyze_with_weak_cipher(mock_get_config, mock_analysis_config):
+    """Test analyze method detects weak cipher suites."""
+    mock_get_config.return_value = mock_analysis_config
+    detector = ServiceVulnerabilityDetector()
+
+    tlsx_results = {
+        'weak.example.com:443': {
+            'status': 'success',
+            'tls_enabled': True,
+            'tls_version': 'TLS 1.2',
+            'cipher': 'TLS_RSA_WITH_RC4_128_SHA'
+        }
+    }
+
+    findings = detector.analyze({'tlsx_results': tlsx_results})
+
+    # Should detect weak cipher (RC4)
+    cipher_findings = [f for f in findings if f['finding_type'] == 'weak_cipher_suite']
+    assert len(cipher_findings) == 1
+    assert cipher_findings[0]['severity_hint'] == 'high'
+    assert 'RC4' in cipher_findings[0]['title']
+
+
+@patch('src.analysis.detectors.service_detector.get_analysis_config')
+def test_analyze_with_expired_cert(mock_get_config, mock_analysis_config):
+    """Test analyze method detects expired certificates."""
+    mock_get_config.return_value = mock_analysis_config
+    detector = ServiceVulnerabilityDetector()
+
+    tlsx_results = {
+        'expired.example.com:443': {
+            'status': 'success',
+            'tls_enabled': True,
+            'tls_version': 'TLS 1.3',
+            'cipher': 'TLS_AES_256_GCM_SHA384',
+            'cert_expired': True
+        }
+    }
+
+    findings = detector.analyze({'tlsx_results': tlsx_results})
+
+    # Should detect expired certificate
+    cert_findings = [f for f in findings if f['finding_type'] == 'expired_certificate']
+    assert len(cert_findings) == 1
+    assert cert_findings[0]['severity_hint'] == 'high'
+
+
+@patch('src.analysis.detectors.service_detector.get_analysis_config')
+def test_analyze_combined_nmap_and_tlsx(mock_get_config, mock_analysis_config):
+    """Test analyze method processes both nmap and tlsx results."""
+    mock_get_config.return_value = mock_analysis_config
+    detector = ServiceVulnerabilityDetector()
+
+    scan_data = {
+        'nmap_service_results': {
+            'db.example.com:3306': {
+                'status': 'success',
+                'service': 'mysql',
+                'version': '5.1.73',
+                'product': 'MySQL',
+                'confidence': 100
+            }
+        },
+        'tlsx_results': {
+            'secure.example.com:443': {
+                'status': 'success',
+                'tls_enabled': True,
+                'tls_version': 'SSL 3.0',
+                'cipher': 'TLS_RSA_WITH_AES_128_CBC_SHA'
+            }
+        }
+    }
+
+    findings = detector.analyze(scan_data)
+
+    # Should have both service findings and TLS findings
+    service_findings = [f for f in findings if 'service' in f['finding_type']]
+    tls_findings = [f for f in findings if 'tls' in f['finding_type']]
+
+    assert len(service_findings) >= 1  # MySQL is critical service
+    assert len(tls_findings) >= 1  # SSL 3.0 is critical
 

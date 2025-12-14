@@ -8,9 +8,11 @@ Analyzes nmap service detection results to identify security risks:
 - Exposed sensitive services
 """
 
-from typing import Dict, List, Any
+import re
+from typing import Dict, List, Any, Optional
 from src.analysis.detectors.base_detector import BaseDetector
 from src.analysis.config import get_analysis_config
+from src.analysis.constants import VULNERABLE_VERSIONS, TLS_VERSION_RISK, WEAK_CIPHER_PATTERNS
 
 
 class ServiceVulnerabilityDetector(BaseDetector):
@@ -129,8 +131,6 @@ class ServiceVulnerabilityDetector(BaseDetector):
 
         # Get nmap service detection results
         nmap_results = scan_data.get('nmap_service_results', {})
-        if not nmap_results:
-            return findings
 
         # Analyze each detected service
         for port_key, service_data in nmap_results.items():
@@ -181,6 +181,23 @@ class ServiceVulnerabilityDetector(BaseDetector):
                 )
                 if vuln_finding:
                     findings.append(vuln_finding)
+
+        # Analyze TLS quality from tlsx results
+        tlsx_results = scan_data.get('tlsx_results', {})
+        for port_key, tlsx_data in tlsx_results.items():
+            if not tlsx_data or tlsx_data.get('status') != 'success':
+                continue
+
+            # Parse host:port
+            try:
+                host, port_str = port_key.split(':')
+                port = int(port_str)
+            except (ValueError, AttributeError):
+                continue
+
+            # Check TLS quality
+            tls_findings = self._check_tls_quality(host, port, tlsx_data)
+            findings.extend(tls_findings)
 
         return findings
 
@@ -308,56 +325,156 @@ class ServiceVulnerabilityDetector(BaseDetector):
 
     def _check_version_vulnerabilities(
         self, host: str, port: int, service: str, version: str, product: str
-    ) -> Dict[str, Any]:
+    ) -> Optional[Dict[str, Any]]:
         """
-        Check for known vulnerable versions.
+        Check for known vulnerable versions using regex patterns.
 
-        This is a placeholder for future CVE integration.
-        Currently checks for obviously outdated versions.
+        Uses VULNERABLE_VERSIONS from constants for pattern matching with CVE data.
         """
-        # Known outdated/vulnerable version patterns
-        # In production, this would query NVD or a CVE database
-        vulnerable_patterns = {
-            'openssh': ['4.', '5.', '6.'],  # Very old SSH versions
-            'apache': ['1.', '2.0', '2.2'],  # Old Apache versions
-            'nginx': ['0.', '1.0', '1.2'],  # Old Nginx versions
-            'mysql': ['4.', '5.0', '5.1', '5.5'],  # Old MySQL versions
-            'postgresql': ['7.', '8.', '9.0', '9.1', '9.2'],  # Old PostgreSQL
-            'redis': ['2.', '3.0', '3.2'],  # Old Redis versions
-            'mongodb': ['2.', '3.0', '3.2'],  # Old MongoDB versions
-        }
+        if not version:
+            return None
 
         service_lower = service.lower()
-        for svc_name, vuln_versions in vulnerable_patterns.items():
-            if svc_name in service_lower:
-                for vuln_prefix in vuln_versions:
-                    if version.startswith(vuln_prefix):
-                        return self._create_finding(
-                            finding_type='outdated_service_version',
-                            title=f'Outdated {service.upper()} Version: {version} (Port {port})',
-                            description=(
-                                f'{service.upper()} version {version} is outdated and may contain '
-                                f'known vulnerabilities. Update to the latest stable version.'
-                            ),
+        product_lower = (product or '').lower()
+
+        # Check against known vulnerable version patterns
+        for svc_name, vuln_list in VULNERABLE_VERSIONS.items():
+            # Match by service name or product name
+            if svc_name in service_lower or svc_name in product_lower:
+                for vuln_info in vuln_list:
+                    pattern = vuln_info.get('pattern', '')
+                    try:
+                        if re.search(pattern, version, re.IGNORECASE):
+                            severity = vuln_info.get('severity', 'high')
+                            cve = vuln_info.get('cve', 'Unknown')
+                            description = vuln_info.get('description', 'Vulnerable version detected')
+
+                            return self._create_finding(
+                                finding_type='vulnerable_service_version',
+                                title=f'Vulnerable {service.upper()} Version: {version} ({cve})',
+                                description=(
+                                    f'{service.upper()} version {version} is vulnerable. '
+                                    f'{description}'
+                                ),
+                                affected_asset=host,
+                                severity_hint=severity,
+                                port=port,
+                                protocol='tcp',
+                                service_name=service,
+                                service_version=version,
+                                product=product,
+                                cwe_id='CWE-1104',  # Use of Unmaintained Third Party Components
+                                evidence={
+                                    'port': port,
+                                    'host': host,
+                                    'service': service,
+                                    'version': version,
+                                    'cve': cve,
+                                    'vulnerability': 'known_vulnerable_version'
+                                },
+                                remediation=f'Update {service.upper()} to the latest stable version immediately. {cve} affects this version.'
+                            )
+                    except re.error:
+                        # Invalid regex pattern - skip
+                        continue
+
+        return None
+
+    def _check_tls_quality(
+        self, host: str, port: int, tlsx_result: Dict[str, Any]
+    ) -> List[Dict[str, Any]]:
+        """
+        Check TLS quality from tlsx results.
+
+        Detects:
+        - Weak TLS versions (SSL2, SSL3, TLS 1.0, TLS 1.1)
+        - Weak cipher suites
+        - Certificate issues
+        """
+        findings = []
+
+        if not tlsx_result or not tlsx_result.get('tls_enabled'):
+            return findings
+
+        # Check TLS version
+        tls_version = tlsx_result.get('tls_version', '').lower().replace(' ', '').replace('.', '')
+        if tls_version:
+            for version_key, risk_info in TLS_VERSION_RISK.items():
+                if version_key in tls_version:
+                    severity = risk_info.get('severity', 'medium')
+                    # Only report if severity is high or critical (deprecated versions)
+                    if severity in ['critical', 'high']:
+                        finding = self._create_finding(
+                            finding_type='weak_tls_version',
+                            title=f'Weak TLS Version: {tlsx_result.get("tls_version", tls_version)} (Port {port})',
+                            description=risk_info.get('description', 'Weak TLS version detected'),
                             affected_asset=host,
-                            severity_hint='high',
+                            severity_hint=severity,
                             port=port,
                             protocol='tcp',
-                            service_name=service,
-                            service_version=version,
-                            product=product,
-                            cwe_id='CWE-1104',  # Use of Unmaintained Third Party Components
+                            cwe_id='CWE-326',  # Inadequate Encryption Strength
                             evidence={
                                 'port': port,
                                 'host': host,
-                                'service': service,
-                                'version': version,
-                                'vulnerability': 'outdated_version'
+                                'tls_version': tlsx_result.get('tls_version', tls_version),
+                                'vulnerability': 'weak_tls'
                             },
-                            remediation=f'Update {service.upper()} to the latest stable version immediately.'
+                            remediation='Upgrade to TLS 1.2 or TLS 1.3. Disable older TLS versions.'
                         )
+                        findings.append(finding)
+                    break
 
-        return None
+        # Check cipher suites
+        cipher = tlsx_result.get('cipher', '')
+        if cipher:
+            for cipher_info in WEAK_CIPHER_PATTERNS:
+                pattern = cipher_info.get('pattern', '')
+                try:
+                    if re.search(pattern, cipher, re.IGNORECASE):
+                        finding = self._create_finding(
+                            finding_type='weak_cipher_suite',
+                            title=f'Weak Cipher Suite: {cipher} (Port {port})',
+                            description=cipher_info.get('description', 'Weak cipher detected'),
+                            affected_asset=host,
+                            severity_hint=cipher_info.get('severity', 'medium'),
+                            port=port,
+                            protocol='tcp',
+                            cwe_id='CWE-327',  # Use of a Broken or Risky Cryptographic Algorithm
+                            evidence={
+                                'port': port,
+                                'host': host,
+                                'cipher': cipher,
+                                'vulnerability': 'weak_cipher'
+                            },
+                            remediation='Configure server to use strong cipher suites only. Disable weak ciphers.'
+                        )
+                        findings.append(finding)
+                        break  # One finding per port for weak ciphers
+                except re.error:
+                    continue
+
+        # Check certificate expiration (if available)
+        cert_expired = tlsx_result.get('cert_expired', False)
+        if cert_expired:
+            finding = self._create_finding(
+                finding_type='expired_certificate',
+                title=f'Expired TLS Certificate (Port {port})',
+                description='The TLS certificate has expired, causing security warnings and potential MITM vulnerability.',
+                affected_asset=host,
+                severity_hint='high',
+                port=port,
+                protocol='tcp',
+                cwe_id='CWE-295',  # Improper Certificate Validation
+                evidence={
+                    'port': port,
+                    'host': host,
+                    'vulnerability': 'expired_certificate'
+                },
+                remediation='Renew the TLS certificate immediately.'
+            )
+            findings.append(finding)
+
+        return findings
 
     def get_service_risk_level(self, service: str) -> str:
         """

@@ -55,7 +55,7 @@ class AnalysisConfig:
                     'port_detector': {
                         'enabled': True,
                         'high_risk_ports': [21, 23, 3389, 5900, 5432, 3306, 27017],
-                        'medium_risk_ports': [8080, 8443, 9090]
+                        'medium_risk_ports': [9090]  # 8080/8443 are standard web ports, not risky
                     }
                 },
                 'performance': {
@@ -111,8 +111,9 @@ class AnalysisConfig:
 
     def get_admin_ports(self) -> List[int]:
         """Get list of admin interface ports."""
+        # Note: 8443 removed - it's standard HTTPS alt, not necessarily admin
         return self.get('analysis.detectors.port_detector.admin_ports',
-                       [2082, 2083, 2086, 2087, 8443, 10000])
+                       [2082, 2083, 2086, 2087, 9090, 10000])
 
     def get_remote_access_ports(self) -> List[int]:
         """Get list of remote access service ports."""

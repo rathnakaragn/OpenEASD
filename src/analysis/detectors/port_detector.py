@@ -19,6 +19,9 @@ from src.analysis.constants import (
     ADMIN_PORTS,
     REMOTE_ACCESS_PORTS,
     UNENCRYPTED_PROTOCOL_PORTS,
+    EMAIL_PORTS,
+    DIRECTORY_PORTS,
+    INFRASTRUCTURE_PORTS,
     get_port_risk_level,
     get_port_category
 )
@@ -63,6 +66,11 @@ class PortVulnerabilityDetector(BaseDetector):
         # Get unencrypted protocol config (for encrypted alternatives info)
         self.unencrypted_protocols = self.analysis_config.get_unencrypted_protocols()
 
+        # Infrastructure ports (SMTP, DNS, SNMP, LDAP)
+        self.email_ports = EMAIL_PORTS
+        self.directory_ports = DIRECTORY_PORTS
+        self.infrastructure_ports = INFRASTRUCTURE_PORTS
+
         # Use centralized port info
         self.port_info = PORT_INFO
 
@@ -70,12 +78,16 @@ class PortVulnerabilityDetector(BaseDetector):
         """
         Analyze naabu port scan results for vulnerabilities.
 
+        Only analyzes NON-WEB service ports. Web services are skipped
+        as they are handled separately by web-specific tools.
+
         Args:
             scan_data: Dictionary containing scan results
                 Expected keys:
                 - 'naabu_results': List of open port dictionaries
                 - 'tlsx_results': Optional dict mapping "host:port" to TLS probe results
                 - 'httpx_results': Optional list of HTTP probe results (for redirect detection)
+                - 'web_service_ports': Optional list of "host:port" strings for web services
 
         Returns:
             List of finding dictionaries
@@ -87,6 +99,13 @@ class PortVulnerabilityDetector(BaseDetector):
         if not naabu_results:
             return findings
 
+        # Get web service ports to SKIP (these are handled by web-specific tools)
+        web_service_ports = set(scan_data.get('web_service_ports', []))
+
+        # Standard web ports to always skip (regardless of httpx detection)
+        # These are standard HTTP/HTTPS ports, not risky non-web services
+        STANDARD_WEB_PORTS = {80, 443, 8080, 8443}
+
         # Get tlsx results for TLS verification (optional)
         # Format: {"host:port": {"tls_enabled": True/False, "tls_version": "...", ...}}
         tlsx_results = scan_data.get('tlsx_results', {})
@@ -96,7 +115,7 @@ class PortVulnerabilityDetector(BaseDetector):
         httpx_results = scan_data.get('httpx_results', [])
         http_redirects = self._build_http_redirect_lookup(httpx_results)
 
-        # Analyze each open port
+        # Analyze each open port (NON-WEB ONLY)
         for port_info in naabu_results:
             port = port_info.get('port')
             # Support multiple key names: target_host (db), host (generic), subdomain (naabu raw output)
@@ -105,6 +124,15 @@ class PortVulnerabilityDetector(BaseDetector):
             ip = port_info.get('ip', '')
 
             if not port:
+                continue
+
+            # Skip standard web ports - they are not risky non-web services
+            if port in STANDARD_WEB_PORTS:
+                continue
+
+            # Skip web service ports detected by httpx - handled by web-specific tools
+            port_key = f"{host}:{port}"
+            if port_key in web_service_ports:
                 continue
 
             # Check for high-risk ports
@@ -164,6 +192,21 @@ class PortVulnerabilityDetector(BaseDetector):
                     )
                     findings.append(finding)
                 # If tls_enabled is True, service has TLS - no finding needed
+
+            # Check for email service ports (SMTP)
+            if port in self.email_ports:
+                finding = self._create_email_service_finding(port, host, protocol, ip)
+                findings.append(finding)
+
+            # Check for directory service ports (LDAP)
+            if port in self.directory_ports:
+                finding = self._create_directory_service_finding(port, host, protocol, ip)
+                findings.append(finding)
+
+            # Check for infrastructure ports (DNS, SNMP)
+            if port in self.infrastructure_ports:
+                finding = self._create_infrastructure_finding(port, host, protocol, ip)
+                findings.append(finding)
 
         return findings
 
@@ -490,6 +533,179 @@ class PortVulnerabilityDetector(BaseDetector):
             service_name=service_name,
             cwe_id='CWE-319',  # Cleartext Transmission of Sensitive Information
             evidence=evidence,
+            remediation=remediation
+        )
+
+    def _create_email_service_finding(
+        self, port: int, host: str, protocol: str, ip: str
+    ) -> Dict[str, Any]:
+        """Create finding for exposed email service (SMTP)."""
+        port_data = self.port_info.get(port, {})
+        service_name = port_data.get('name', f'Email Service Port {port}')
+
+        # Different severity based on port
+        if port == 25:
+            severity = 'high'
+            title = f'SMTP Service Exposed (Port {port}) - Potential Open Relay'
+            description = (
+                f'SMTP server detected on port {port}. '
+                f'Exposed SMTP servers can be abused for spam relay if not properly configured. '
+                f'Verify SPF/DKIM/DMARC records and ensure authentication is required.'
+            )
+            remediation = (
+                'Configure SMTP to require authentication. '
+                'Implement SPF, DKIM, and DMARC records. '
+                'Restrict relay to authorized hosts only. '
+                'Consider using port 587 for submission with STARTTLS.'
+            )
+        else:
+            severity = 'medium'
+            title = f'Email Service Exposed: {service_name} (Port {port})'
+            description = f'{service_name} service is publicly accessible.'
+            remediation = 'Require authentication and use TLS encryption.'
+
+        return self._create_finding(
+            finding_type='email_service_exposed',
+            title=title,
+            description=description,
+            affected_asset=host,
+            severity_hint=severity,
+            port=port,
+            protocol=protocol,
+            ip=ip,
+            service_name=service_name,
+            cwe_id='CWE-284',  # Improper Access Control
+            evidence={
+                'port': port,
+                'protocol': protocol,
+                'host': host,
+                'ip': ip,
+                'service': service_name
+            },
+            remediation=remediation
+        )
+
+    def _create_directory_service_finding(
+        self, port: int, host: str, protocol: str, ip: str
+    ) -> Dict[str, Any]:
+        """Create finding for exposed directory service (LDAP)."""
+        port_data = self.port_info.get(port, {})
+        service_name = port_data.get('name', f'Directory Service Port {port}')
+
+        if port == 389:
+            severity = 'high'
+            title = f'LDAP Service Exposed (Port {port}) - Unencrypted'
+            description = (
+                f'Unencrypted LDAP server detected on port {port}. '
+                f'LDAP without TLS exposes credentials and directory data in cleartext. '
+                f'May allow anonymous binding to enumerate users and groups.'
+            )
+            remediation = (
+                'Use LDAPS (port 636) instead of unencrypted LDAP. '
+                'Disable anonymous bind. '
+                'Require authentication for all queries. '
+                'Implement access controls on sensitive directory entries.'
+            )
+        else:  # port 636 LDAPS
+            severity = 'medium'
+            title = f'LDAPS Service Exposed (Port {port})'
+            description = (
+                f'LDAPS (encrypted LDAP) server detected on port {port}. '
+                f'While encrypted, ensure anonymous bind is disabled.'
+            )
+            remediation = (
+                'Disable anonymous bind. '
+                'Require authentication for all queries. '
+                'Implement access controls on sensitive directory entries.'
+            )
+
+        return self._create_finding(
+            finding_type='directory_service_exposed',
+            title=title,
+            description=description,
+            affected_asset=host,
+            severity_hint=severity,
+            port=port,
+            protocol=protocol,
+            ip=ip,
+            service_name=service_name,
+            cwe_id='CWE-284',  # Improper Access Control
+            evidence={
+                'port': port,
+                'protocol': protocol,
+                'host': host,
+                'ip': ip,
+                'service': service_name
+            },
+            remediation=remediation
+        )
+
+    def _create_infrastructure_finding(
+        self, port: int, host: str, protocol: str, ip: str
+    ) -> Dict[str, Any]:
+        """Create finding for exposed infrastructure service (DNS, SNMP)."""
+        port_data = self.port_info.get(port, {})
+        service_name = port_data.get('name', f'Infrastructure Service Port {port}')
+
+        if port == 53:
+            severity = 'medium'
+            title = f'DNS Service Exposed (Port {port}) - Potential Zone Transfer'
+            description = (
+                f'DNS server detected on port {port}. '
+                f'Exposed DNS servers may allow zone transfers (AXFR) which can reveal '
+                f'internal network structure, hostnames, and IP addresses.'
+            )
+            remediation = (
+                'Restrict zone transfers to authorized secondary DNS servers only. '
+                'Implement DNSSEC. '
+                'Disable recursion for public-facing DNS servers. '
+                'Use split-horizon DNS for internal/external separation.'
+            )
+        elif port == 161:
+            severity = 'high'
+            title = f'SNMP Service Exposed (Port {port}) - Default Community Strings Risk'
+            description = (
+                f'SNMP server detected on port {port}. '
+                f'SNMP with default community strings (public/private) allows '
+                f'unauthorized access to device configuration and sensitive information. '
+                f'SNMPv1/v2c transmit community strings in cleartext.'
+            )
+            remediation = (
+                'Use SNMPv3 with authentication and encryption. '
+                'Change default community strings. '
+                'Restrict SNMP access to management networks only. '
+                'Disable SNMP if not required.'
+            )
+        else:  # port 162 SNMP Trap
+            severity = 'medium'
+            title = f'SNMP Trap Service Exposed (Port {port})'
+            description = (
+                f'SNMP Trap receiver detected on port {port}. '
+                f'May reveal internal monitoring infrastructure.'
+            )
+            remediation = (
+                'Restrict access to authorized monitoring systems. '
+                'Use SNMPv3 for trap authentication.'
+            )
+
+        return self._create_finding(
+            finding_type='infrastructure_service_exposed',
+            title=title,
+            description=description,
+            affected_asset=host,
+            severity_hint=severity,
+            port=port,
+            protocol=protocol,
+            ip=ip,
+            service_name=service_name,
+            cwe_id='CWE-200',  # Exposure of Sensitive Information
+            evidence={
+                'port': port,
+                'protocol': protocol,
+                'host': host,
+                'ip': ip,
+                'service': service_name
+            },
             remediation=remediation
         )
 

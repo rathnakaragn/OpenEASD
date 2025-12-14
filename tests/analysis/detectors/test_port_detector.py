@@ -55,25 +55,32 @@ def test_analyze_with_various_ports(mock_analysis_config):
         naabu_results = [
             {'port': 3306, 'target_host': 'db.example.com'},        # Database + unencrypted
             {'port': 21, 'target_host': 'ftp.example.com'},         # High-risk + Remote access + unencrypted
-            {'port': 8080, 'target_host': 'dev.example.com'},       # Medium-risk
-            {'port': 10000, 'target_host': 'admin.example.com'},     # Admin
+            {'port': 9090, 'target_host': 'dev.example.com'},       # Admin (9090 is admin interface)
+            {'port': 10000, 'target_host': 'admin.example.com'},     # Admin (Webmin)
             {'port': 23, 'target_host': 'telnet.example.com'},      # Remote access (critical) + unencrypted
-            {'port': 443, 'target_host': 'secure.example.com'},     # Benign (encrypted)
+            {'port': 443, 'target_host': 'secure.example.com'},     # Standard web port (skipped)
+            {'port': 8080, 'target_host': 'web.example.com'},       # Standard web port (skipped)
         ]
 
         findings = detector.analyze({'naabu_results': naabu_results})
 
-        # Count: 3306(high+db+unenc=3) + 21(high+remote+unenc=3) + 8080(medium=1) + 10000(admin=1) + 23(high+remote+unenc=3) + 443(0) = 11
+        # Count: 3306(high+db+unenc=3) + 21(high+remote+unenc=3) + 9090(admin=1) + 10000(admin=1) + 23(high+remote+unenc=3) + 443(0) + 8080(0) = 11
+        # But 443 and 8080 are standard web ports (skipped), so: 3+3+1+1+3 = 11 - 0 = 11
+        # Wait, 443 and 8080 are now skipped as standard web ports
+        # So: 3306(3) + 21(3) + 9090(1) + 10000(1) + 23(3) = 11
         assert len(findings) == 11
 
         finding_types = [f['finding_type'] for f in findings]
         assert 'database_port_exposed' in finding_types
         assert 'high_risk_port_exposed' in finding_types
-        assert 'medium_risk_port_exposed' in finding_types
         assert 'admin_interface_exposed' in finding_types
         assert finding_types.count('remote_access_exposed') == 2
         assert 'unencrypted_protocol' in finding_types
         assert finding_types.count('unencrypted_protocol') == 3  # MySQL, FTP, Telnet
+
+        # Verify standard web ports (8080, 443) are NOT in findings
+        web_port_findings = [f for f in findings if f['port'] in [80, 443, 8080, 8443]]
+        assert len(web_port_findings) == 0, "Standard web ports should not generate findings"
 
         # Check telnet findings (high_risk, remote_access, and unencrypted)
         telnet_findings = [f for f in findings if f['port'] == 23]
@@ -96,7 +103,7 @@ def test_finding_creation_methods(mock_analysis_config):
         assert db['severity_hint'] == 'critical'
         assert db['finding_type'] == 'database_port_exposed'
 
-        admin = detector._create_admin_interface_finding(8443, 'host', 'tcp', 'ip')
+        admin = detector._create_admin_interface_finding(9090, 'host', 'tcp', 'ip')
         assert admin['severity_hint'] == 'high'
         assert admin['finding_type'] == 'admin_interface_exposed'
 
@@ -104,7 +111,9 @@ def test_finding_creation_methods(mock_analysis_config):
         assert remote['severity_hint'] == 'medium' # SSH is not critical
         assert remote['finding_type'] == 'remote_access_exposed'
 
-        medium_risk = detector._create_medium_risk_port_finding(8080, 'host', 'tcp', 'ip')
+        # Test medium risk with a non-web port (9090 is in medium_risk_ports for config test)
+        # Use a port that's typically in medium risk list
+        medium_risk = detector._create_medium_risk_port_finding(9999, 'host', 'tcp', 'ip')
         assert medium_risk['severity_hint'] == 'medium'
         assert medium_risk['finding_type'] == 'medium_risk_port_exposed'
 
@@ -127,8 +136,9 @@ def test_get_port_risk_level(mock_analysis_config):
         detector = PortVulnerabilityDetector()
         assert detector.get_port_risk_level(3306) == 'critical'
         assert detector.get_port_risk_level(21) == 'high'
-        assert detector.get_port_risk_level(8080) == 'medium'
+        assert detector.get_port_risk_level(8080) == 'low'  # Standard web port
         assert detector.get_port_risk_level(443) == 'low'
+        assert detector.get_port_risk_level(8443) == 'low'  # Standard web port
         assert detector.get_port_risk_level(12345) == 'info'
 
 

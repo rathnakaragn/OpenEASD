@@ -31,14 +31,14 @@ DATABASE_PORTS: Set[int] = {
 }
 
 # Admin/Management interface ports
+# Note: 8443 removed - it's standard HTTPS alt, not necessarily admin
 ADMIN_PORTS: Set[int] = {
-    8080,   # Common admin panels
-    8443,   # HTTPS admin
-    9090,   # Various admin interfaces
+    9090,   # Various admin interfaces (Cockpit, Prometheus)
     10000,  # Webmin
     2082,   # cPanel
     2083,   # cPanel SSL
-    8888,   # Common admin
+    2086,   # WHM
+    2087,   # WHM SSL
 }
 
 # Remote access ports (high risk)
@@ -74,9 +74,38 @@ ENCRYPTED_PORTS: Set[int] = {
     443,    # HTTPS
     465,    # SMTPS
     587,    # SMTP with STARTTLS
+    636,    # LDAPS
     993,    # IMAPS
     995,    # POP3S
     8443,   # HTTPS alternate
+}
+
+# Email service ports (check for open relay, missing auth)
+EMAIL_PORTS: Set[int] = {
+    25,     # SMTP
+    465,    # SMTPS
+    587,    # SMTP Submission
+}
+
+# Directory service ports (check for anonymous bind)
+DIRECTORY_PORTS: Set[int] = {
+    389,    # LDAP (unencrypted)
+    636,    # LDAPS (encrypted)
+}
+
+# Infrastructure ports (DNS, SNMP - special checks needed)
+INFRASTRUCTURE_PORTS: Set[int] = {
+    53,     # DNS
+    161,    # SNMP
+    162,    # SNMP Trap
+}
+
+# Ports requiring special security checks
+SPECIAL_CHECK_PORTS: Set[int] = {
+    25,     # SMTP - open relay check
+    53,     # DNS - zone transfer check
+    161,    # SNMP - community string check
+    389,    # LDAP - anonymous bind check
 }
 
 
@@ -122,10 +151,10 @@ PORT_INFO: Dict[int, Dict[str, str]] = {
     # DNS
     53: {
         "name": "DNS",
-        "risk": PortRisk.LOW.value,
+        "risk": PortRisk.MEDIUM.value,
         "category": PortCategory.OTHER.value,
-        "description": "DNS (Domain Name System)",
-        "remediation": "Restrict zone transfers, use DNSSEC"
+        "description": "DNS (Domain Name System) - Potential zone transfer exposure",
+        "remediation": "Restrict zone transfers (AXFR), use DNSSEC, limit recursion"
     },
 
     # HTTP
@@ -153,6 +182,24 @@ PORT_INFO: Dict[int, Dict[str, str]] = {
         "category": PortCategory.EMAIL.value,
         "description": "IMAP - Unencrypted email access",
         "remediation": "Use IMAPS (port 993) instead"
+    },
+
+    # SNMP
+    161: {
+        "name": "SNMP",
+        "risk": PortRisk.HIGH.value,
+        "category": PortCategory.OTHER.value,
+        "description": "SNMP (Simple Network Management Protocol) - Often uses default community strings",
+        "remediation": "Use SNMPv3 with authentication, change default community strings, restrict access"
+    },
+
+    # LDAP
+    389: {
+        "name": "LDAP",
+        "risk": PortRisk.HIGH.value,
+        "category": PortCategory.OTHER.value,
+        "description": "LDAP (Lightweight Directory Access Protocol) - Unencrypted, may allow anonymous bind",
+        "remediation": "Use LDAPS (port 636), disable anonymous bind, require authentication"
     },
 
     # HTTPS
@@ -236,22 +283,22 @@ PORT_INFO: Dict[int, Dict[str, str]] = {
         "remediation": "Never expose to internet, require authentication, disable dangerous commands"
     },
 
-    # HTTP Proxy
+    # HTTP Alt (standard web port - not risky)
     8080: {
-        "name": "HTTP Proxy",
-        "risk": PortRisk.MEDIUM.value,
-        "category": PortCategory.ADMIN.value,
-        "description": "HTTP Proxy/Admin - Alternative HTTP port",
-        "remediation": "Use HTTPS, require authentication, restrict access"
+        "name": "HTTP Alt",
+        "risk": PortRisk.LOW.value,
+        "category": PortCategory.WEB.value,
+        "description": "Alternative HTTP port - standard web service",
+        "remediation": "Redirect to HTTPS if serving web content"
     },
 
-    # HTTPS Alt
+    # HTTPS Alt (standard web port - not risky)
     8443: {
         "name": "HTTPS Alt",
-        "risk": PortRisk.MEDIUM.value,
-        "category": PortCategory.ADMIN.value,
-        "description": "Alternative HTTPS port, often for admin panels",
-        "remediation": "Use strong TLS, require authentication, restrict access"
+        "risk": PortRisk.LOW.value,
+        "category": PortCategory.WEB.value,
+        "description": "Alternative HTTPS port - standard web service",
+        "remediation": "Ensure TLS 1.2+, use strong ciphers"
     },
 
     # Elasticsearch
@@ -272,6 +319,74 @@ PORT_INFO: Dict[int, Dict[str, str]] = {
         "remediation": "Never expose to internet, enable authentication, use TLS"
     },
 }
+
+
+# ============================================================================
+# Version-Based Vulnerability Detection
+# ============================================================================
+
+# Known vulnerable service versions (service_name -> list of version patterns)
+# Format: {"service": [{"pattern": "regex", "severity": "critical/high/medium", "cve": "CVE-xxx", "description": "..."}]}
+VULNERABLE_VERSIONS: Dict[str, List[Dict[str, str]]] = {
+    "openssh": [
+        {"pattern": r"^[1-6]\.", "severity": "critical", "cve": "Multiple CVEs", "description": "OpenSSH < 7.0 has multiple critical vulnerabilities"},
+        {"pattern": r"^7\.[0-3]", "severity": "high", "cve": "CVE-2016-10009", "description": "OpenSSH 7.0-7.3 vulnerable to agent forwarding attack"},
+    ],
+    "apache": [
+        {"pattern": r"^2\.2\.", "severity": "high", "cve": "Multiple CVEs", "description": "Apache 2.2.x is end-of-life with known vulnerabilities"},
+        {"pattern": r"^2\.4\.([0-9]|[1-3][0-9]|4[0-9])$", "severity": "medium", "cve": "CVE-2021-44790", "description": "Apache < 2.4.52 vulnerable to buffer overflow"},
+    ],
+    "nginx": [
+        {"pattern": r"^1\.(1[0-7]|[0-9])\.", "severity": "high", "cve": "Multiple CVEs", "description": "Nginx < 1.18 has known vulnerabilities"},
+    ],
+    "mysql": [
+        {"pattern": r"^5\.[0-5]\.", "severity": "critical", "cve": "Multiple CVEs", "description": "MySQL 5.0-5.5 is end-of-life"},
+        {"pattern": r"^5\.6\.", "severity": "high", "cve": "Multiple CVEs", "description": "MySQL 5.6 is end-of-life"},
+        {"pattern": r"^5\.7\.", "severity": "medium", "cve": "Multiple CVEs", "description": "MySQL 5.7 approaching end-of-life"},
+    ],
+    "postgresql": [
+        {"pattern": r"^[0-9]\.", "severity": "critical", "cve": "Multiple CVEs", "description": "PostgreSQL < 10 is end-of-life"},
+        {"pattern": r"^1[0-1]\.", "severity": "high", "cve": "Multiple CVEs", "description": "PostgreSQL 10-11 approaching end-of-life"},
+    ],
+    "redis": [
+        {"pattern": r"^[0-4]\.", "severity": "critical", "cve": "Multiple CVEs", "description": "Redis < 5.0 has critical vulnerabilities"},
+        {"pattern": r"^5\.", "severity": "medium", "cve": "CVE-2021-32761", "description": "Redis 5.x has known vulnerabilities"},
+    ],
+    "mongodb": [
+        {"pattern": r"^[0-3]\.", "severity": "critical", "cve": "Multiple CVEs", "description": "MongoDB < 4.0 has critical vulnerabilities"},
+    ],
+    "proftpd": [
+        {"pattern": r"^1\.[0-2]\.", "severity": "critical", "cve": "CVE-2015-3306", "description": "ProFTPD < 1.3.5 vulnerable to RCE"},
+    ],
+    "vsftpd": [
+        {"pattern": r"^[0-2]\.", "severity": "high", "cve": "Multiple CVEs", "description": "vsftpd < 3.0 has known vulnerabilities"},
+    ],
+    "openssl": [
+        {"pattern": r"^0\.", "severity": "critical", "cve": "Multiple CVEs", "description": "OpenSSL 0.x is severely outdated"},
+        {"pattern": r"^1\.0\.", "severity": "critical", "cve": "CVE-2014-0160", "description": "OpenSSL 1.0.x may be vulnerable to Heartbleed"},
+        {"pattern": r"^1\.1\.0", "severity": "high", "cve": "Multiple CVEs", "description": "OpenSSL 1.1.0 is end-of-life"},
+    ],
+}
+
+# TLS versions and their risk levels
+TLS_VERSION_RISK: Dict[str, Dict[str, str]] = {
+    "ssl2": {"severity": "critical", "description": "SSLv2 is obsolete and critically insecure"},
+    "ssl3": {"severity": "critical", "description": "SSLv3 is vulnerable to POODLE attack"},
+    "tls10": {"severity": "high", "description": "TLS 1.0 is deprecated and insecure"},
+    "tls11": {"severity": "high", "description": "TLS 1.1 is deprecated and should not be used"},
+    "tls12": {"severity": "info", "description": "TLS 1.2 is acceptable but TLS 1.3 preferred"},
+    "tls13": {"severity": "info", "description": "TLS 1.3 is the recommended version"},
+}
+
+# Weak cipher patterns
+WEAK_CIPHER_PATTERNS: List[Dict[str, str]] = [
+    {"pattern": r"RC4", "severity": "high", "description": "RC4 cipher is broken"},
+    {"pattern": r"DES", "severity": "high", "description": "DES/3DES ciphers are weak"},
+    {"pattern": r"NULL", "severity": "critical", "description": "NULL cipher provides no encryption"},
+    {"pattern": r"EXPORT", "severity": "critical", "description": "EXPORT ciphers are critically weak"},
+    {"pattern": r"MD5", "severity": "medium", "description": "MD5 in cipher suite is deprecated"},
+    {"pattern": r"anon", "severity": "critical", "description": "Anonymous cipher allows MITM attacks"},
+]
 
 
 # ============================================================================
