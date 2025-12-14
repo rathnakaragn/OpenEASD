@@ -37,7 +37,7 @@ You are an expert in ZeroMQ messaging patterns responsible for implementing Laye
 │         Layer 1: API                │  ← Pushes jobs
 │         FastAPI (Full CRUD)         │
 ├─────────────────────────────────────┤
-│         Layer 2: Service            │
+│         Layer 2: Orchestrator            │
 │         Business Logic              │
 ├─────────────────────────────────────┤
 │     >>> Layer 3: Messaging <<<      │  ← You are here

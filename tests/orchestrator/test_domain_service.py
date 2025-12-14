@@ -10,8 +10,8 @@ import pytest
 from unittest.mock import MagicMock, patch
 from datetime import datetime
 
-from src.services.domain_service import DomainService
-from src.services.exceptions import (
+from src.orchestrator.domain_service import DomainService
+from src.orchestrator.exceptions import (
     DomainNotFound,
     DomainAlreadyExists,
     InvalidDomainFormat,

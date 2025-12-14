@@ -13,7 +13,7 @@ from typing import List, Dict, Any, Optional
 import logging
 
 from src.data.database.sqlmodel_manager import SQLModelManager
-from src.services.exceptions import (
+from src.orchestrator.exceptions import (
     FindingNotFound,
     InvalidFindingStatus,
     InvalidFilterValue,

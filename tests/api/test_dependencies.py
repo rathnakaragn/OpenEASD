@@ -11,9 +11,9 @@ from src.api.dependencies import (
     get_findings_service,
 )
 import src.api.dependencies as deps
-from src.services.domain_service import DomainService
-from src.services.scan_service import ScanService
-from src.services.findings_service import FindingsService
+from src.orchestrator.domain_service import DomainService
+from src.orchestrator.scan_service import ScanService
+from src.orchestrator.findings_service import FindingsService
 from src.data.database.sqlmodel_manager import SQLModelManager
 
 def test_get_db_manager():

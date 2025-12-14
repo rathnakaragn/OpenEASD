@@ -19,7 +19,7 @@ OpenEASD uses a 6-layer API-only architecture:
 
 ```
 Layer 1: API Layer       - FastAPI REST endpoints (Full CRUD)
-Layer 2: Service Layer   - Business logic
+Layer 2: Orchestrator Layer   - Business logic
 Layer 3: Messaging Layer - ZeroMQ job queue for async processing
 Layer 4: Analysis Layer  - Vulnerability detection and risk scoring
 Layer 5: Tools Layer     - Security tool execution (Subfinder, Naabu, etc.)

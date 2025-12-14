@@ -36,7 +36,7 @@ You are an expert in SQLModel and SQLite responsible for implementing Layer 6 (D
 ┌─────────────────────────────────────┐
 │         Layer 1: API                │
 ├─────────────────────────────────────┤
-│         Layer 2: Service            │  ← Calls you
+│         Layer 2: Orchestrator            │  ← Calls you
 ├─────────────────────────────────────┤
 │         Layer 3: Messaging          │
 ├─────────────────────────────────────┤

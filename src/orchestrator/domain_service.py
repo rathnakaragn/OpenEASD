@@ -8,7 +8,7 @@ creation, updates, listing, and deletion.
 from typing import List, Dict, Any, Optional
 from src.data.database.sqlmodel_manager import SQLModelManager
 from src.utils.validation import validate_domain
-from src.services.exceptions import DomainNotFound, DomainAlreadyExists, InvalidDomainFormat, InvalidUpdateOperation
+from src.orchestrator.exceptions import DomainNotFound, DomainAlreadyExists, InvalidDomainFormat, InvalidUpdateOperation
 from src.data.models.domain import Domain
 
 

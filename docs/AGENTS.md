@@ -338,7 +338,7 @@ Each layer of the 6-layer architecture has dedicated agent support:
 | Layer | Primary Agent | Secondary Agent(s) |
 |-------|---------------|-------------------|
 | **Layer 1: API** | api-layer-builder (Sonnet) | design-reviewer (Opus) |
-| **Layer 2: Service** | service-layer-architect (Sonnet) | layer-architect (Opus) |
+| **Layer 2: Orchestrator** | service-layer-architect (Sonnet) | layer-architect (Opus) |
 | **Layer 3: CLI** | layer3-cli-architect (Sonnet) | layer-architect (Opus) |
 | **Layer 4: Analysis** | layer4-analysis-agent (Opus) | layer-architect (Opus) |
 | **Layer 5: Tools** | layer5-tools-executor (Sonnet) | layer-architect (Opus) |
@@ -558,7 +558,7 @@ The qa-reviewer agent provides specialized validation for all layers:
 | Layer | Key Files | Recent Changes |
 |-------|-----------|----------------|
 | **Layer 1: API** | `src/api/` | Read-only GET endpoints |
-| **Layer 2: Service** | `src/services/scan_service.py` | Config-based severity mappings, removed legacy alert generation |
+| **Layer 2: Orchestrator** | `src/orchestrator/scan_service.py` | Config-based severity mappings, removed legacy alert generation |
 | **Layer 4: Analysis** | `src/analysis/` | Handles ALL finding generation (PortDetector + ServiceDetector) |
 | **Layer 5: Tools** | `src/tools/` | Nmap results passed to Analysis Layer |
 | **Layer 6: Database** | `src/data/` | SQLModel with findings storage |

@@ -25,7 +25,7 @@ OpenEASD implements automated external attack surface detection through a stream
 │    • CORS middleware                                       │
 │    • Async scan creation via job queue                     │
 ├─────────────────────────────────────────────────────────────┤
-│  Layer 2: Service Layer (Business Logic) ✅                 │
+│  Layer 2: Orchestrator Layer (Business Logic) ✅                 │
 │    • DomainService, ScanService, FindingsService           │
 │    • AnalysisService                                       │
 │    • Shared business logic                                 │
@@ -69,7 +69,7 @@ OpenEASD implements automated external attack surface detection through a stream
 | Layer | Status | Components | Notes |
 |-------|--------|------------|-------|
 | **Layer 1: API** | Complete | FastAPI, Pydantic v2 | Full CRUD endpoints |
-| **Layer 2: Service** | Complete | ScanService, ScanWorkflowOrchestrator | 8-step workflow |
+| **Layer 2: Orchestrator** | Complete | ScanService, ScanWorkflowOrchestrator | 8-step workflow |
 | **Layer 3: Messaging** | Complete | ZeroMQ + Job persistence | Database-backed queue |
 | **Layer 4: Tools** | Complete | 7 security tools | Subfinder, Naabu, Dnsx, Httpx, Tlsx, Nmap, Nuclei |
 | **Layer 5: Analysis** | Complete | RiskScorer, Detectors | 95% test coverage |
@@ -126,7 +126,7 @@ GET  /api/v1/findings/{id}              # Finding details
 GET  /api/v1/findings/statistics/summary # Statistics
 ```
 
-### Layer 2: Service Layer
+### Layer 2: Orchestrator Layer
 
 **Purpose**: Shared business logic for API and worker
 **Services**:
@@ -318,7 +318,7 @@ OpenEASD/
 │   │       ├── domain.py
 │   │       ├── scan.py
 │   │       └── finding.py
-│   ├── services/             # Layer 2: Services
+│   ├── services/             # Layer 2: Orchestrators
 │   │   ├── domain_service.py
 │   │   ├── scan_service.py              # CRUD operations
 │   │   ├── scan_workflow_orchestrator.py # 8-step workflow

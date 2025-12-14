@@ -48,7 +48,7 @@ This separation minimizes attack surface while enabling remote monitoring.
 │ Purpose: Read-only REST API for monitoring                      │
 │ Access: Remote (HTTP), GET endpoints only                       │
 ├─────────────────────────────────────────────────────────────────┤
-│ Layer 2: Service Layer                                          │
+│ Layer 2: Orchestrator Layer                                          │
 │ Purpose: Shared business logic between API and CLI              │
 │ Components: DomainService, ScanService, FindingsService         │
 ├─────────────────────────────────────────────────────────────────┤
@@ -80,7 +80,7 @@ This separation minimizes attack surface while enabling remote monitoring.
 - Rate limiting and CORS
 - OpenAPI/Swagger documentation
 
-### Layer 2: Service Layer
+### Layer 2: Orchestrator Layer
 - Domain CRUD operations
 - Scan orchestration
 - Findings management

@@ -6,7 +6,7 @@ from datetime import datetime
 
 from src.api.main import app
 from src.api.dependencies import get_scan_service
-from src.services.exceptions import ScanNotFound
+from src.orchestrator.exceptions import ScanNotFound
 
 client = TestClient(app)
 

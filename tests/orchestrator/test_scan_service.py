@@ -11,9 +11,9 @@ from unittest.mock import MagicMock, patch, call
 from datetime import datetime
 import json
 
-from src.services.scan_service import ScanService
-from src.services.scan_workflow_orchestrator import is_web_service
-from src.services.exceptions import ScanNotFound, InvalidScanStatus
+from src.orchestrator.scan_service import ScanService
+from src.orchestrator.scan_workflow_orchestrator import is_web_service
+from src.orchestrator.exceptions import ScanNotFound, InvalidScanStatus
 
 
 @pytest.fixture
@@ -32,7 +32,7 @@ def scan_service(mock_db_manager):
 @pytest.fixture
 def scan_service_with_analysis(mock_db_manager):
     """ScanService instance with analysis enabled."""
-    with patch('src.services.scan_workflow_orchestrator.AnalysisService') as mock_analysis_service:
+    with patch('src.orchestrator.scan_workflow_orchestrator.AnalysisService') as mock_analysis_service:
         mock_analysis = MagicMock()
         mock_analysis.is_enabled.return_value = True
         mock_analysis.is_auto_analyze_enabled.return_value = True
@@ -110,7 +110,7 @@ def test_scan_service_initialization(mock_db_manager):
 
 def test_scan_service_with_analysis_enabled(mock_db_manager):
     """Test ScanService initialization with analysis enabled."""
-    with patch('src.services.scan_workflow_orchestrator.AnalysisService') as mock_analysis_service:
+    with patch('src.orchestrator.scan_workflow_orchestrator.AnalysisService') as mock_analysis_service:
         mock_analysis = MagicMock()
         mock_analysis.is_enabled.return_value = True
         mock_analysis_service.return_value = mock_analysis
@@ -121,7 +121,7 @@ def test_scan_service_with_analysis_enabled(mock_db_manager):
 
 def test_scan_service_analysis_disabled_in_config(mock_db_manager):
     """Test when analysis is disabled in configuration."""
-    with patch('src.services.scan_workflow_orchestrator.AnalysisService') as mock_analysis_service:
+    with patch('src.orchestrator.scan_workflow_orchestrator.AnalysisService') as mock_analysis_service:
         mock_analysis = MagicMock()
         mock_analysis.is_enabled.return_value = False
         mock_analysis_service.return_value = mock_analysis
@@ -132,7 +132,7 @@ def test_scan_service_analysis_disabled_in_config(mock_db_manager):
 
 def test_scan_service_analysis_init_failure(mock_db_manager):
     """Test when analysis service initialization fails."""
-    with patch('src.services.scan_workflow_orchestrator.AnalysisService', side_effect=ImportError("Init failed")):
+    with patch('src.orchestrator.scan_workflow_orchestrator.AnalysisService', side_effect=ImportError("Init failed")):
         service = ScanService(db_manager=mock_db_manager, enable_analysis=True)
         assert service._orchestrator.analysis_service is None
 
@@ -218,8 +218,8 @@ def test_map_service_to_severity_case_insensitive(scan_service):
 # step1_discover_subdomains() Tests (via orchestrator)
 # ========================================================================
 
-@patch('src.services.scan_workflow_orchestrator.run_subfinder')
-@patch('src.services.scan_workflow_orchestrator.get_ist_now')
+@patch('src.orchestrator.scan_workflow_orchestrator.run_subfinder')
+@patch('src.orchestrator.scan_workflow_orchestrator.get_ist_now')
 def test_discover_subdomains_success(mock_ist_now, mock_run_subfinder, scan_service, mock_db_manager):
     """Test successful subdomain discovery."""
     mock_ist_now.return_value = datetime(2025, 1, 1, 10, 0, 0)
@@ -232,7 +232,7 @@ def test_discover_subdomains_success(mock_ist_now, mock_run_subfinder, scan_serv
     mock_db_manager.store_subfinder_results.assert_called_once()
 
 
-@patch('src.services.scan_workflow_orchestrator.run_subfinder')
+@patch('src.orchestrator.scan_workflow_orchestrator.run_subfinder')
 def test_discover_subdomains_empty(mock_run_subfinder, scan_service, mock_db_manager):
     """Test subdomain discovery with no results."""
     mock_run_subfinder.return_value = []
@@ -243,7 +243,7 @@ def test_discover_subdomains_empty(mock_run_subfinder, scan_service, mock_db_man
     mock_db_manager.store_subfinder_results.assert_not_called()
 
 
-@patch('src.services.scan_workflow_orchestrator.run_subfinder')
+@patch('src.orchestrator.scan_workflow_orchestrator.run_subfinder')
 def test_discover_subdomains_with_timeout(mock_run_subfinder, scan_service):
     """Test subdomain discovery with timeout."""
     mock_run_subfinder.return_value = ['api.example.com']
@@ -257,8 +257,8 @@ def test_discover_subdomains_with_timeout(mock_run_subfinder, scan_service):
 # step2_resolve_dns() Tests (via orchestrator)
 # ========================================================================
 
-@patch('src.services.scan_workflow_orchestrator.run_dnsx')
-@patch('src.services.scan_workflow_orchestrator.is_private_ip')
+@patch('src.orchestrator.scan_workflow_orchestrator.run_dnsx')
+@patch('src.orchestrator.scan_workflow_orchestrator.is_private_ip')
 def test_resolve_dns_success(mock_is_private, mock_run_dnsx, scan_service):
     """Test successful DNS resolution."""
     mock_run_dnsx.return_value = [
@@ -273,8 +273,8 @@ def test_resolve_dns_success(mock_is_private, mock_run_dnsx, scan_service):
     assert len(dns_results) == 2
 
 
-@patch('src.services.scan_workflow_orchestrator.run_dnsx')
-@patch('src.services.scan_workflow_orchestrator.is_private_ip')
+@patch('src.orchestrator.scan_workflow_orchestrator.run_dnsx')
+@patch('src.orchestrator.scan_workflow_orchestrator.is_private_ip')
 def test_resolve_dns_filters_private_ips(mock_is_private, mock_run_dnsx, scan_service):
     """Test that private IPs are filtered out."""
     mock_run_dnsx.return_value = [
@@ -296,7 +296,7 @@ def test_resolve_dns_empty_input(scan_service):
     assert dns_results == []
 
 
-@patch('src.services.scan_workflow_orchestrator.run_dnsx')
+@patch('src.orchestrator.scan_workflow_orchestrator.run_dnsx')
 def test_resolve_dns_with_timeout(mock_run_dnsx, scan_service):
     """Test DNS resolution with timeout."""
     mock_run_dnsx.return_value = []
@@ -310,8 +310,8 @@ def test_resolve_dns_with_timeout(mock_run_dnsx, scan_service):
 # step3_scan_ports() Tests (via orchestrator)
 # ========================================================================
 
-@patch('src.services.scan_workflow_orchestrator.run_naabu')
-@patch('src.services.scan_workflow_orchestrator.get_ist_now')
+@patch('src.orchestrator.scan_workflow_orchestrator.run_naabu')
+@patch('src.orchestrator.scan_workflow_orchestrator.get_ist_now')
 def test_scan_ports_success(mock_ist_now, mock_run_naabu, scan_service, mock_db_manager):
     """Test successful port scanning."""
     mock_ist_now.return_value = datetime(2025, 1, 1, 10, 0, 0)
@@ -326,7 +326,7 @@ def test_scan_ports_success(mock_ist_now, mock_run_naabu, scan_service, mock_db_
     mock_db_manager.store_naabu_results.assert_called_once()
 
 
-@patch('src.services.scan_workflow_orchestrator.run_naabu')
+@patch('src.orchestrator.scan_workflow_orchestrator.run_naabu')
 def test_scan_ports_empty_input(mock_run_naabu, scan_service):
     """Test port scanning with empty input."""
     result = scan_service._orchestrator.step3_scan_ports([], 'scan-123')
@@ -335,7 +335,7 @@ def test_scan_ports_empty_input(mock_run_naabu, scan_service):
     mock_run_naabu.assert_not_called()
 
 
-@patch('src.services.scan_workflow_orchestrator.run_naabu')
+@patch('src.orchestrator.scan_workflow_orchestrator.run_naabu')
 def test_scan_ports_no_results(mock_run_naabu, scan_service, mock_db_manager):
     """Test port scanning with no ports found."""
     mock_run_naabu.return_value = []
@@ -350,7 +350,7 @@ def test_scan_ports_no_results(mock_run_naabu, scan_service, mock_db_manager):
 # step5_verify_tls() Tests (via orchestrator)
 # ========================================================================
 
-@patch('src.services.scan_workflow_orchestrator.run_tlsx_parallel')
+@patch('src.orchestrator.scan_workflow_orchestrator.run_tlsx_parallel')
 def test_verify_tls_success(mock_run_tlsx, scan_service):
     """Test successful TLS verification."""
     # Use port 3306 (MySQL) which is NOT in the skip list
@@ -366,7 +366,7 @@ def test_verify_tls_success(mock_run_tlsx, scan_service):
     mock_run_tlsx.assert_called_once()
 
 
-@patch('src.services.scan_workflow_orchestrator.run_tlsx_parallel')
+@patch('src.orchestrator.scan_workflow_orchestrator.run_tlsx_parallel')
 def test_verify_tls_skips_encrypted_ports(mock_run_tlsx, scan_service):
     """Test that TLS check is skipped for known encrypted ports."""
     ports_found = [
@@ -386,7 +386,7 @@ def test_verify_tls_empty_input(scan_service):
     assert result == {}
 
 
-@patch('src.services.scan_workflow_orchestrator.run_tlsx_parallel')
+@patch('src.orchestrator.scan_workflow_orchestrator.run_tlsx_parallel')
 def test_verify_tls_failure(mock_run_tlsx, scan_service):
     """Test TLS verification failure handling."""
     from src.tools.exceptions import ToolExecutionError
@@ -402,7 +402,7 @@ def test_verify_tls_failure(mock_run_tlsx, scan_service):
 # step4_probe_http() Tests (via orchestrator)
 # ========================================================================
 
-@patch('src.services.scan_workflow_orchestrator.run_httpx')
+@patch('src.orchestrator.scan_workflow_orchestrator.run_httpx')
 def test_probe_http_success(mock_run_httpx, scan_service):
     """Test successful HTTP probing."""
     ports_found = [
@@ -429,7 +429,7 @@ def test_probe_http_empty_input(scan_service):
     assert results == {}
 
 
-@patch('src.services.scan_workflow_orchestrator.run_httpx')
+@patch('src.orchestrator.scan_workflow_orchestrator.run_httpx')
 def test_probe_http_failure(mock_run_httpx, scan_service):
     """Test HTTP probing failure handling."""
     from src.tools.exceptions import ToolExecutionError
@@ -446,7 +446,7 @@ def test_probe_http_failure(mock_run_httpx, scan_service):
 # step6_detect_services() Tests (via orchestrator)
 # ========================================================================
 
-@patch('src.services.scan_workflow_orchestrator.run_nmap_service_detection_parallel')
+@patch('src.orchestrator.scan_workflow_orchestrator.run_nmap_service_detection_parallel')
 def test_detect_services_success(mock_run_nmap, scan_service):
     """Test successful service detection."""
     non_web_ports = [('api.example.com', 3306), ('db.example.com', 5432)]
@@ -467,7 +467,7 @@ def test_detect_services_empty_input(scan_service):
     assert result == {}
 
 
-@patch('src.services.scan_workflow_orchestrator.run_nmap_service_detection_parallel')
+@patch('src.orchestrator.scan_workflow_orchestrator.run_nmap_service_detection_parallel')
 def test_detect_services_failure(mock_run_nmap, scan_service):
     """Test service detection failure handling."""
     from src.tools.exceptions import ToolExecutionError
@@ -484,8 +484,8 @@ def test_detect_services_failure(mock_run_nmap, scan_service):
 # Runs BOTH nuclei AND nmap NSE on all non-web ports (mandatory)
 # ========================================================================
 
-@patch('src.services.scan_workflow_orchestrator.run_nmap_vuln_detection_parallel')
-@patch('src.services.scan_workflow_orchestrator.run_nuclei_network')
+@patch('src.orchestrator.scan_workflow_orchestrator.run_nmap_vuln_detection_parallel')
+@patch('src.orchestrator.scan_workflow_orchestrator.run_nuclei_network')
 def test_detect_vulnerabilities_success(mock_run_nuclei, mock_run_nmap, scan_service):
     """Test successful vulnerability detection with nuclei + nmap NSE."""
     nmap_service_results = {
@@ -523,8 +523,8 @@ def test_detect_vulnerabilities_empty_input(scan_service):
     assert result == {}
 
 
-@patch('src.services.scan_workflow_orchestrator.run_nmap_vuln_detection_parallel')
-@patch('src.services.scan_workflow_orchestrator.run_nuclei_network')
+@patch('src.orchestrator.scan_workflow_orchestrator.run_nmap_vuln_detection_parallel')
+@patch('src.orchestrator.scan_workflow_orchestrator.run_nuclei_network')
 def test_detect_vulnerabilities_unknown_services(mock_run_nuclei, mock_run_nmap, scan_service):
     """Test vulnerability detection runs on unknown services with generic scripts."""
     nmap_service_results = {
@@ -545,8 +545,8 @@ def test_detect_vulnerabilities_unknown_services(mock_run_nuclei, mock_run_nmap,
     mock_run_nmap.assert_called_once()
 
 
-@patch('src.services.scan_workflow_orchestrator.run_nmap_vuln_detection_parallel')
-@patch('src.services.scan_workflow_orchestrator.run_nuclei_network')
+@patch('src.orchestrator.scan_workflow_orchestrator.run_nmap_vuln_detection_parallel')
+@patch('src.orchestrator.scan_workflow_orchestrator.run_nuclei_network')
 def test_detect_vulnerabilities_failure(mock_run_nuclei, mock_run_nmap, scan_service):
     """Test vulnerability detection handles failures gracefully."""
     from src.tools.exceptions import ToolExecutionError

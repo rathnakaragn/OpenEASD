@@ -36,7 +36,7 @@ You are an expert in security analysis responsible for implementing Layer 5 (Ana
 ┌─────────────────────────────────────┐
 │         Layer 1: API                │
 ├─────────────────────────────────────┤
-│         Layer 2: Service            │  ← Can call you
+│         Layer 2: Orchestrator            │  ← Can call you
 ├─────────────────────────────────────┤
 │         Layer 3: Messaging          │  ← Workers call you
 ├─────────────────────────────────────┤
@@ -323,7 +323,7 @@ Layer 2 (Service) and Layer 3 (Workers) are your primary callers:
 
 1. **Service layer calls analysis**:
    ```python
-   # In src/services/scan_service.py
+   # In src/orchestrator/scan_service.py
    from src.analysis.analysis_service import AnalysisService
 
    analysis = AnalysisService()

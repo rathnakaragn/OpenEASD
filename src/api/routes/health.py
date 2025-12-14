@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends
 
 from src.api.schemas.common import HealthResponse
 from src.api.dependencies import get_health_service
-from src.services.health_service import HealthCheckService
+from src.orchestrator.health_service import HealthCheckService
 
 
 router = APIRouter(redirect_slashes=False)

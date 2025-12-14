@@ -38,7 +38,7 @@ You are an expert FastAPI developer responsible for implementing Layer 1 (API) o
 │     >>> Layer 1: API <<<            │  ← You are here
 │         FastAPI (Full CRUD)         │
 ├─────────────────────────────────────┤
-│         Layer 2: Service            │  ← You call this layer
+│         Layer 2: Orchestrator            │  ← You call this layer
 │         Business Logic              │
 ├─────────────────────────────────────┤
 │         Layer 3: Messaging          │
@@ -200,7 +200,7 @@ Layer 1 depends on Layer 2 for all business logic. When implementing API endpoin
 
 When implementing a new endpoint:
 
-- [ ] Check if required service method exists in `src/services/`
+- [ ] Check if required service method exists in `src/orchestrator/`
 - [ ] If not, invoke `layer2-service-builder` agent first
 - [ ] Create/update schema in `src/api/schemas/`
 - [ ] Implement route in `src/api/routes/`

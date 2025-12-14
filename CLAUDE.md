@@ -19,7 +19,7 @@
 ┌─────────────────────────────────────┐
 │         Layer 1: API                │  FastAPI (Full CRUD)
 ├─────────────────────────────────────┤
-│         Layer 2: Service            │  Business Logic
+│         Layer 2: Orchestrator            │  Business Logic
 ├─────────────────────────────────────┤
 │         Layer 3: Messaging          │  ZeroMQ (PUSH/PULL)
 ├─────────────────────────────────────┤
@@ -38,7 +38,7 @@
 - FastAPI with Pydantic v2 schemas
 - OpenAPI documentation at `/docs`
 
-**Layer 2: Service** (`src/services/`)
+**Layer 2: Orchestrator** (`src/orchestrator/`)
 - Business logic orchestration
 - DomainService, ScanService, FindingsService
 - ScanWorkflowOrchestrator (8-step workflow)
@@ -104,7 +104,7 @@ openeasd/
 │   │   │   └── health.py
 │   │   └── schemas/            # Pydantic models
 │   │
-│   ├── services/               # Layer 2: Service
+│   ├── orchestrator/           # Layer 2: Orchestrator
 │   │   ├── domain_service.py
 │   │   ├── scan_service.py       # CRUD operations
 │   │   ├── scan_workflow_orchestrator.py  # 8-step workflow
@@ -265,7 +265,7 @@ dependencies = [
 
 **New API Endpoint**:
 1. Add schema in `src/api/schemas/`
-2. Add service method in `src/services/`
+2. Add service method in `src/orchestrator/`
 3. Add route in `src/api/routes/`
 4. Register in `src/api/main.py`
 

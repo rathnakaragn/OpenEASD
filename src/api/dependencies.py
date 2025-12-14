@@ -8,11 +8,11 @@ import threading
 from typing import Optional
 from fastapi import Depends
 from src.data.database.sqlmodel_manager import SQLModelManager
-from src.services.domain_service import DomainService
-from src.services.scan_service import ScanService
-from src.services.findings_service import FindingsService
-from src.services.job_service import JobService
-from src.services.health_service import HealthCheckService
+from src.orchestrator.domain_service import DomainService
+from src.orchestrator.scan_service import ScanService
+from src.orchestrator.findings_service import FindingsService
+from src.orchestrator.job_service import JobService
+from src.orchestrator.health_service import HealthCheckService
 from src.messaging.job_queue import JobQueue, get_job_queue as _get_job_queue
 
 

@@ -18,7 +18,7 @@ from src.api.schemas.job import (
 )
 from src.api.schemas.common import DEFAULT_PAGE_LIMIT, MAX_PAGE_LIMIT
 from src.api.dependencies import get_job_service
-from src.services.job_service import (
+from src.orchestrator.job_service import (
     JobService,
     JobNotFound,
     JobCannotBeRetried,

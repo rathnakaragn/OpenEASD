@@ -17,7 +17,7 @@ from fastapi.staticfiles import StaticFiles
 from src.api.routes import domains, scans, health, findings, jobs
 from src.api.settings import settings
 from src.api.dependencies import cleanup_db_manager
-from src.services.exceptions import (
+from src.orchestrator.exceptions import (
     DomainAlreadyExists,
     DomainNotFound,
     InvalidDomainFormat,
@@ -31,8 +31,8 @@ from src.services.exceptions import (
     ToolNotFoundError,
     ToolOutputParseError,
 )
-from src.services.findings_service import FindingNotFound, InvalidFindingStatus
-from src.services.job_service import JobNotFound, JobCannotBeRetried, JobCannotBeCancelled
+from src.orchestrator.findings_service import FindingNotFound, InvalidFindingStatus
+from src.orchestrator.job_service import JobNotFound, JobCannotBeRetried, JobCannotBeCancelled
 from src.utils.config import Config
 from src.utils.logging import setup_logging
 

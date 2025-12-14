@@ -15,7 +15,7 @@ from datetime import datetime
 from src.api.main import app
 from src.api.dependencies import get_findings_service
 from src.api.schemas.common import Severity
-from src.services.findings_service import FindingNotFound
+from src.orchestrator.findings_service import FindingNotFound
 
 client = TestClient(app)
 

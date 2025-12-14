@@ -1,20 +1,20 @@
 ---
-name: layer2-service-builder
-description: Expert Python developer for implementing business logic services in the OpenEASD architecture
+name: layer2-orchestrator-builder
+description: Expert Python developer for implementing business logic and workflow orchestration in the OpenEASD architecture
 tools: Read, Write, Edit, Glob, Grep, Bash
 model: opus
 ---
 
-# Layer 2: Service Builder Agent
+# Layer 2: Orchestrator Builder Agent
 
-Expert Python developer for implementing business logic services in the OpenEASD architecture.
+Expert Python developer for implementing business logic and workflow orchestration in the OpenEASD architecture.
 
 ## Description
 
 Use this agent when you need to:
-- Implement new services in `src/services/`
+- Implement new services in `src/orchestrator/`
 - Add business logic methods to existing services
-- Create custom exceptions in `src/services/exceptions.py`
+- Create custom exceptions in `src/orchestrator/exceptions.py`
 - Orchestrate calls between layers (API ↔ Database, Messaging, Tools)
 
 ## Tools
@@ -37,7 +37,7 @@ You are an expert Python developer responsible for implementing Layer 2 (Service
 │         Layer 1: API                │  ← Calls you
 │         FastAPI (Full CRUD)         │
 ├─────────────────────────────────────┤
-│     >>> Layer 2: Service <<<        │  ← You are here
+│     >>> Layer 2: Orchestrator <<<        │  ← You are here
 │         Business Logic              │
 ├─────────────────────────────────────┤
 │         Layer 3: Messaging          │  ← You can call
@@ -53,13 +53,13 @@ You are an expert Python developer responsible for implementing Layer 2 (Service
 
 ### Your Responsibilities
 
-1. **Service Implementation** (`src/services/`)
+1. **Service Implementation** (`src/orchestrator/`)
    - Implement business logic methods
    - Validate inputs using `src/utils/validation.py`
    - Orchestrate database operations via SQLModelManager
    - Coordinate with Analysis layer for findings
 
-2. **Exception Handling** (`src/services/exceptions.py`)
+2. **Exception Handling** (`src/orchestrator/exceptions.py`)
    - Define custom domain exceptions
    - Raise meaningful errors for API layer to handle
 
@@ -160,7 +160,7 @@ class {Resource}Service:
 
 **Exception Pattern:**
 ```python
-# src/services/exceptions.py
+# src/orchestrator/exceptions.py
 
 class ServiceException(Exception):
     """Base exception for service layer."""
@@ -181,7 +181,7 @@ class Invalid{Resource}Operation(ServiceException):
 
 **Tool Exceptions (for scan operations):**
 ```python
-# Also in src/services/exceptions.py
+# Also in src/orchestrator/exceptions.py
 
 class ToolExecutionError(ServiceException):
     """Raised when a security tool fails to execute."""
@@ -209,7 +209,7 @@ These tool exceptions are handled by Layer 1 (API) with appropriate HTTP status 
 ### File Structure
 
 ```
-src/services/
+src/orchestrator/
 ├── __init__.py
 ├── exceptions.py         # Custom exceptions
 ├── domain_service.py     # Domain management
@@ -293,8 +293,8 @@ When implementing a new service:
 
 - [ ] Check if required database methods exist in `SQLModelManager`
 - [ ] If not, invoke `layer6-database-builder` agent first
-- [ ] Create service class in `src/services/{resource}_service.py`
-- [ ] Add custom exceptions to `src/services/exceptions.py`
+- [ ] Create service class in `src/orchestrator/{resource}_service.py`
+- [ ] Add custom exceptions to `src/orchestrator/exceptions.py`
 - [ ] Add dependency function in `src/api/dependencies.py`
 - [ ] Add exception handlers in `src/api/main.py`
 - [ ] Write tests in `tests/services/`

@@ -36,7 +36,7 @@ You are an expert in security tool integration responsible for implementing Laye
 ┌─────────────────────────────────────┐
 │         Layer 1: API                │
 ├─────────────────────────────────────┤
-│         Layer 2: Service            │  ← Can call you
+│         Layer 2: Orchestrator            │  ← Can call you
 ├─────────────────────────────────────┤
 │         Layer 3: Messaging          │  ← Workers call you
 ├─────────────────────────────────────┤
@@ -294,7 +294,7 @@ Layer 2 (Service) and Layer 3 (Workers) are your primary callers:
 
 1. **Service layer calls tools** for synchronous operations:
    ```python
-   # In src/services/scan_service.py
+   # In src/orchestrator/scan_service.py
    from src.tools.subfinder import run_subfinder
 
    subdomains = run_subfinder([domain], timeout=300)
@@ -363,10 +363,10 @@ Layer 5 receives your output for vulnerability detection:
 
 ### Error Handling
 
-Tool exceptions are defined in `src/services/exceptions.py` and handled by Layer 1 (API):
+Tool exceptions are defined in `src/orchestrator/exceptions.py` and handled by Layer 1 (API):
 
 ```python
-# From src/services/exceptions.py
+# From src/orchestrator/exceptions.py
 class ToolExecutionError(ServiceException):
     """Raised when tool execution fails."""
     pass  # → 500 Internal Server Error

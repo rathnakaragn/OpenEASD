@@ -18,9 +18,9 @@ from src.api.schemas.domain import (
 from src.api.schemas.scan import ScanListResponse
 from src.api.schemas.finding import FindingListResponse
 from src.api.schemas.common import DEFAULT_PAGE_LIMIT, MAX_PAGE_LIMIT, Severity
-from src.services.domain_service import DomainService
-from src.services.scan_service import ScanService
-from src.services.findings_service import FindingsService
+from src.orchestrator.domain_service import DomainService
+from src.orchestrator.scan_service import ScanService
+from src.orchestrator.findings_service import FindingsService
 from src.api.dependencies import get_domain_service, get_scan_service, get_findings_service
 
 

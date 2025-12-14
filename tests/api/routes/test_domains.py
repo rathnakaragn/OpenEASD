@@ -5,7 +5,7 @@ from unittest.mock import MagicMock
 
 from src.api.main import app
 from src.api.dependencies import get_domain_service
-from src.services.exceptions import DomainNotFound, InvalidDomainFormat
+from src.orchestrator.exceptions import DomainNotFound, InvalidDomainFormat
 
 client = TestClient(app)
 

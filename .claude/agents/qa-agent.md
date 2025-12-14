@@ -58,7 +58,7 @@ tests/
 │       ├── test_findings.py    # Findings endpoint tests
 │       └── test_health.py      # Health check tests
 │
-├── services/                   # Layer 2: Service tests
+├── services/                   # Layer 2: Orchestrator tests
 │   ├── __init__.py
 │   ├── conftest.py
 │   ├── test_domain_service.py

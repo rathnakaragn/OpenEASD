@@ -54,7 +54,7 @@ This report details the comprehensive test coverage for the OpenEASD project. Th
 | `src/data/models/scan.py` | 100% | 13 | ✅ Complete |
 | `src/data/models/subdomain.py` | 100% | 14 | ✅ Complete |
 | `src/data/models/tool_results.py` | 100% | 42 | ✅ Complete |
-| `src/services/__init__.py` | 100% | 4 | ✅ Complete |
+| `src/orchestrator/__init__.py` | 100% | 4 | ✅ Complete |
 | `src/tools/__init__.py` | 100% | 0 | ✅ Complete |
 | `src/utils/__init__.py` | 100% | 0 | ✅ Complete |
 | `src/analysis/detectors/base_detector.py` | 94% | 17 | ✅ Excellent |
@@ -83,13 +83,13 @@ This report details the comprehensive test coverage for the OpenEASD project. Th
 | `src/api/middleware/audit.py` | 80% | 51 | ✅ Good |
 | `src/api/routes/health.py` | 88% | 17 | ✅ Good |
 | `src/analysis/analysis_service.py` | 82% | 141 | ✅ Good |
-| `src/services/scan_service.py` | 81% | 134 | ✅ Good |
+| `src/orchestrator/scan_service.py` | 81% | 134 | ✅ Good |
 | `src/data/database/sqlmodel_manager.py` | 77% | 487 | ✅ Good |
 | `src/api/routes/domains.py` | 77% | 78 | ✅ Good |
 | `src/api/routes/scans.py` | 70% | 77 | ✅ Good |
 | `src/cli/formatters.py` | 75% | 266 | ✅ Good |
 | `src/cli/commands_results.py` | 61% | 88 | ⚠️ Needs Work |
-| `src/services/alert_service.py` | 61% | 38 | ⚠️ Needs Work |
+| `src/orchestrator/alert_service.py` | 61% | 38 | ⚠️ Needs Work |
 
 ### Low Coverage (<60%)
 
@@ -210,7 +210,7 @@ This report details the comprehensive test coverage for the OpenEASD project. Th
    - Missing tests for alert statistics
    - **Action**: Add alert retrieval and filtering tests
 
-2. **Alert Service** (`src/services/alert_service.py` - 61%)
+2. **Alert Service** (`src/orchestrator/alert_service.py` - 61%)
    - Incomplete alert aggregation testing
    - **Action**: Add tests for alert filtering and statistics
 

@@ -12,7 +12,7 @@
 
 1. [Architecture Overview](#1-architecture-overview)
 2. [Layer 1: API Layer](#2-layer-1-api-layer-full-crud-rest)
-3. [Layer 2: Service Layer](#3-layer-2-service-layer-business-logic)
+3. [Layer 2: Orchestrator Layer](#3-layer-2-service-layer-business-logic)
 4. [Layer 3: Messaging Layer](#4-layer-3-messaging-layer-zeromq)
 5. [Layer 4: Analysis Layer](#5-layer-4-analysis-layer-vulnerability-detection)
 6. [Layer 5: Tools Layer](#6-layer-5-tools-layer-security-tools)
@@ -38,7 +38,7 @@ OpenEASD implements a **6-layer API-only architecture** with clear separation of
 │ Access: Remote (HTTP), GET/POST/PUT/DELETE                      │
 │ Port: 8000                                                      │
 ├─────────────────────────────────────────────────────────────────┤
-│ Layer 2: Service Layer                                          │
+│ Layer 2: Orchestrator Layer                                          │
 │ Purpose: Shared business logic for API and workers              │
 │ Access: Internal (Python imports)                               │
 │ Components: ScanService (CRUD), ScanWorkflowOrchestrator (8-step)│
@@ -372,7 +372,7 @@ async def verify_api_key(request: Request, db: SQLModelManager):
 
 ---
 
-## 3. Layer 2: Service Layer (Business Logic)
+## 3. Layer 2: Orchestrator Layer (Business Logic)
 
 ### 3.1 Purpose
 
@@ -442,7 +442,7 @@ The 8-step scan workflow, extracted from ScanService:
 ### 3.4 Key Components
 
 #### DomainService
-**File**: `src/services/domain_service.py` (200+ lines)
+**File**: `src/orchestrator/domain_service.py` (200+ lines)
 
 **Responsibilities**:
 - Validate domain format
@@ -462,7 +462,7 @@ class DomainService:
 ```
 
 #### ScanService
-**File**: `src/services/scan_service.py` (~520 lines after refactor)
+**File**: `src/orchestrator/scan_service.py` (~520 lines after refactor)
 
 **Responsibilities**:
 - Create scan sessions (CRUD)
@@ -481,7 +481,7 @@ class ScanService:
 ```
 
 #### ScanWorkflowOrchestrator (NEW)
-**File**: `src/services/scan_workflow_orchestrator.py` (~600 lines)
+**File**: `src/orchestrator/scan_workflow_orchestrator.py` (~600 lines)
 
 **Responsibilities**:
 - Execute 8-step scan workflow
@@ -505,7 +505,7 @@ class ScanWorkflowOrchestrator:
 ```
 
 #### AlertService
-**File**: `src/services/alert_service.py` (117 lines)
+**File**: `src/orchestrator/alert_service.py` (117 lines)
 
 **Responsibilities**:
 - List alerts with filtering
@@ -524,7 +524,7 @@ class AlertService:
 ### 3.4 Code Examples
 
 #### Example 1: Service Initialization with Dependency Injection
-**File**: `src/services/domain_service.py`
+**File**: `src/orchestrator/domain_service.py`
 
 ```python
 from src.data.database.sqlmodel_manager import SQLModelManager
@@ -582,7 +582,7 @@ class DomainService:
 ```
 
 #### Example 2: Scan Orchestration Workflow
-**File**: `src/services/scan_service.py`
+**File**: `src/orchestrator/scan_service.py`
 
 ```python
 from src.tools.runners import run_subfinder, run_naabu, run_dnsx, run_httpx
@@ -669,7 +669,7 @@ class ScanService:
 ```
 
 #### Example 3: Service Layer Calling Analysis Layer
-**File**: `src/services/alert_service.py`
+**File**: `src/orchestrator/alert_service.py`
 
 ```python
 from src.analysis.alert_service import AlertManagementService
@@ -715,9 +715,9 @@ class AlertService:
 
 | File | Lines | Purpose |
 |------|-------|---------|
-| `src/services/domain_service.py` | 200+ | Domain business logic |
-| `src/services/scan_service.py` | 550+ | Scan orchestration |
-| `src/services/alert_service.py` | 117 | Alert management |
+| `src/orchestrator/domain_service.py` | 200+ | Domain business logic |
+| `src/orchestrator/scan_service.py` | 550+ | Scan orchestration |
+| `src/orchestrator/alert_service.py` | 117 | Alert management |
 | `src/analysis/analysis_service.py` | 350+ | Analysis orchestration |
 
 ---
@@ -2291,7 +2291,7 @@ def get_domain_statistics(self) -> Dict[str, Any]:
                          │
                          ▼
 ┌──────────────────────────────────────────────────────────────────┐
-│ 3. Service Layer (src/services/domain_service.py)               │
+│ 3. Service Layer (src/orchestrator/domain_service.py)               │
 │    - DomainService.list_domains(limit=20, primary_only=True)    │
 │    - Apply business rules                                        │
 │    - Call database layer                                         │
@@ -2355,7 +2355,7 @@ Time: ~50-200ms (depending on query complexity)
                          │
                          ▼
 ┌──────────────────────────────────────────────────────────────────┐
-│ 3. Service Layer (src/services/scan_service.py)                 │
+│ 3. Service Layer (src/orchestrator/scan_service.py)                 │
 │    - ScanService.execute_scan('example.com')                     │
 │    - Create scan session in database                             │
 │    - Orchestrate tool execution                                  │
@@ -2503,7 +2503,7 @@ Time: ~2-5 minutes (depending on domain size)
                              │
                              ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│                    Layer 2: Service Layer                        │
+│                    Layer 2: Orchestrator Layer                        │
 │                                                                  │
 │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐         │
 │  │DomainService │  │ ScanService  │  │AlertService  │         │
@@ -2791,9 +2791,9 @@ src/api/
     └── common.py
 ```
 
-### Layer 2: Service Layer
+### Layer 2: Orchestrator Layer
 ```
-src/services/
+src/orchestrator/
 ├── __init__.py
 ├── domain_service.py (200+ lines)
 │   └── Domain CRUD business logic

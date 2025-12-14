@@ -32,7 +32,7 @@ from typing import Dict, Any, Optional
 sys.path.insert(0, str(__file__).rsplit("/workers", 1)[0])
 
 from src.messaging.job_queue import JobQueue
-from src.services.scan_service import ScanService
+from src.orchestrator.scan_service import ScanService
 from src.data.database.sqlmodel_manager import SQLModelManager
 
 # Configure logging

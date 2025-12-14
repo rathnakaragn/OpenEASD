@@ -273,7 +273,7 @@ Data flow:
 Review all docs against current code:
 1. Read src/api/routes/*.py → Update API section in CLAUDE.md
 2. Read src/api/schemas/*.py → Verify request/response examples
-3. Read src/services/*.py → Update service descriptions
+3. Read src/orchestrator/*.py → Update service descriptions
 4. Read pyproject.toml → Update dependency list
 5. Run app and verify all examples work
 ```

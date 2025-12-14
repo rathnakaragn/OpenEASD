@@ -9,7 +9,7 @@ of database dependencies.
 import pytest
 from unittest.mock import MagicMock
 
-from src.services.findings_service import (
+from src.orchestrator.findings_service import (
     FindingsService,
     FindingNotFound,
     InvalidFindingStatus,

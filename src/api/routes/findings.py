@@ -17,7 +17,7 @@ from src.api.schemas.finding import (
 )
 from src.api.schemas.common import DEFAULT_PAGE_LIMIT, MAX_PAGE_LIMIT, Severity
 from src.api.dependencies import get_findings_service
-from src.services.findings_service import FindingsService
+from src.orchestrator.findings_service import FindingsService
 
 
 router = APIRouter(redirect_slashes=False)

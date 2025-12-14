@@ -159,7 +159,7 @@ Review these files for current patterns:
 - `src/api/routes/` - Endpoint implementations
 - `src/api/schemas/` - Pydantic schema definitions
 - `src/api/main.py` - Exception handlers and app config
-- `src/services/` - Business logic layer
+- `src/orchestrator/` - Business logic layer
 
 ### Current Endpoints
 ```

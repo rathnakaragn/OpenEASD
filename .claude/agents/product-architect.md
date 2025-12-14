@@ -59,8 +59,8 @@ You provide strategic technical guidance, not implementation details. You:
 │  Layer 1: API          │  FastAPI REST API                   │
 │  src/api/              │  Full CRUD, OpenAPI docs            │
 ├─────────────────────────────────────────────────────────────┤
-│  Layer 2: Service      │  Business Logic                     │
-│  src/services/         │  DomainService, ScanService, etc.   │
+│  Layer 2: Orchestrator      │  Business Logic                     │
+│  src/orchestrator/         │  DomainService, ScanService, etc.   │
 ├─────────────────────────────────────────────────────────────┤
 │  Layer 3: Messaging    │  ZeroMQ PUSH/PULL                   │
 │  src/messaging/        │  Async job distribution             │

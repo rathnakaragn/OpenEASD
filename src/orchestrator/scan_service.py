@@ -12,8 +12,8 @@ from src.data.database.sqlmodel_manager import SQLModelManager
 from src.utils.validation import validate_domain
 from src.utils.timezone import get_ist_now, format_datetime_iso
 from src.utils.domain_helpers import extract_primary_domain
-from src.services.exceptions import ScanNotFound, InvalidScanStatus
-from src.services.scan_workflow_orchestrator import ScanWorkflowOrchestrator
+from src.orchestrator.exceptions import ScanNotFound, InvalidScanStatus
+from src.orchestrator.scan_workflow_orchestrator import ScanWorkflowOrchestrator
 
 if TYPE_CHECKING:
     from src.messaging.job_queue import JobQueue

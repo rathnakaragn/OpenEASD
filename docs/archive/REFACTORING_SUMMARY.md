@@ -674,7 +674,7 @@ for line in result.stdout.strip().split('\n'):
 
 #### 1. Added New Service Exceptions
 
-**File**: `src/services/exceptions.py`
+**File**: `src/orchestrator/exceptions.py`
 
 ```python
 class InvalidUpdateOperation(ServiceException):
@@ -688,7 +688,7 @@ class InvalidScanStatus(ServiceException):
 
 #### 2. Updated Domain Service
 
-**File**: `src/services/domain_service.py:174`
+**File**: `src/orchestrator/domain_service.py:174`
 
 **Before**:
 ```python
@@ -708,7 +708,7 @@ if not update_fields:
 
 #### 3. Updated Scan Service
 
-**File**: `src/services/scan_service.py:886`
+**File**: `src/orchestrator/scan_service.py:886`
 
 **Before**:
 ```python
@@ -765,8 +765,8 @@ if status not in ['completed', 'finished']:
 | `src/tools/httpx/__init__.py` | Use safe_json_load | -6 lines |
 | `src/tools/amass/__init__.py` | Use safe_json_load (2 functions) | -12 lines |
 | `src/tools/tlsx/__init__.py` | Use safe_json_load | -6 lines |
-| `src/services/domain_service.py` | Use InvalidUpdateOperation | Better errors |
-| `src/services/scan_service.py` | Use InvalidScanStatus | Better errors |
+| `src/orchestrator/domain_service.py` | Use InvalidUpdateOperation | Better errors |
+| `src/orchestrator/scan_service.py` | Use InvalidScanStatus | Better errors |
 | **Total** | **Systematic improvements** | **-527 lines** |
 
 ---
