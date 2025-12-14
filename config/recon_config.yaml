@@ -80,6 +80,30 @@ naabu:
   # ports: "80,443,8080,8443,22,21,25,3306,5432,6379,27017,9200"
   # exclude_ports: "25,110"
 
+# TLS Verification Configuration
+tls_verification:
+  # Ports that already have TLS (skip verification)
+  known_tls_ports:
+    - 22     # SSH (uses its own encryption)
+    - 443    # HTTPS
+    - 8443   # HTTPS alternate
+    - 990    # FTPS
+    - 993    # IMAPS
+    - 995    # POP3S
+    - 636    # LDAPS
+    - 465    # SMTPS
+
+  # HTTP ports handled by httpx (not tlsx)
+  known_http_ports:
+    - 80
+    - 8080
+    - 8000
+    - 8008
+    - 8888
+    - 3000
+    - 5000
+    - 9000
+
 # Tool-specific rate limiting (requests per second)
 # Uncomment and adjust as needed for your environment
 # rate_limits:

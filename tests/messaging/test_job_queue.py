@@ -375,7 +375,8 @@ class TestCompleteJob:
 
     def test_complete_job_db_error(self, job_queue, mock_db_manager):
         """Test complete_job handles database errors."""
-        mock_db_manager.complete_job.side_effect = Exception("DB Error")
+        from sqlalchemy.exc import SQLAlchemyError
+        mock_db_manager.complete_job.side_effect = SQLAlchemyError("DB Error")
 
         result = job_queue.complete_job('job-123')
 
@@ -509,9 +510,10 @@ class TestPushJobEdgeCases:
 
     def test_push_job_mark_queued_failure_non_critical(self, job_queue, mock_db_manager):
         """Test push_job continues even if mark_queued fails (non-critical)."""
+        from sqlalchemy.exc import SQLAlchemyError
         mock_socket = MagicMock()
         job_queue.push_socket = mock_socket
-        mock_db_manager.mark_job_queued.side_effect = Exception("Mark queued failed")
+        mock_db_manager.mark_job_queued.side_effect = SQLAlchemyError("Mark queued failed")
 
         # Should not raise - mark_queued failure is non-critical
         job_id = job_queue.push_job("scan", {"domain": "example.com"})
@@ -525,6 +527,7 @@ class TestPullJobEdgeCases:
 
     def test_pull_job_claim_exception_returns_none(self, job_queue, mock_db_manager):
         """Test pull_job returns None if claim_job raises exception."""
+        from sqlalchemy.exc import SQLAlchemyError
         mock_socket = MagicMock()
         mock_socket.recv_json.return_value = {
             'id': 'job-123',
@@ -532,7 +535,7 @@ class TestPullJobEdgeCases:
             'payload': {}
         }
         job_queue.pull_socket = mock_socket
-        mock_db_manager.claim_job.side_effect = Exception("Claim failed")
+        mock_db_manager.claim_job.side_effect = SQLAlchemyError("Claim failed")
 
         job = job_queue.pull_job()
 

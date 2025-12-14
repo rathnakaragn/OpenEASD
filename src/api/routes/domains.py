@@ -139,21 +139,15 @@ async def get_domain_scans(
     # Verify domain exists
     service.get_domain(domain)
 
-    # Get scans for this domain
-    result = scan_service.list_scans(limit=limit, offset=offset)
-
-    # Filter scans for this domain
-    filtered_scans = [
-        scan for scan in result['scans']
-        if scan.get('domain') == domain
-    ]
+    # Get scans for this domain (filtered at database level)
+    result = scan_service.list_scans(limit=limit, offset=offset, domain=domain)
 
     return ScanListResponse(
-        scans=filtered_scans,
-        total_count=len(filtered_scans),
+        scans=result['scans'],
+        total_count=result['total_count'],
         limit=limit,
         offset=offset,
-        has_more=False
+        has_more=result['has_more']
     )
 
 

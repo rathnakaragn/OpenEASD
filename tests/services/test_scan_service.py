@@ -132,7 +132,7 @@ def test_scan_service_analysis_disabled_in_config(mock_db_manager):
 
 def test_scan_service_analysis_init_failure(mock_db_manager):
     """Test when analysis service initialization fails."""
-    with patch('src.services.scan_workflow_orchestrator.AnalysisService', side_effect=Exception("Init failed")):
+    with patch('src.services.scan_workflow_orchestrator.AnalysisService', side_effect=ImportError("Init failed")):
         service = ScanService(db_manager=mock_db_manager, enable_analysis=True)
         assert service._orchestrator.analysis_service is None
 
@@ -389,8 +389,9 @@ def test_verify_tls_empty_input(scan_service):
 @patch('src.services.scan_workflow_orchestrator.run_tlsx_parallel')
 def test_verify_tls_failure(mock_run_tlsx, scan_service):
     """Test TLS verification failure handling."""
+    from src.tools.exceptions import ToolExecutionError
     ports_found = [{'subdomain': 'api.example.com', 'port': 3306}]  # Use non-skipped port
-    mock_run_tlsx.side_effect = Exception("TLS scan failed")
+    mock_run_tlsx.side_effect = ToolExecutionError("TLS scan failed")
 
     result = scan_service._orchestrator.step5_verify_tls(ports_found)
 
@@ -431,8 +432,9 @@ def test_probe_http_empty_input(scan_service):
 @patch('src.services.scan_workflow_orchestrator.run_httpx')
 def test_probe_http_failure(mock_run_httpx, scan_service):
     """Test HTTP probing failure handling."""
+    from src.tools.exceptions import ToolExecutionError
     ports_found = [{'host': 'api.example.com', 'port': 443}]
-    mock_run_httpx.side_effect = Exception("HTTP probe failed")
+    mock_run_httpx.side_effect = ToolExecutionError("HTTP probe failed")
 
     targets, results = scan_service._orchestrator.step4_probe_http(ports_found)
 
@@ -468,8 +470,9 @@ def test_detect_services_empty_input(scan_service):
 @patch('src.services.scan_workflow_orchestrator.run_nmap_service_detection_parallel')
 def test_detect_services_failure(mock_run_nmap, scan_service):
     """Test service detection failure handling."""
+    from src.tools.exceptions import ToolExecutionError
     non_web_ports = [('api.example.com', 3306)]
-    mock_run_nmap.side_effect = Exception("Service detection failed")
+    mock_run_nmap.side_effect = ToolExecutionError("Service detection failed")
 
     result = scan_service._orchestrator.step6_detect_services(non_web_ports)
 
@@ -546,14 +549,15 @@ def test_detect_vulnerabilities_unknown_services(mock_run_nuclei, mock_run_nmap,
 @patch('src.services.scan_workflow_orchestrator.run_nuclei_network')
 def test_detect_vulnerabilities_failure(mock_run_nuclei, mock_run_nmap, scan_service):
     """Test vulnerability detection handles failures gracefully."""
+    from src.tools.exceptions import ToolExecutionError
     nmap_service_results = {
         'api.example.com:3306': {'status': 'success', 'service': 'mysql', 'version': '5.7'}
     }
     non_web_ports = [('api.example.com', 3306)]
 
     # Both tools fail
-    mock_run_nuclei.side_effect = Exception("Nuclei failed")
-    mock_run_nmap.side_effect = Exception("Nmap NSE failed")
+    mock_run_nuclei.side_effect = ToolExecutionError("Nuclei failed")
+    mock_run_nmap.side_effect = ToolExecutionError("Nmap NSE failed")
 
     result = scan_service._orchestrator.step7_detect_vulnerabilities(nmap_service_results, non_web_ports)
 

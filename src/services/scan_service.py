@@ -185,28 +185,34 @@ class ScanService:
             'ports': ports
         }
 
-    def list_scans(self, limit: int = 20, offset: int = 0) -> Dict[str, Any]:
+    def list_scans(
+        self,
+        limit: int = 20,
+        offset: int = 0,
+        domain: Optional[str] = None
+    ) -> Dict[str, Any]:
         """
         List scan sessions with pagination.
 
         Args:
             limit: Maximum number of scans to return
             offset: Number of scans to skip
+            domain: Optional filter by domain name
 
         Returns:
             Dictionary containing list of scans with pagination info
         """
-        result = self.db.get_scan_history(limit=limit, offset=offset)
+        result = self.db.get_scan_history(limit=limit, offset=offset, domain=domain)
 
         scans = []
         for scan in result.get('scans', []):
-            domain = extract_primary_domain(scan)
+            scan_domain = extract_primary_domain(scan)
 
             scans.append({
                 'scan_id': scan.get('scan_id'),
                 'scan_type': scan.get('scan_type', 'passive_subdomain_enum'),
                 'tool_name': scan.get('tool_name'),
-                'domain': domain,
+                'domain': scan_domain,
                 'status': scan.get('status'),
                 'findings_count': scan.get('findings_count', 0),
                 'start_time': scan.get('start_time'),

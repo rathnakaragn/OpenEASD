@@ -16,9 +16,12 @@ Workflow Steps:
 """
 
 import logging
+import subprocess
+import json
 from typing import List, Dict, Any, Optional, Tuple
 
 from src.data.database.sqlmodel_manager import SQLModelManager
+from src.tools.exceptions import ToolExecutionError, ToolTimeoutError, ToolNotFoundError
 from src.utils.validation import validate_domain, is_private_ip
 from src.utils.collections import deduplicate_strings, deduplicate_by_key
 from src.utils.domain_helpers import extract_host_from_port_info, make_port_key
@@ -33,6 +36,7 @@ from src.tools.runners import (
     run_nuclei_network,
 )
 from src.utils.timezone import get_ist_now
+from src.utils.config import Config
 from src.analysis.analysis_service import AnalysisService
 from src.analysis.config import get_analysis_config
 
@@ -90,6 +94,7 @@ class ScanWorkflowOrchestrator:
         """
         self.db = db_manager
         self._load_service_classifications()
+        self._load_tls_port_config()
         self._init_analysis_service(enable_analysis)
 
     def _load_service_classifications(self) -> None:
@@ -101,7 +106,7 @@ class ScanWorkflowOrchestrator:
             self.medium_risk_services = config.get_medium_risk_services()
             self.low_risk_services = config.get_low_risk_services()
             logger.debug("Loaded service classifications from config")
-        except Exception as e:
+        except (FileNotFoundError, KeyError, AttributeError) as e:
             logger.warning(f"Failed to load service classifications from config: {e}")
             # Fallback to defaults
             self.critical_services = [
@@ -116,6 +121,20 @@ class ScanWorkflowOrchestrator:
             ]
             self.low_risk_services = ['ntp', 'ntp-time']
 
+    def _load_tls_port_config(self) -> None:
+        """Load TLS verification port configuration."""
+        try:
+            config = Config()
+            tls_config = config.get('tls_verification', {})
+            self.known_tls_ports = set(tls_config.get('known_tls_ports', []))
+            self.known_http_ports = set(tls_config.get('known_http_ports', []))
+            logger.debug("Loaded TLS port configuration from config")
+        except (FileNotFoundError, KeyError, AttributeError) as e:
+            logger.warning(f"Failed to load TLS port config: {e}")
+            # Fallback to defaults
+            self.known_tls_ports = {22, 443, 8443, 990, 993, 995, 636, 465}
+            self.known_http_ports = {80, 8080, 8000, 8008, 8888, 3000, 5000, 9000}
+
     def _init_analysis_service(self, enable_analysis: bool) -> None:
         """Initialize analysis service if enabled."""
         self.analysis_service = None
@@ -127,7 +146,7 @@ class ScanWorkflowOrchestrator:
                 else:
                     logger.info("Analysis Layer disabled in configuration")
                     self.analysis_service = None
-            except Exception as e:
+            except (ImportError, AttributeError, TypeError) as e:
                 logger.warning(f"Failed to initialize Analysis Layer: {e}")
                 self.analysis_service = None
 
@@ -286,7 +305,7 @@ class ScanWorkflowOrchestrator:
             httpx_results = {r.get('url'): r for r in httpx_data}
             logger.info(f"Probed {len(httpx_targets)} ports for web services")
             return httpx_targets, httpx_results
-        except Exception as e:
+        except (ToolExecutionError, ToolTimeoutError, ToolNotFoundError, json.JSONDecodeError) as e:
             logger.warning(f"httpx probe failed: {e}")
             return httpx_targets, {}
 
@@ -311,15 +330,10 @@ class ScanWorkflowOrchestrator:
         if not ports_found:
             return {}
 
-        # Ports to skip TLS check:
-        # - Already encrypted ports (443, 8443, etc.)
-        # - Web service ports (80, 8080, etc.) - handled by httpx, not tlsx
-        skip_tls_check_ports = {
-            # Encrypted ports (already have TLS)
-            22, 443, 8443, 990, 993, 995, 636, 465,
-            # Web service ports (HTTP - use httpx redirect detection instead)
-            80, 8080, 8000, 8008, 8888, 3000, 5000, 9000
-        }
+        # Ports to skip TLS check (loaded from config):
+        # - known_tls_ports: Already encrypted (443, 8443, etc.)
+        # - known_http_ports: Web service ports handled by httpx (80, 8080, etc.)
+        skip_tls_check_ports = self.known_tls_ports | self.known_http_ports
 
         tlsx_targets = [
             (port_info.get('subdomain') or port_info.get('host') or '', port_info.get('port'))
@@ -336,7 +350,7 @@ class ScanWorkflowOrchestrator:
             tlsx_results = run_tlsx_parallel(tlsx_targets, timeout=timeout)
             logger.info(f"tlsx completed: {len(tlsx_results)} results for {len(tlsx_targets)} ports")
             return tlsx_results
-        except Exception as e:
+        except (ToolExecutionError, ToolTimeoutError, ToolNotFoundError, json.JSONDecodeError) as e:
             logger.warning(f"tlsx scan failed (non-fatal): {e}")
             return {}
 
@@ -360,7 +374,7 @@ class ScanWorkflowOrchestrator:
             logger.info(f"Running parallel service detection for {len(non_web_ports)} non-web ports")
             nmap_results = run_nmap_service_detection_parallel(non_web_ports, max_workers=5)
             return nmap_results
-        except Exception as e:
+        except (ToolExecutionError, ToolTimeoutError, ToolNotFoundError, subprocess.SubprocessError) as e:
             logger.warning(f"Parallel service detection failed: {e}")
             return {}
 
@@ -469,7 +483,7 @@ class ScanWorkflowOrchestrator:
             logger.info(f"Nuclei found {len(findings)} vulnerabilities")
             return results
 
-        except Exception as e:
+        except (ToolExecutionError, ToolTimeoutError, ToolNotFoundError, json.JSONDecodeError) as e:
             logger.warning(f"Nuclei network scan failed (non-fatal): {e}")
             return {}
 
@@ -518,7 +532,7 @@ class ScanWorkflowOrchestrator:
             logger.info(f"Running nmap NSE scripts on {len(ports_with_services)} non-web ports")
             vuln_results = run_nmap_vuln_detection_parallel(ports_with_services, max_workers=3)
             return vuln_results
-        except Exception as e:
+        except (ToolExecutionError, ToolTimeoutError, ToolNotFoundError, subprocess.SubprocessError) as e:
             logger.warning(f"Nmap NSE scan failed (non-fatal): {e}")
             return {}
 
@@ -610,7 +624,7 @@ class ScanWorkflowOrchestrator:
             if analysis_results:
                 logger.info(f"Analysis completed: {analysis_results.get('findings_count', 0)} findings")
             return analysis_results
-        except Exception as e:
+        except (KeyError, TypeError, AttributeError, ValueError) as e:
             logger.error(f"Analysis failed for scan {scan_id}: {e}")
             return None
 

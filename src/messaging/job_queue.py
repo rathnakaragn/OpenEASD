@@ -16,6 +16,7 @@ from datetime import datetime
 from typing import Dict, Any, Optional, TYPE_CHECKING
 
 import zmq
+from sqlalchemy.exc import SQLAlchemyError
 
 from src.messaging.config import get_messaging_config, MessagingConfig
 
@@ -146,7 +147,7 @@ class JobQueue:
                     priority=priority
                 )
                 logger.debug(f"Job {job_id} persisted to database")
-            except Exception as e:
+            except SQLAlchemyError as e:
                 logger.error(f"Failed to persist job {job_id} to database: {e}")
                 raise
 
@@ -167,7 +168,7 @@ class JobQueue:
             if self.db_manager:
                 try:
                     self.db_manager.mark_job_queued(job_id)
-                except Exception as e:
+                except SQLAlchemyError as e:
                     # Non-critical: job is already in queue, just log warning
                     logger.warning(f"Failed to mark job {job_id} as queued: {e}")
 
@@ -208,7 +209,7 @@ class JobQueue:
                         # Job already claimed by another worker - don't process it
                         logger.warning(f"Job {job_id} already claimed by another worker, skipping")
                         return None
-                except Exception as e:
+                except SQLAlchemyError as e:
                     # Claim failed - don't process to avoid duplicate execution
                     logger.error(f"Failed to claim job {job_id}: {e}, skipping")
                     return None
@@ -242,7 +243,7 @@ class JobQueue:
 
         try:
             return self.db_manager.complete_job(job_id, success, error_message)
-        except Exception as e:
+        except SQLAlchemyError as e:
             logger.error(f"Failed to complete job {job_id}: {e}")
             return False
 

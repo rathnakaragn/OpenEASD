@@ -305,6 +305,25 @@ async def job_cannot_be_cancelled_handler(request: Request, exc: JobCannotBeCanc
     )
 
 
+@app.exception_handler(Exception)
+async def generic_exception_handler(request: Request, exc: Exception):
+    """
+    Fallback handler for unhandled exceptions.
+
+    Logs the full error for debugging but returns a generic message
+    to prevent information leakage in production.
+    """
+    logger.error(
+        f"Unhandled exception in request {request.method} {request.url}: {exc}",
+        exc_info=True
+    )
+    return create_error_response(
+        status.HTTP_500_INTERNAL_SERVER_ERROR,
+        "An internal server error occurred",
+        "INTERNAL_SERVER_ERROR"
+    )
+
+
 # API Routers
 app.include_router(health.router, prefix="/api/v1", tags=["health"])
 app.include_router(domains.router, prefix="/api/v1/domains", tags=["domains"])
