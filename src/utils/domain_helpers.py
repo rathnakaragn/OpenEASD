@@ -5,7 +5,7 @@ Provides reusable functions for domain extraction and manipulation
 used across service and API layers.
 """
 
-from typing import Dict, Any, Optional, Tuple
+from typing import Dict, Any
 
 
 def extract_primary_domain(scan_data: Dict[str, Any]) -> str:
@@ -82,32 +82,8 @@ def make_port_key(host: str, port: int) -> str:
     return f"{host}:{port}"
 
 
-def parse_port_key(port_key: str) -> Tuple[str, int]:
-    """
-    Parse a host:port key into components.
-
-    Args:
-        port_key: String in format "host:port"
-
-    Returns:
-        Tuple of (host, port)
-
-    Raises:
-        ValueError: If port_key is not in valid format
-
-    Example:
-        >>> parse_port_key('example.com:443')
-        ('example.com', 443)
-    """
-    parts = port_key.rsplit(':', 1)
-    if len(parts) != 2:
-        raise ValueError(f"Invalid port key format: {port_key}")
-    return parts[0], int(parts[1])
-
-
 __all__ = [
     'extract_primary_domain',
     'extract_host_from_port_info',
     'make_port_key',
-    'parse_port_key',
 ]

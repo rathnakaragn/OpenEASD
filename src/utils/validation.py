@@ -8,7 +8,7 @@ import re
 import ipaddress
 from typing import List
 
-from src.core.exceptions import InvalidDomainError, InvalidPortError
+from src.core.exceptions import InvalidDomainError
 
 
 # Domain validation regex (RFC 1123)

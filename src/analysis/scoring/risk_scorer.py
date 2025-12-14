@@ -23,7 +23,6 @@ from src.core.constants import (
     Severity,
     RiskThresholds,
     FindingStatus,
-    get_severity_from_score
 )
 from src.analysis.constants import KEYWORD_RISK_SCORES
 

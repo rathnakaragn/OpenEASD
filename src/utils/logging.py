@@ -54,27 +54,3 @@ def setup_logging(log_level: str = "INFO") -> None:
     logging.getLogger("uvicorn").setLevel(logging.INFO)
     logging.getLogger("uvicorn.access").setLevel(logging.INFO)
     logging.getLogger("fastapi").setLevel(logging.INFO)
-
-
-def get_logger(name: str) -> logging.Logger:
-    """
-    Get a logger with IST formatting.
-    
-    Args:
-        name: Logger name
-        
-    Returns:
-        Configured logger instance
-    """
-    logger = logging.getLogger(name)
-    
-    # If logger has no handlers, add one with IST formatting
-    if not logger.handlers:
-        handler = logging.StreamHandler(sys.stdout)
-        formatter = ISTFormatter(
-            fmt='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-        )
-        handler.setFormatter(formatter)
-        logger.addHandler(handler)
-    
-    return logger
