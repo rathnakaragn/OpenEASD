@@ -36,7 +36,10 @@ class ServiceVulnerabilityDetector(BaseDetector):
             'mysql': {
                 'name': 'MySQL',
                 'type': 'database',
-                'remediation': 'Restrict MySQL access to internal networks only. Enable TLS encryption and strong authentication.',
+                'remediation': (
+                    'Restrict MySQL access to internal networks only. '
+                    'Enable TLS encryption and strong authentication.'
+                ),
                 'cwe_id': 'CWE-200'
             },
             'postgresql': {
@@ -54,7 +57,10 @@ class ServiceVulnerabilityDetector(BaseDetector):
             'redis': {
                 'name': 'Redis',
                 'type': 'cache',
-                'remediation': 'Enable authentication with requirepass. Restrict network access. Use TLS in production.',
+                'remediation': (
+                    'Enable authentication with requirepass. '
+                    'Restrict network access. Use TLS in production.'
+                ),
                 'cwe_id': 'CWE-200'
             },
             'elasticsearch': {

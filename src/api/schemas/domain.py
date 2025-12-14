@@ -2,9 +2,19 @@
 Pydantic schemas for domain-related operations.
 """
 
-from pydantic import BaseModel, Field, field_validator, ConfigDict
+from pydantic import BaseModel, Field, field_validator, model_validator, ConfigDict, EmailStr
 from typing import Optional, List
 from datetime import datetime
+
+from src.api.schemas.common import ScanFrequency, validate_domain_format
+
+
+class SubdomainSummary(BaseModel):
+    """Schema for subdomain summary information."""
+    model_config = ConfigDict(from_attributes=True)
+
+    subdomain: str = Field(..., description="Subdomain name")
+    discovered_at: datetime = Field(..., description="When subdomain was first discovered")
 
 
 class DomainCreate(BaseModel):
@@ -13,21 +23,21 @@ class DomainCreate(BaseModel):
         "example": {
             "domain": "example.com",
             "is_primary": True,
+            "contact_email": "admin@example.com",
             "scan_frequency": "daily"
         }
     })
 
     domain: str = Field(..., description="Domain name (e.g., example.com)")
     is_primary: bool = Field(default=False, description="Mark as primary domain")
-    contact_email: Optional[str] = Field(None, description="Contact email")
-    scan_frequency: Optional[str] = Field(None, description="Scan frequency (hourly, daily, weekly, monthly)")
+    contact_email: Optional[EmailStr] = Field(None, description="Contact email address")
+    scan_frequency: Optional[ScanFrequency] = Field(None, description="Scan frequency (hourly, daily, weekly, monthly)")
 
-    @field_validator('scan_frequency')
+    @field_validator('domain')
     @classmethod
-    def validate_scan_frequency(cls, v):
-        if v and v not in ['hourly', 'daily', 'weekly', 'monthly']:
-            raise ValueError('scan_frequency must be one of: hourly, daily, weekly, monthly')
-        return v
+    def validate_domain(cls, v: str) -> str:
+        """Validate domain format and normalize to lowercase."""
+        return validate_domain_format(v)
 
 
 class DomainUpdate(BaseModel):
@@ -39,6 +49,15 @@ class DomainUpdate(BaseModel):
     })
 
     is_primary: Optional[bool] = Field(None, description="Update primary status")
+    contact_email: Optional[EmailStr] = Field(None, description="Update contact email")
+    scan_frequency: Optional[ScanFrequency] = Field(None, description="Update scan frequency")
+
+    @model_validator(mode='after')
+    def check_at_least_one_field(self):
+        """Ensure at least one field is provided for update."""
+        if self.is_primary is None and self.contact_email is None and self.scan_frequency is None:
+            raise ValueError('At least one field must be provided: is_primary, contact_email, or scan_frequency')
+        return self
 
 
 class DomainResponse(BaseModel):
@@ -71,12 +90,16 @@ class DomainListResponse(BaseModel):
                 }
             ],
             "total_count": 1,
+            "limit": 20,
+            "offset": 0,
             "has_more": False
         }
     })
 
     domains: List[DomainResponse]
     total_count: int
+    limit: int = Field(default=20, description="Results per page")
+    offset: int = Field(default=0, description="Current offset")
     has_more: bool
 
 
@@ -96,10 +119,6 @@ class DomainDetailResponse(DomainResponse):
     })
 
     subdomain_count: int
-    recent_subdomains: List[dict]
+    recent_subdomains: List[SubdomainSummary]
 
 
-class MessageResponse(BaseModel):
-    """Schema for generic message response."""
-    message: str
-    details: Optional[dict] = None

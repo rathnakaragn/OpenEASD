@@ -17,6 +17,11 @@ from typing import List
 from src.utils.config import Config
 from src.utils.validation import validate_domain
 from src.utils.json_utils import safe_json_load
+from src.tools.exceptions import (
+    ToolExecutionError,
+    ToolTimeoutError,
+    ToolNotFoundError,
+)
 
 __version__ = "1.0.0"
 
@@ -36,7 +41,9 @@ def run_subfinder(domain: str, timeout: int = None) -> List[str]:
         List of discovered subdomains
 
     Raises:
-        Exception: If subfinder times out or is not installed
+        ToolTimeoutError: If subfinder times out
+        ToolNotFoundError: If subfinder is not installed
+        ToolExecutionError: If subfinder returns non-zero exit code
 
     Example:
         >>> subdomains = run_subfinder('example.com', timeout=300)
@@ -58,6 +65,12 @@ def run_subfinder(domain: str, timeout: int = None) -> List[str]:
             timeout=timeout
         )
 
+        # Validate return code
+        if result.returncode != 0:
+            error_msg = result.stderr.strip() if result.stderr else 'Unknown error'
+            logger.error(f"Subfinder failed with exit code {result.returncode}: {error_msg}")
+            raise ToolExecutionError(f"Subfinder failed: {error_msg}")
+
         subdomains = []
         for line in result.stdout.strip().split('\n'):
             if line:
@@ -69,11 +82,10 @@ def run_subfinder(domain: str, timeout: int = None) -> List[str]:
         return subdomains
 
     except subprocess.TimeoutExpired:
-        raise Exception(f"Subfinder timed out after {timeout} seconds")
+        raise ToolTimeoutError(f"Subfinder timed out after {timeout} seconds")
     except FileNotFoundError:
-        raise Exception(
-            "Subfinder not found. Please install: "
-            "https://github.com/projectdiscovery/subfinder"
+        raise ToolNotFoundError(
+            "Subfinder not found. Install: https://github.com/projectdiscovery/subfinder"
         )
 
 

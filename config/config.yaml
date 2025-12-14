@@ -1,0 +1,390 @@
+# ============================================================================
+# OpenEASD Unified Configuration
+# ============================================================================
+#
+# This is the main configuration file for OpenEASD. It consolidates all
+# settings from previously separate files into a single source of truth.
+#
+# Sections:
+# - api: FastAPI application settings
+# - database: SQLite database settings
+# - messaging: ZeroMQ job queue settings
+# - workflow: Scan workflow settings
+# - tools: Security tool configurations
+# - analysis: Analysis layer settings
+#
+# Environment Variables:
+# Most settings can be overridden via environment variables.
+# See docs/CONFIGURATION.md for details.
+#
+# ============================================================================
+
+# ===================
+# Global Settings
+# ===================
+log_level: INFO
+log_file: logs/openeasd.log
+temp_directory: /tmp/openeasd
+
+# ===================
+# API Configuration
+# ===================
+api:
+  title: "OpenEASD API"
+  description: |
+    Full CRUD API for Open Source External Attack Surface Detection.
+
+    **Features:**
+    - Domain management (add, list, update, delete)
+    - Async scan execution via ZeroMQ job queue
+    - Security findings with risk scoring
+    - Web dashboard at /
+
+    **Async Scan Flow:**
+    1. POST /api/v1/scans - Creates scan, returns 202 Accepted
+    2. GET /api/v1/scans/{id} - Poll for status updates
+    3. GET /api/v1/scans/{id}/results - Get results when completed
+
+  version: "3.0.0"
+  host: "0.0.0.0"
+  port: 8000
+  docs_url: "/api/docs"
+  redoc_url: "/api/redoc"
+  openapi_url: "/api/openapi.json"
+  frontend_dir: "src/frontend"
+  reload: false  # Set to true for development
+
+  cors:
+    allow_origins:
+      - "http://localhost:8000"
+      - "http://127.0.0.1:8000"
+    allow_credentials: true
+    allow_methods: ["*"]
+    allow_headers: ["*"]
+
+# ===================
+# Database Configuration
+# ===================
+database:
+  database_path: data/openeasd.db
+  max_connections: 10
+  connection_timeout: 30.0
+  query_timeout: 60.0
+  enable_metrics: true
+
+# ===================
+# Messaging Configuration (ZeroMQ)
+# ===================
+messaging:
+  push_address: "tcp://127.0.0.1:5555"
+  pull_address: "tcp://127.0.0.1:5555"
+  send_timeout: 5000  # milliseconds
+  recv_timeout: 1000  # milliseconds
+  high_water_mark: 1000
+
+  # Worker settings
+  worker:
+    stale_timeout_minutes: 30  # Mark jobs as stale after this time
+    max_concurrent_jobs: 1
+    poll_interval: 1  # seconds
+
+# ===================
+# Workflow Configuration
+# ===================
+workflow:
+  max_concurrent_tools: 2
+  enable_rate_limiting: true
+  default_timeout: 1800  # 30 minutes
+  auto_expand_targets: true
+  store_raw_output: true
+  parallel_execution: false
+  fail_fast: false
+
+# ===================
+# Tool Configurations
+# ===================
+tools:
+  # Subfinder - Subdomain Discovery
+  subfinder:
+    enabled: true
+    timeout: 600  # 10 minutes
+    retries: 3
+    all_sources: true
+    active: false
+    verbose: false
+    max_time: 10  # minutes
+    threads: 10
+    recursive: false
+    path: "subfinder"  # or full path to binary
+
+  # Naabu - Port Scanner
+  naabu:
+    enabled: true
+    timeout: 900  # 15 minutes
+    retries: 2
+    top_ports: 1000
+    verify: true
+    ping: false
+    scan_type: syn
+    threads: 25
+    path: "naabu"
+
+  # Dnsx - DNS Resolution
+  dnsx:
+    enabled: true
+    timeout: 300  # 5 minutes
+    retries: 3
+    threads: 100
+    path: "dnsx"
+
+  # Httpx - HTTP Probing
+  httpx:
+    enabled: true
+    timeout: 600  # 10 minutes
+    retries: 2
+    threads: 50
+    follow_redirects: true
+    path: "httpx"
+
+  # Tlsx - TLS Scanner
+  tlsx:
+    enabled: true
+    timeout: 300  # 5 minutes
+    path: "tlsx"
+
+  # Nmap - Service Detection
+  nmap:
+    enabled: true
+    timeout: 1200  # 20 minutes
+    service_detection: true
+    version_intensity: 5
+    scripts: ["vulners", "http-title", "ssl-cert"]
+    path: "nmap"
+
+  # Nuclei - Vulnerability Scanner
+  nuclei:
+    enabled: true
+    timeout: 1800  # 30 minutes
+    templates_path: "./nuclei-templates"
+    severity: ["critical", "high", "medium"]
+    rate_limit: 150
+    bulk_size: 25
+    path: "nuclei"
+
+  # Amass - Advanced Subdomain Enumeration
+  amass:
+    enabled: false  # Disabled by default (resource intensive)
+    timeout: 600  # 10 minutes
+    path: "amass"
+
+# ===================
+# Analysis Configuration
+# ===================
+analysis:
+  enabled: true
+  auto_analyze_on_scan: true
+  batch_analysis_enabled: false
+
+  # Risk Scoring Configuration
+  scoring:
+    algorithm: "deterministic"
+    base_score_weight: 0.4      # 40%
+    context_score_weight: 0.4   # 40%
+    exposure_score_weight: 0.2  # 20%
+
+    # Severity thresholds (0-100 scale)
+    critical_threshold: 80
+    high_threshold: 60
+    medium_threshold: 40
+    low_threshold: 20
+
+  # Detector Configuration
+  detectors:
+    port_detector:
+      enabled: true
+      high_risk_ports: [21, 23, 3389, 5900, 5432, 3306, 27017, 6379]
+      medium_risk_ports: [8080, 8443, 9090, 9200]
+      database_ports: [3306, 5432, 27017, 6379, 1433, 5984, 9042, 7000, 7001]
+      admin_ports: [2082, 2083, 2086, 2087, 8443, 10000]
+      remote_access_ports: [21, 22, 23, 3389, 5900, 5901]
+      auth_ports: [389, 636, 88, 464]
+
+      # Unencrypted protocols configuration
+      unencrypted_protocols:
+        21:
+          name: "FTP"
+          encrypted_port: 990
+          encrypted_name: "FTPS"
+          severity: "high"
+        23:
+          name: "Telnet"
+          encrypted_port: 22
+          encrypted_name: "SSH"
+          severity: "critical"
+        25:
+          name: "SMTP"
+          encrypted_port: 465
+          encrypted_name: "SMTPS"
+          severity: "high"
+        80:
+          name: "HTTP"
+          encrypted_port: 443
+          encrypted_name: "HTTPS"
+          severity: "medium"
+        110:
+          name: "POP3"
+          encrypted_port: 995
+          encrypted_name: "POP3S"
+          severity: "high"
+        143:
+          name: "IMAP"
+          encrypted_port: 993
+          encrypted_name: "IMAPS"
+          severity: "high"
+        389:
+          name: "LDAP"
+          encrypted_port: 636
+          encrypted_name: "LDAPS"
+          severity: "high"
+        5432:
+          name: "PostgreSQL"
+          encrypted_port: null
+          encrypted_name: "PostgreSQL SSL"
+          severity: "critical"
+        3306:
+          name: "MySQL"
+          encrypted_port: null
+          encrypted_name: "MySQL SSL"
+          severity: "critical"
+        27017:
+          name: "MongoDB"
+          encrypted_port: null
+          encrypted_name: "MongoDB TLS"
+          severity: "critical"
+        6379:
+          name: "Redis"
+          encrypted_port: null
+          encrypted_name: "Redis TLS"
+          severity: "critical"
+
+    service_detector:
+      enabled: true
+      critical_services: [mysql, postgresql, mongodb, redis, memcached, elasticsearch, cassandra, couchdb, mariadb, oracle, mssql]
+      high_risk_services: [telnet, ftp, rsh, rlogin, vnc, rdp, smb, netbios]
+      medium_risk_services: [ssh, smtp, dns, snmp, ldap, nfs, rpc]
+      low_risk_services: [ntp, ntp-time]
+
+    web_detector:
+      enabled: false
+      nuclei_templates_path: "./nuclei-templates"
+      timeout: 300
+
+    tls_detector:
+      enabled: false
+      check_expiry: true
+      expiry_warning_days: 30
+      check_weak_ciphers: true
+
+    dns_detector:
+      enabled: false
+      check_takeover: true
+      check_dnssec: true
+
+    email_detector:
+      enabled: false
+      check_spf: true
+      check_dkim: true
+      check_dmarc: true
+
+  # CVE Enrichment (Future)
+  cve_enrichment:
+    enabled: false
+    nvd_api_key: ""
+    cache_ttl_days: 7
+    max_cves_per_finding: 5
+
+  # Finding Deduplication
+  deduplication:
+    enabled: true
+    strategies:
+      - exact_match
+      - similar_match
+      - time_window
+    time_window_hours: 24
+    similarity_threshold: 0.85
+
+  # Performance Tuning
+  performance:
+    max_concurrent_detectors: 5
+    analysis_timeout: 600  # 10 minutes
+    batch_size: 100
+
+# ===================
+# Port Information Reference
+# ===================
+port_info:
+  21:
+    name: "FTP"
+    risk_level: "high"
+    description: "File Transfer Protocol - commonly exploited, transmits credentials in plain text"
+    remediation: "Disable FTP or use SFTP/FTPS instead"
+  23:
+    name: "Telnet"
+    risk_level: "critical"
+    description: "Unencrypted remote access protocol"
+    remediation: "Disable Telnet and use SSH (port 22) instead"
+  22:
+    name: "SSH"
+    risk_level: "medium"
+    description: "Secure Shell - encrypted remote access"
+    remediation: "Ensure strong authentication and up-to-date software"
+  80:
+    name: "HTTP"
+    risk_level: "low"
+    description: "Unencrypted web traffic"
+    remediation: "Redirect to HTTPS (port 443)"
+  443:
+    name: "HTTPS"
+    risk_level: "info"
+    description: "Encrypted web traffic"
+    remediation: "Ensure valid TLS certificate and strong cipher suites"
+  3306:
+    name: "MySQL"
+    risk_level: "critical"
+    description: "MySQL database server"
+    remediation: "Restrict access to internal networks only, use firewall rules"
+  5432:
+    name: "PostgreSQL"
+    risk_level: "critical"
+    description: "PostgreSQL database server"
+    remediation: "Restrict access to internal networks only, use firewall rules"
+  27017:
+    name: "MongoDB"
+    risk_level: "critical"
+    description: "MongoDB database server"
+    remediation: "Restrict access to internal networks only, enable authentication"
+  6379:
+    name: "Redis"
+    risk_level: "critical"
+    description: "Redis in-memory data store"
+    remediation: "Restrict access to internal networks only, require authentication"
+  3389:
+    name: "RDP"
+    risk_level: "high"
+    description: "Remote Desktop Protocol"
+    remediation: "Use VPN for remote access, enable Network Level Authentication"
+  5900:
+    name: "VNC"
+    risk_level: "high"
+    description: "Virtual Network Computing"
+    remediation: "Use strong passwords, enable encryption, consider SSH tunneling"
+  8080:
+    name: "HTTP-Alt"
+    risk_level: "medium"
+    description: "Alternative HTTP port"
+    remediation: "Verify if intentionally exposed, use HTTPS if possible"
+  9200:
+    name: "Elasticsearch"
+    risk_level: "high"
+    description: "Elasticsearch HTTP API"
+    remediation: "Restrict access, enable authentication and TLS"

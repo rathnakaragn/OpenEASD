@@ -27,6 +27,11 @@ from typing import List, Dict, Any, Optional
 from src.utils.config import Config
 from src.utils.validation import validate_domain
 from src.utils.json_utils import safe_json_load
+from src.tools.exceptions import (
+    ToolExecutionError,
+    ToolTimeoutError,
+    ToolNotFoundError,
+)
 
 __version__ = "1.0.0"
 
@@ -106,6 +111,12 @@ def run_amass(
             timeout=timeout
         )
 
+        # Validate return code
+        if result.returncode != 0:
+            error_msg = result.stderr.strip() if result.stderr else 'Unknown error'
+            logger.error(f"Amass failed with exit code {result.returncode}: {error_msg}")
+            raise ToolExecutionError(f"Amass enum failed: {error_msg}")
+
         # Parse JSON output file
         subdomains = []
         if Path(output_file).exists():
@@ -126,9 +137,9 @@ def run_amass(
         return subdomains
 
     except subprocess.TimeoutExpired:
-        raise Exception(f"Amass timed out after {timeout} seconds")
+        raise ToolTimeoutError(f"Amass timed out after {timeout} seconds")
     except FileNotFoundError:
-        raise Exception(
+        raise ToolNotFoundError(
             "Amass not found. Please install: "
             "https://github.com/owasp-amass/amass"
         )
@@ -198,6 +209,12 @@ def run_amass_intel(
             timeout=timeout
         )
 
+        # Validate return code
+        if result.returncode != 0:
+            error_msg = result.stderr.strip() if result.stderr else 'Unknown error'
+            logger.error(f"Amass intel failed with exit code {result.returncode}: {error_msg}")
+            raise ToolExecutionError(f"Amass intel failed: {error_msg}")
+
         # Parse JSON output
         intel_results = []
         if Path(output_file).exists():
@@ -217,9 +234,9 @@ def run_amass_intel(
         return intel_results
 
     except subprocess.TimeoutExpired:
-        raise Exception(f"Amass intel timed out after {timeout} seconds")
+        raise ToolTimeoutError(f"Amass intel timed out after {timeout} seconds")
     except FileNotFoundError:
-        raise Exception(
+        raise ToolNotFoundError(
             "Amass not found. Please install: "
             "https://github.com/owasp-amass/amass"
         )

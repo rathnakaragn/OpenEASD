@@ -25,7 +25,7 @@ sample_scan = {
 def mock_scan_service():
     """Fixture for a mocked scan service."""
     service = MagicMock()
-    service.list_scans.return_value = {'scans': [sample_scan], 'total': 1}
+    service.list_scans.return_value = {'scans': [sample_scan], 'total_count': 1, 'has_more': False}
     service.get_scan_status.return_value = {'scan': sample_scan}
     service.get_scan_results.return_value = {
         'scan': sample_scan,
@@ -38,7 +38,7 @@ def test_list_scans(mock_scan_service):
     app.dependency_overrides[get_scan_service] = lambda: mock_scan_service
     response = client.get("/api/v1/scans")
     assert response.status_code == 200
-    assert response.json()['total'] == 1
+    assert response.json()['total_count'] == 1
     mock_scan_service.list_scans.assert_called()
     app.dependency_overrides = {}
 

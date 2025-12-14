@@ -38,6 +38,30 @@ class InvalidScanStatus(ServiceException):
     pass
 
 
-class CliCommandError(Exception):
-    """Base class for CLI command exceptions."""
+class ScanCannotBeDeleted(ServiceException):
+    """Raised when attempting to delete a scan that cannot be deleted."""
     pass
+
+
+class FindingNotFound(ServiceException):
+    """Raised when a finding is not found."""
+    pass
+
+
+class InvalidFindingStatus(ServiceException):
+    """Raised when an invalid finding status is provided."""
+    pass
+
+
+class InvalidFilterValue(ServiceException):
+    """Raised when an invalid filter value is provided."""
+    pass
+
+
+# Tool exceptions - re-exported from tools layer for backwards compatibility
+from src.tools.exceptions import (
+    ToolExecutionError,
+    ToolTimeoutError,
+    ToolNotFoundError,
+    ToolOutputParseError,
+)

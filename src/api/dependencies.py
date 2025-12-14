@@ -2,33 +2,67 @@
 Dependency injection for FastAPI routes.
 
 Provides reusable dependencies for database connections and services.
-API is read-only - no authentication required.
 """
 
-from typing import Generator
+import threading
+from typing import Generator, Optional
 from fastapi import Depends
 from src.data.database.sqlmodel_manager import SQLModelManager
 from src.services.domain_service import DomainService
 from src.services.scan_service import ScanService
 from src.services.findings_service import FindingsService
+from src.messaging.job_queue import JobQueue, get_job_queue as _get_job_queue
 
 
-def get_db_manager() -> Generator[SQLModelManager, None, None]:
+# Singleton database manager instance with thread-safe initialization
+_db_manager: Optional[SQLModelManager] = None
+_db_initialized: bool = False
+_db_lock = threading.Lock()
+
+
+def get_db_manager() -> SQLModelManager:
     """
-    Dependency to get database manager instance.
+    Dependency to get database manager singleton instance.
 
-    Yields:
+    Returns:
         SQLModelManager instance
 
     Note:
-        Automatically handles initialization and cleanup.
+        Uses double-checked locking pattern for thread-safe singleton initialization.
+        This ensures only one instance is created even under concurrent requests.
     """
-    db = SQLModelManager()
-    try:
-        db.initialize()
-        yield db
-    finally:
-        db.close()
+    global _db_manager, _db_initialized
+
+    # Fast path: if already initialized, return immediately
+    if _db_manager is not None and _db_initialized:
+        return _db_manager
+
+    # Slow path: acquire lock and initialize
+    with _db_lock:
+        # Double-check after acquiring lock
+        if _db_manager is None:
+            _db_manager = SQLModelManager()
+
+        if not _db_initialized:
+            _db_manager.initialize()
+            _db_initialized = True
+
+    return _db_manager
+
+
+def cleanup_db_manager() -> None:
+    """
+    Cleanup database manager on shutdown.
+
+    Called during application shutdown to properly close database connections.
+    """
+    global _db_manager, _db_initialized
+
+    with _db_lock:
+        if _db_manager is not None:
+            _db_manager.close()
+            _db_manager = None
+            _db_initialized = False
 
 
 def get_domain_service(db: SQLModelManager = Depends(get_db_manager)) -> DomainService:
@@ -68,3 +102,16 @@ def get_findings_service(db: SQLModelManager = Depends(get_db_manager)) -> Findi
         FindingsService instance
     """
     return FindingsService(db)
+
+
+def get_job_queue(db: SQLModelManager = Depends(get_db_manager)) -> JobQueue:
+    """
+    Dependency to get job queue instance with database persistence.
+
+    Args:
+        db: Database manager (injected by FastAPI)
+
+    Returns:
+        JobQueue instance with db_manager for job persistence
+    """
+    return _get_job_queue(db_manager=db)

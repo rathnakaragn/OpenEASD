@@ -1,27 +1,30 @@
 [project]
 name = "openeasd"
-version = "2.0.0"
-description = "Automated External Attack Surface Detection"
+version = "3.0.0"
+description = "Automated External Attack Surface Detection - API Only"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-    "click==8.1.7",
+    # Core
     "sqlmodel>=0.0.14",
     "pytz",
     "pyyaml==6.0.1",
-    "texttable",
-    # API dependencies
+    # API Layer
     "fastapi>=0.109.0",
     "uvicorn[standard]>=0.27.0",
     "pydantic>=2.5.0",
     "python-multipart>=0.0.6",
-    # HTTP client for CLI
-    "httpx>=0.26.0",
+    # Messaging Layer (ZeroMQ)
+    "pyzmq>=25.0.0",
+    "email-validator>=2.3.0",
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest==8.2.2",
+    "pytest-cov>=4.1.0",  # Code coverage
+    "httpx>=0.26.0",  # Required for Starlette TestClient
+    "alembic>=1.13.0",  # Database migrations
 ]
 
 [project.scripts]
@@ -34,6 +37,9 @@ build-backend = "hatchling.build"
 [tool.uv]
 dev-dependencies = [
     "pytest==8.2.2",
+    "pytest-cov>=4.1.0",  # Code coverage
+    "httpx>=0.26.0",  # Required for Starlette TestClient
+    "alembic>=1.13.0",  # Database migrations
 ]
 
 [tool.pytest.ini_options]

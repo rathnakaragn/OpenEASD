@@ -39,7 +39,13 @@ sample_domain_detail = {
 def mock_domain_service():
     """Fixture for a mocked domain service."""
     service = MagicMock()
-    service.list_domains.return_value = {'domains': [sample_domain], 'total_count': 1, 'has_more': False}
+    service.list_domains.return_value = {
+        'domains': [sample_domain],
+        'total_count': 1,
+        'limit': 20,
+        'offset': 0,
+        'has_more': False
+    }
     service.get_domain.return_value = sample_domain_detail  # Use detail schema for single domain
     return service
 
@@ -60,11 +66,11 @@ def test_list_domains_with_params(mock_domain_service):
     """Test listing domains with query parameters."""
     app.dependency_overrides[get_domain_service] = lambda: mock_domain_service
 
-    response = client.get("/api/v1/domains?limit=10&primary_only=true")
-    
+    response = client.get("/api/v1/domains?limit=10&offset=5&primary_only=true")
+
     assert response.status_code == 200
-    mock_domain_service.list_domains.assert_called_with(limit=10, primary_only=True)
-    
+    mock_domain_service.list_domains.assert_called_with(limit=10, offset=5, primary_only=True)
+
     app.dependency_overrides = {}
 
 def test_list_domains_value_error(mock_domain_service):

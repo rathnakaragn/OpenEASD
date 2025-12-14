@@ -14,6 +14,7 @@ from datetime import datetime
 
 from src.api.main import app
 from src.api.dependencies import get_findings_service
+from src.api.schemas.common import Severity
 from src.services.findings_service import FindingNotFound
 
 client = TestClient(app)
@@ -72,18 +73,27 @@ def test_get_findings_statistics(mock_findings_service):
     mock_findings_service.get_statistics.assert_called()
     app.dependency_overrides = {}
 
+def test_get_findings_stats_alias(mock_findings_service):
+    """Test the /stats alias endpoint works identically to /statistics/summary."""
+    app.dependency_overrides[get_findings_service] = lambda: mock_findings_service
+    response = client.get("/api/v1/findings/stats")
+    assert response.status_code == 200
+    assert response.json()['total_findings'] == 1
+    mock_findings_service.get_statistics.assert_called()
+    app.dependency_overrides = {}
+
 def test_get_scan_findings(mock_findings_service):
     app.dependency_overrides[get_findings_service] = lambda: mock_findings_service
     response = client.get("/api/v1/findings/scan/scan_abc")
     assert response.status_code == 200
-    mock_findings_service.get_findings_by_scan.assert_called_with(scan_id='scan_abc', min_severity=None, limit=100, offset=0)
+    mock_findings_service.get_findings_by_scan.assert_called_with(scan_id='scan_abc', min_severity=None, limit=20, offset=0)
     app.dependency_overrides = {}
 
 def test_get_asset_findings(mock_findings_service):
     app.dependency_overrides[get_findings_service] = lambda: mock_findings_service
     response = client.get("/api/v1/findings/asset/test.com")
     assert response.status_code == 200
-    mock_findings_service.get_findings_by_asset.assert_called_with(asset_name='test.com', min_severity=None, limit=100, offset=0)
+    mock_findings_service.get_findings_by_asset.assert_called_with(asset_name='test.com', min_severity=None, limit=20, offset=0)
     app.dependency_overrides = {}
 
 def test_get_finding_by_id(mock_findings_service):
@@ -127,8 +137,8 @@ def test_list_findings_with_filters(mock_findings_service):
     mock_findings_service.list_findings.assert_called_with(
         scan_id='scan_123',
         affected_asset='test.com',
-        min_severity='high',
-        limit=100,
+        min_severity=Severity.HIGH,
+        limit=20,
         offset=0
     )
     app.dependency_overrides = {}
@@ -305,9 +315,10 @@ def test_get_finding_response_structure(mock_findings_service):
     app.dependency_overrides = {}
 
 def test_list_findings_invalid_parameters_error(mock_findings_service):
-    """Test listing findings with invalid parameters raises 400."""
+    """Test listing findings with invalid parameters raises 422 (Pydantic validation error)."""
     mock_findings_service.list_findings.side_effect = ValueError("Invalid severity")
     app.dependency_overrides[get_findings_service] = lambda: mock_findings_service
     response = client.get("/api/v1/findings?min_severity=invalid")
-    assert response.status_code == 400
+    # Pydantic validates the Severity enum and returns 422 for invalid values
+    assert response.status_code == 422
     app.dependency_overrides = {}

@@ -4,7 +4,7 @@
 analysis:
   # Feature flags
   enabled: true
-  auto_analyze_on_scan: false              # Auto-run analysis after scans (set to true when ready)
+  auto_analyze_on_scan: true               # Auto-run analysis after scans
   batch_analysis_enabled: false            # For re-analyzing historical data
 
   # Risk scoring configuration
@@ -104,6 +104,7 @@ analysis:
       critical_services: [mysql, postgresql, mongodb, redis, memcached, elasticsearch, cassandra, couchdb, mariadb, oracle, mssql]
       high_risk_services: [telnet, ftp, rsh, rlogin, vnc, rdp, smb, netbios]
       medium_risk_services: [ssh, smtp, dns, snmp, ldap, nfs, rpc]
+      low_risk_services: [ntp, ntp-time]
 
     web_detector:
       enabled: false                       # Disabled for now (requires Nuclei)

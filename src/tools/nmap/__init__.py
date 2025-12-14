@@ -21,6 +21,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from src.utils.config import Config
 from src.utils.validation import validate_domain
+from src.tools.exceptions import ToolNotFoundError
 
 __version__ = "1.0.0"
 
@@ -197,10 +198,12 @@ def run_nmap_service_detection(
             'status': 'timeout'
         }
     except FileNotFoundError:
-        raise Exception(
+        raise ToolNotFoundError(
             "Nmap not found. Please install nmap: "
             "https://nmap.org/download.html"
         )
+    except ToolNotFoundError:
+        raise
     except Exception as e:
         logger.error(f"Nmap service detection failed for {host}:{port}: {e}")
         return {
@@ -310,6 +313,8 @@ def run_nmap_vuln_detection(
         [{'cve_id': 'CVE-2012-2122', 'severity': 'critical', 'cvss': 9.8}]
     """
     try:
+        # NSE scripts for non-web services only
+        # Web vulnerabilities handled separately (nuclei)
         vuln_scripts = {
             'mysql': 'mysql-vuln*,mysql-enum',
             'postgresql': 'postgresql-vuln*',
@@ -318,8 +323,6 @@ def run_nmap_vuln_detection(
             'ftp': 'ftp-anon',
             'smtp': 'smtp-enum',
             'ssh': 'ssh2-enum-algos',
-            'http': 'http-vuln*',
-            'https': 'http-vuln*',
         }
 
         scripts = vuln_scripts.get(service.lower(), 'vuln')
@@ -364,7 +367,9 @@ def run_nmap_vuln_detection(
             'status': 'timeout'
         }
     except FileNotFoundError:
-        raise Exception("Nmap not found. Install from: https://nmap.org/download.html")
+        raise ToolNotFoundError("Nmap not found. Install from: https://nmap.org/download.html")
+    except ToolNotFoundError:
+        raise
     except Exception as e:
         logger.error(f"Vulnerability detection failed for {host}:{port}: {e}")
         return {
@@ -418,7 +423,8 @@ def run_nmap_vuln_detection_parallel(
                 try:
                     result = future.result(timeout=40)
                     results[port_key] = result
-                    logger.debug(f"Nmap vuln detection completed for {port_key}: {len(result.get('vulnerabilities', []))} CVEs")
+                    vuln_count = len(result.get('vulnerabilities', []))
+                    logger.debug(f"Nmap vuln detection completed for {port_key}: {vuln_count} CVEs")
                 except subprocess.TimeoutExpired:
                     logger.warning(f"Nmap vulnerability detection timed out for {port_key}")
                     results[port_key] = {

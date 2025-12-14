@@ -1,692 +1,298 @@
 # CLAUDE.md - Project Guide for AI Assistants
 
-**OpenEASD: Automated External Attack Surface Detection**
-
-This project is organized across multiple documentation files. When assisting with this project, please refer to the appropriate document based on the context:
-
-## Document Structure
-
-### Business & Requirements
-- **[REQUIREMENTS.md](./REQUIREMENTS.md)** - Business requirements and goals
-  - Target audience: Product Managers, Stakeholders
-  - Contains: Problem statement, functional requirements, performance targets
-
-### Architecture Overview
-- **[DESIGN.md](./DESIGN.md)** - System architecture overview
-  - Target audience: System Architects, Technical Leads
-  - Contains: 3-layer architecture diagram, technology stack, design principles
-
-### Claude Agents & Development
-- **[docs/AGENTS.md](./docs/AGENTS.md)** - Claude agents configuration and usage guide
-  - Target audience: Developers using Claude Code
-  - Contains: 9 specialized agents (Opus/Sonnet/Haiku), use cases, workflows, decision flowchart
-  - Includes: agent tier breakdown, cost-performance analysis, integration examples
+**OpenEASD: Open Source External Attack Surface Detection**
 
 ## Quick Reference
 
 ### Current Implementation Status
-- **Architecture**: 6-layer design with API, Analysis, and full CLI access
-- **Model**: Single-organization architecture (simplified from multi-org)
-- **Tech Stack**: FastAPI (Read-Only), Click CLI (Full Access), Python 3.11+, SQLite
-- **Security Tools**: Subfinder, Amass, Nmap, Naabu (direct subprocess execution)
+- **Architecture**: 6-layer API-only design with ZeroMQ messaging
+- **Model**: Single-organization architecture
+- **Tech Stack**: FastAPI (Full Access), ZeroMQ, Python 3.11+, SQLite
+- **Security Tools**: Subfinder, Naabu, Dnsx, Httpx, Tlsx, Nmap, Nuclei
 - **Analysis**: Automated vulnerability detection with risk scoring
-- **Security Model**: API for monitoring (GET only), CLI for operations (full access)
-
-- **Status**: Production-ready with API, CLI, and Analysis Layer
+- **Interface**: API-only (no CLI)
+- **Job Persistence**: Database-backed job queue (survives crashes)
 
 ### 6-Layer Architecture
 
-1. **API Layer** ✅ - Read-only REST API (GET requests only) 
-2. **Service Layer** ✅ - Business logic (used by both API and CLI)
-3. **CLI Layer** ✅ - Full-featured command-line interface (read + write)
-4. **Analysis Layer** ✅ - Automated vulnerability detection and risk scoring
-5. **Tools Layer** ✅ - Security tool execution (Subfinder, Amass, Nmap, Naabu)
-6. **Database Layer** ✅ - Data persistence and analytics (SQLite with SQLModel)
-
-### Layer Responsibilities Quick Reference
-
-**For comprehensive details, see [docs/LAYER_ARCHITECTURE.md](docs/LAYER_ARCHITECTURE.md)**
-
-**Layer 1: API Layer** (`src/api/`)
-- **What it does**: Provides read-only REST API for monitoring and dashboards
-- **Key tasks**: HTTP request handling, CORS, OpenAPI docs
-- **Access**: Read-only GET endpoints
-- **Files**: `main.py`, `routes/*.py`, `schemas/*.py`, `dependencies.py`
-
-**Layer 2: Service Layer** (`src/services/`)
-- **What it does**: Shared business logic between API and CLI
-- **Key tasks**: Domain CRUD, scan orchestration, findings management, analysis coordination
-- **Services**: DomainService, ScanService, FindingsService
-- **Files**: `domain_service.py`, `scan_service.py`, `findings_service.py`
-
-**Layer 3: CLI Layer** (`src/cli/`)
-- **What it does**: Full-access command-line interface for operations
-- **Key tasks**: Command parsing, user interaction, output formatting, domain/scan/analysis commands
-- **Output formats**: table, json, csv, txt
-- **Files**: `main.py`, `commands_*.py`, `formatters.py`
-
-**Layer 4: Analysis Layer** (`src/analysis/`)
-- **What it does**: Automated vulnerability detection and risk assessment
-- **Key tasks**: Risk scoring (0-100), port vulnerability detection, finding deduplication, CVE mapping
-- **Components**: RiskScorer, PortVulnerabilityDetector, AnalysisService
-- **Files**: `analysis_service.py`, `scoring/risk_scorer.py`, `detectors/port_detector.py`
-
-**Layer 5: Tools Layer** (`src/tools/`)
-- **What it does**: Executes external security tools and parses results
-- **Key tasks**: Subprocess execution, JSON parsing, timeout management, error handling
-- **Tools**: Subfinder (subdomains), Naabu (ports), Dnsx (DNS), Httpx (HTTP probing)
-- **Files**: `runners.py`, `subfinder/`, `naabu/`, `dnsx/`, `httpx/`
-
-**Layer 6: Database Layer** (`src/data/`)
-- **What it does**: Data persistence and query execution
-- **Key tasks**: CRUD operations, relationship management, transactions, timezone conversion (IST)
-- **Technology**: SQLite with SQLModel ORM, 15+ tables
-- **Files**: `database/sqlmodel_manager.py`, `models/*.py`
-
-## Implementation Progress
-
-| Layer | Status | Progress | Test Coverage | Notes |
-|-------|--------|----------|--------|-------|
-| API Layer | ✅ Complete | 100% | 77% | Read-only FastAPI, Pydantic schemas |
-| Service Layer | ✅ Complete | 100% | 85% | Domain, Scan, Findings services |
-| CLI Layer | ✅ Complete | 100% | 92% | Domain, scan, and analysis commands |
-| Analysis Layer | ✅ Complete | 100% | 95% | Risk scoring, vulnerability detection, 56+ unit tests |
-| Tools Layer | ✅ Complete | 100% | 93% | Direct subprocess calls, JSON parsing |
-| Database Layer | ✅ Complete | 100% | 77% | SQLModel with findings, vulnerabilities, CVE mappings |
-
-
-## Test Suite Status
-
-**Overall Coverage**: 79% (2,928/3,696 statements)
-- **Total Tests**: 378
-- **Passing Tests**: 367 ✅
-- **Failing Tests**: 11 ⚠️
-- **Test Files**: 19 modules
-
-**Recent Improvements**:
-- Fixed 10 tests with JSON formatting, mock setup, and test data issues
-- Achieved 95% coverage on Analysis Layer (56+ tests)
-- 367/378 tests passing (97.1% success rate)
-- See [TEST_COVERAGE_REPORT.md](docs/TEST_COVERAGE_REPORT.md) for detailed breakdown
-
-## Security Model: Read-Only API + Full-Access CLI
-
-**Critical Design Decision**: Separation of monitoring and operations for enhanced security.
-
-### API (Read-Only - Port 8000)
-**Purpose**: Monitoring, dashboards, reporting, integrations
-**Access Level**: GET requests only (no write operations)
-**Use Cases**:
-- View domains and scan status
-- Monitor scan results and subdomains
-- Check security findings
-- Dashboard and reporting integrations
-- Third-party monitoring tools
-
-**Available Endpoints**:
 ```
-GET /api/v1/health                          # Health check
-GET /api/v1/domains                         # List domains
-GET /api/v1/domains/{domain}                # Domain details
-GET /api/v1/scans                           # List scans
-GET /api/v1/scans/{scan_id}                 # Scan status
-GET /api/v1/scans/{scan_id}/results         # Scan results
-GET /api/v1/findings                        # List findings
-GET /api/v1/findings/{finding_id}           # Finding details
-GET /api/v1/findings/statistics/summary     # Finding statistics
-GET /api/v1/findings/scan/{scan_id}         # Findings by scan
-GET /api/v1/findings/asset/{asset_name}     # Findings by asset
+┌─────────────────────────────────────┐
+│         Layer 1: API                │  FastAPI (Full CRUD)
+├─────────────────────────────────────┤
+│         Layer 2: Service            │  Business Logic
+├─────────────────────────────────────┤
+│         Layer 3: Messaging          │  ZeroMQ (PUSH/PULL)
+├─────────────────────────────────────┤
+│         Layer 4: Tools              │  Subfinder, Naabu, etc.
+├─────────────────────────────────────┤
+│         Layer 5: Analysis           │  Risk Scoring, Detectors
+├─────────────────────────────────────┤
+│         Layer 6: Database           │  SQLModel + SQLite
+└─────────────────────────────────────┘
 ```
 
-### CLI (Full Access)
-**Purpose**: Operations, configuration, scan execution
-**Access Level**: Full read/write access
-**Use Cases**:
-- Add, update, remove domains
-- Execute scans (single or batch)
-- Manage scan configurations
-- Administrative operations
+### Layer Responsibilities
 
-**Available Commands**:
-```bash
-# Domain Management
-openeasd domain add <domain> --primary --notes "..." --tags "..."
-openeasd domain update <domain> --primary --notes "..." --tags "..."
-openeasd domain remove <domain>
-openeasd domain list [--primary]
-openeasd domain show <domain>
+**Layer 1: API** (`src/api/`)
+- Full CRUD REST API (GET, POST, PUT, DELETE)
+- FastAPI with Pydantic v2 schemas
+- OpenAPI documentation at `/docs`
 
-# Scan Operations
-openeasd scan domain <domain>    # Single domain scan
-openeasd scan                    # Batch scan all domains
-openeasd scans                   # List all scans
-openeasd results <scan-id>       # View scan results
+**Layer 2: Service** (`src/services/`)
+- Business logic orchestration
+- DomainService, ScanService, FindingsService
+- ScanWorkflowOrchestrator (8-step workflow)
 
-# Analysis & Findings
-openeasd analysis run <scan-id>           # Run analysis manually
-openeasd analysis findings                # List all findings
-openeasd analysis findings --severity high # Filter by severity
-openeasd analysis show <finding-id>       # Show finding details
-openeasd analysis stats                   # View statistics
-openeasd analysis update <id> resolved    # Update finding status
-```
+**Layer 3: Messaging** (`src/messaging/`)
+- ZeroMQ job queue (PUSH/PULL pattern)
+- Database-persisted jobs (Job model)
+- Stale job recovery (30-min timeout)
+- Worker coordination with ID tracking
 
-### Why This Model?
-
-**Security Benefits**:
-1. **Minimized Attack Surface**: API cannot be used to trigger scans or modify data
-2. **Controlled Access**: Operations require local/SSH access to CLI
-3. **Audit Trail**: All write operations go through CLI with proper logging
-4. **Safe Integrations**: Third-party tools can monitor without risk of modifications
-5. **Defense in Depth**: Even if API is compromised, no write operations possible
-
-**Operational Benefits**:
-1. **Dashboard Access**: Safe remote access for monitoring
-2. **Team Collaboration**: Share read-only access with team members
-3. **Integration Ready**: Connect monitoring tools, SIEMs, dashboards
-4. **Separation of Concerns**: Clear boundary between monitoring and operations
-
-## Key Implementation Notes
-
-1. **6-layer architecture** with Read-Only API and Analysis Layer
-2. **API for monitoring** (GET only), **CLI for operations** (full access)
-3. **Analysis Layer** for automated vulnerability detection and risk scoring
-4. **Service layer** shared between API and CLI for business logic
-5. **Single organization** model (no multi-tenancy)
-6. **Direct tool execution** via subprocess (no orchestration layer)
-7. **Security tools** in `src/tools/{tool}/` modules
-8. **SQLite with SQLModel** for ORM and database operations
-9. **IST timezone** support for all timestamps
-10. **FastAPI** with Pydantic v2 for API validation
-11. **Dependency injection** for service management
-12. **Deterministic risk scoring** (0-100 scale) with score breakdown
-
-## Claude Agent Usage
-
-OpenEASD is configured with **9 specialized Claude agents** for different development tasks:
-
-### Agent Tiers
-- **🔴 Opus** (4 agents): Complex reasoning, architectural decisions
-- **🟢 Sonnet** (4 agents): Layer implementation, balanced performance
-- **🟡 Haiku** (1 agent): Fast QA validation (~$0.01 per check, 2-5 seconds)
-
-### Quick Agent Reference
-
-| Need | Agent | Speed |
-|------|-------|-------|
-| **QA & Code Validation** | qa-reviewer | 🟡 Haiku - 2-5s |
-| **API Endpoint** | api-layer-builder | 🟢 Sonnet - 5-10s |
-| **CLI Command** | layer3-cli-architect | 🟢 Sonnet - 5-10s |
-| **Service Method** | service-layer-architect | 🟢 Sonnet - 5-10s |
-| **Tool Integration** | layer5-tools-executor | 🟢 Sonnet - 5-10s |
-| **Vulnerability Detection** | layer4-analysis-agent | 🔴 Opus - 10-20s |
-| **Database/Query** | layer6-database-architect | 🔴 Opus - 10-20s |
-| **Layer Design** | layer-architect | 🔴 Opus - 10-20s |
-| **Architecture Review** | design-reviewer | 🔴 Opus - 10-20s |
-
-**See [docs/AGENTS.md](./docs/AGENTS.md) for complete agent documentation, workflows, and decision flowchart.**
-
-## Current Features
-
-### ✅ Fully Implemented (All 6 Layers)
-
-**API Layer (Read-Only)**:
-- FastAPI application with OpenAPI/Swagger documentation
-- Read-only endpoints (GET requests only)
-- Health check endpoint
-- Domain listing and details
-- Scan status and results
-- Security findings and statistics
-- Findings management (5 endpoints)
-- Pydantic v2 schemas for validation
-- CORS middleware for cross-origin requests
-- JSON responses with proper error handling
-- Auto-generated API documentation at `/api/docs`
-
-**Service Layer**:
-- **DomainService**: Domain CRUD operations, validation
-- **ScanService**: Scan creation, execution, status tracking, analysis integration
-- **FindingsService**: Findings retrieval, statistics, filtering
-- **AnalysisService**: Vulnerability detection orchestration (NEW)
-- Shared business logic between API and CLI
-- Domain validation and duplicate checking
-- Scan workflow orchestration
-- Findings aggregation and analysis
-
-**CLI Layer (Full Access)**:
-- Scan commands: `scan domain`, `scan` (batch mode)
-- Domain management: `add`, `list`, `update`, `remove`
-- Analysis commands: `run`, `findings`, `show`, `stats`, `update`
-- Results: `scans`, `results`
-- Output formats: table, json, csv, txt
-- Single-organization model (simplified)
-- UUID-based scan tracking
-- Batch scanning for multiple domains
-- Interactive deletion with preview
-
-**Analysis Layer (NEW)**:
-- **RiskScorer**: Deterministic risk scoring (0-100 scale)
-  - Base score (0-40): Inherent risk of finding type
-  - Context score (0-40): Business context and asset criticality
-  - Exposure score (0-20): Public accessibility
-- **PortVulnerabilityDetector**: Port-based vulnerability detection
-  - Database exposure detection (MySQL, PostgreSQL, MongoDB, Redis)
-  - High-risk services (Telnet, FTP, RDP, VNC)
-  - Admin interface detection
-  - Remote access service detection
-- **BaseDetector**: Abstract detector pattern for extensibility
-- Automated finding deduplication
-- CVE-ready database schema
-- 56 unit tests + 15 integration tests
-
-**Tools Layer**:
-- **Subfinder**: Passive subdomain discovery (actively used)
-- **Amass**: Comprehensive subdomain enumeration (module available)
-- **Nmap**: Service detection and port scanning (module available)
-- **Naabu**: Fast port scanning (actively used)
-- Direct subprocess execution
+**Layer 4: Tools** (`src/tools/`)
+- External security tool execution
+- Subfinder, Naabu, Dnsx, Httpx, Tlsx, Nmap, Nuclei
 - JSON output parsing
 
-**Database Layer**:
+**Layer 5: Analysis** (`src/analysis/`)
+- Risk scoring (0-100 scale)
+- Vulnerability detection
+- PortDetector, ServiceDetector
+
+**Layer 6: Database** (`src/data/`)
 - SQLite with SQLModel ORM
-- Domain registry with metadata (notes, tags, scan frequency)
-- Scan session tracking with status management
-- Subdomain history tracking (new/existing/removed)
-- Security findings generation
-- Tool-specific result tables
-- **4 new analysis tables: findings, vulnerabilities, cve_mappings, finding_groups (NEW)**
-- Timezone-aware timestamps (IST)
-- Efficient JOINs and aggregations
-- Single-organization model (no multi-tenancy)
+- Domain, Scan, Finding, Job models
+
+## API Endpoints
+
+```
+Health
+  GET    /api/v1/health
+
+Domains (Full CRUD)
+  GET    /api/v1/domains              # List domains
+  POST   /api/v1/domains              # Create domain
+  GET    /api/v1/domains/{domain}     # Get domain
+  PUT    /api/v1/domains/{domain}     # Update domain
+  DELETE /api/v1/domains/{domain}     # Delete domain
+
+Scans (Async)
+  GET    /api/v1/scans                # List scans
+  POST   /api/v1/scans                # Create scan (returns 202)
+  GET    /api/v1/scans/{id}           # Get scan status (poll here)
+  GET    /api/v1/scans/{id}/results   # Get scan results
+
+Findings
+  GET    /api/v1/findings             # List findings
+  GET    /api/v1/findings/{id}        # Get finding
+  PUT    /api/v1/findings/{id}        # Update finding status
+  GET    /api/v1/findings/stats       # Statistics
+```
+
+## Project Structure
+
+```
+openeasd/
+├── src/
+│   ├── api/                    # Layer 1: API
+│   │   ├── main.py             # FastAPI app
+│   │   ├── dependencies.py     # Dependency injection
+│   │   ├── routes/             # Endpoint handlers
+│   │   │   ├── domains.py
+│   │   │   ├── scans.py
+│   │   │   ├── findings.py
+│   │   │   └── health.py
+│   │   └── schemas/            # Pydantic models
+│   │
+│   ├── services/               # Layer 2: Service
+│   │   ├── domain_service.py
+│   │   ├── scan_service.py       # CRUD operations
+│   │   ├── scan_workflow_orchestrator.py  # 8-step workflow
+│   │   └── findings_service.py
+│   │
+│   ├── messaging/              # Layer 3: Messaging
+│   │   ├── config.py           # ZeroMQ config
+│   │   └── job_queue.py        # PUSH/PULL queue
+│   │
+│   ├── tools/                  # Layer 4: Tools
+│   │   ├── subfinder/
+│   │   ├── naabu/
+│   │   ├── dnsx/
+│   │   ├── httpx/
+│   │   ├── tlsx/
+│   │   ├── nmap/
+│   │   └── nuclei/
+│   │
+│   ├── analysis/               # Layer 5: Analysis
+│   │   ├── analysis_service.py
+│   │   ├── scoring/
+│   │   │   └── risk_scorer.py
+│   │   └── detectors/
+│   │       ├── port_detector.py
+│   │       └── service_detector.py
+│   │
+│   └── data/                   # Layer 6: Database
+│       ├── database/
+│       │   └── sqlmodel_manager.py
+│       └── models/
+│           └── job.py          # Job persistence model
+│
+├── workers/
+│   └── scan_worker.py          # Background job processor
+│
+├── openeasd.py                 # API server entry point
+└── pyproject.toml
+```
+
+## Quick Start
+
+### Start API Server
+```bash
+# Install dependencies
+uv sync
+
+# Start API server
+python openeasd.py
+
+# Or with auto-reload for development
+python openeasd.py --reload
+
+# API docs available at
+http://localhost:8000/docs
+```
+
+### Start Worker (separate terminal)
+```bash
+python -m workers.scan_worker
+```
+
+### Test API
+```bash
+# Health check
+curl http://localhost:8000/api/v1/health
+
+# Create domain
+curl -X POST http://localhost:8000/api/v1/domains \
+  -H "Content-Type: application/json" \
+  -d '{"domain": "example.com", "is_primary": true}'
+
+# Create scan (async)
+curl -X POST http://localhost:8000/api/v1/scans \
+  -H "Content-Type: application/json" \
+  -d '{"domain": "example.com"}'
+
+# Poll for status
+curl http://localhost:8000/api/v1/scans/{scan_id}
+```
 
 ## Data Flow
 
-### 6-Layer Workflow (API Path - Read-Only)
+### Async Scan Flow (with Job Persistence)
 
 ```
-HTTP Request: GET /api/v1/domains
-    ↓
-┌──────────────────────────────┐
-│ API Layer                    │
-│ - FastAPI endpoint           │
-│ - Validate request params    │
-│ - Dependency injection       │
-└──────────────────────────────┘
-    ↓
-┌──────────────────────────────┐
-│ Service Layer                │
-│ - DomainService.list_domains │
-│ - Business logic             │
-│ - Data formatting            │
-└──────────────────────────────┘
-    ↓
-┌──────────────────────────────┐
-│ Database Layer               │
-│ - SQLite query execution     │
-│ - Fetch domain records       │
-│ - Return results             │
-└──────────────────────────────┘
-    ↓
-┌──────────────────────────────┐
-│ Service Layer                │
-│ - Format response data       │
-│ - Apply business rules       │
-└──────────────────────────────┘
-    ↓
-┌──────────────────────────────┐
-│ API Layer                    │
-│ - Pydantic validation        │
-│ - JSON serialization         │
-│ - HTTP response              │
-└──────────────────────────────┘
+Client                    API                  Database            Worker
+  │                        │                      │                   │
+  │──POST /scans─────────▶│                      │                   │
+  │                        │──Create scan record─▶│                   │
+  │                        │──Create job (pending)▶│                   │
+  │                        │──PUSH to ZeroMQ─────▶│                   │
+  │                        │──Mark job queued────▶│                   │
+  │◀──202 {scan_id}───────│                      │                   │
+  │                        │                      │                   │
+  │                        │                      │◀──PULL job───────│
+  │                        │                      │◀──Claim job──────│
+  │                        │                      │                   │
+  │──GET /scans/{id}─────▶│                      │       8-step workflow
+  │◀──{status: running}───│                      │                   │
+  │                        │                      │                   │
+  │                        │                      │◀──Complete job───│
+  │──GET /scans/{id}─────▶│                      │                   │
+  │◀──{status: completed}─│                      │                   │
 ```
 
-### 6-Layer Workflow (CLI Path - Full Access)
-
+### Job Lifecycle States
 ```
-User Command: openeasd scan domain example.com
-    ↓
-┌──────────────────────────────┐
-│ CLI Layer                    │
-│ - Parse & validate args      │
-│ - Create scan session (UUID) │
-└──────────────────────────────┘
-    ↓
-┌──────────────────────────────┐
-│ Service Layer                │
-│ - ScanService.execute_scan   │
-│ - Orchestrate workflow       │
-└──────────────────────────────┘
-    ↓
-┌──────────────────────────────┐
-│ Tools Layer                  │
-│ - Execute subfinder          │
-│ - Execute dnsx               │
-│ - Execute naabu              │
-│ - Parse JSON output          │
-└──────────────────────────────┘
-    ↓
-┌──────────────────────────────┐
-│ Database Layer               │
-│ - Store scan session         │
-│ - Store subfinder results    │
-│ - Track subdomain changes    │
-│ - Generate security findings │
-└──────────────────────────────┘
-    ↓
-┌──────────────────────────────┐
-│ CLI Layer                    │
-│ - Format output (table/json) │
-│ - Display to user            │
-└──────────────────────────────┘
+pending -> queued -> processing -> completed/failed/cancelled
+```
+
+### 8-Step Scan Workflow
+```
+1. step1_discover_subdomains (subfinder)
+2. step2_resolve_dns (dnsx)
+3. step3_scan_ports (naabu)
+4. step4_probe_http (httpx)
+5. step5_verify_tls (tlsx)
+6. step6_detect_services (nmap -sV)
+7. step7_detect_vulnerabilities (nuclei + nmap NSE) - both mandatory for non-web ports
+8. step8_analyze (risk scoring)
+```
+
+## Technology Stack
+
+| Component | Technology |
+|-----------|------------|
+| Language | Python 3.11+ |
+| API | FastAPI 0.109+ |
+| Validation | Pydantic v2 |
+| Database | SQLite + SQLModel |
+| Messaging | ZeroMQ (pyzmq) |
+| Package Manager | uv |
+| Testing | pytest |
+
+## Key Dependencies
+
+```toml
+dependencies = [
+    "fastapi>=0.109.0",
+    "uvicorn[standard]>=0.27.0",
+    "pydantic>=2.5.0",
+    "sqlmodel>=0.0.14",
+    "pyzmq>=25.0.0",
+    "pyyaml==6.0.1",
+]
 ```
 
 ## For AI Assistants
 
-When helping with this project:
+### Guidelines
+- API is full-access (GET, POST, PUT, DELETE)
+- No CLI layer - all operations via API
+- Scans are async - use job queue
+- Worker processes jobs from ZeroMQ
+- Polling for scan status (no WebSocket)
 
-### General Guidelines
-- **Follow DESIGN.md**: For overall architecture and system design principles
-- **Respect layer boundaries**: Keep layer responsibilities clean and focused
-- **Security Model**: API is read-only (GET only), CLI has full access
-- **Service Layer**: Shared business logic between API and CLI
-- **Single organization**: No multi-tenancy complexity
-- **Direct tool execution**: Tools called via subprocess, no orchestration layer
+### Adding Features
 
-### Current State Awareness
-- **API Layer**: Production-ready read-only endpoints, FastAPI + Pydantic v2
-- **Service Layer**: Business logic shared between API and CLI
-- **CLI Layer**: Production-ready with all commands implemented (full access)
-- **Analysis Layer**: Automated vulnerability detection, risk scoring (95% coverage)
-- **Tools Layer**: Subfinder, Naabu, Dnsx, Httpx actively used
-- **Database Layer**: SQLite with SQLModel fully implemented, single-org schema
+**New API Endpoint**:
+1. Add schema in `src/api/schemas/`
+2. Add service method in `src/services/`
+3. Add route in `src/api/routes/`
+4. Register in `src/api/main.py`
 
+**New Security Tool**:
+1. Create `src/tools/{tool}/`
+2. Implement subprocess execution
+3. Add step to `ScanWorkflowOrchestrator`
 
-### File Organization
-```
-src/
-├── api/              # Layer 1 ✅ - Read-only REST API
-│   ├── main.py       # FastAPI application
-│   ├── dependencies.py  # Dependency injection
-│   ├── routes/       # API endpoints
-│   │   ├── domains.py   # GET /api/v1/domains
-│   │   ├── scans.py     # GET /api/v1/scans
-│   │   ├── findings.py  # GET /api/v1/findings (5 endpoints)
-│   │   └── health.py    # GET /api/v1/health
-│   └── schemas/      # Pydantic models
-│       ├── domain.py
-│       ├── scan.py
-│       └── finding.py
-├── services/         # Layer 2 ✅ - Business logic
-│   ├── domain_service.py   # Domain operations
-│   ├── scan_service.py     # Scan orchestration
-│   └── findings_service.py # Findings management
-├── cli/              # Layer 3 ✅ - Full-access CLI
-│   ├── main.py
-│   ├── commands_scan.py
-│   ├── commands_domain.py
-│   ├── commands_analysis.py
-│   ├── progress.py        # Real-time progress display
-│   └── formatters.py
-├── analysis/         # Layer 4 ✅ - Vulnerability detection
-│   ├── analysis_service.py
-│   ├── scoring/
-│   │   └── risk_scorer.py
-│   └── detectors/
-│       └── port_detector.py
-├── tools/            # Layer 5 ✅ - Security tool modules
-│   ├── subfinder/
-│   ├── amass/
-│   ├── nmap/
-│   ├── naabu/
-│   ├── dnsx/
-│   └── httpx/
-├── data/             # Layer 6 ✅ - SQLite + SQLModel
-│   ├── database/
-│   │   └── sqlmodel_manager.py
-│   └── models/
+**New Detector**:
+1. Extend `BaseDetector` in `src/analysis/detectors/`
+2. Register in `AnalysisService._load_detectors()`
 
-├── core/             # Core infrastructure
-└── utils/            # Utilities (config, logging, timezone, validation)
-```
-
-### Common Tasks
-
-**Adding a new API endpoint** (Read-Only):
-1. Define Pydantic schema in `src/api/schemas/`
-2. Add service method in appropriate service (e.g., `src/services/domain_service.py`)
-3. Create GET endpoint in `src/api/routes/`
-4. Add route to `src/api/main.py`
-5. Test with `curl` or browser at `http://localhost:8000/api/docs`
-6. **Remember**: API is read-only, only add GET endpoints
-
-**Adding a new CLI command**:
-1. Add Click command in `src/cli/main.py`
-2. Implement logic in `src/cli/commands.py` or `commands_domain.py`
-3. Add formatter support in `src/cli/formatters.py`
-4. Can use service layer methods if needed
-5. Update DESIGN.md documentation
-
-**Adding a new security tool**:
-1. Create `src/tools/{tool}/` directory
-2. Add `__init__.py` and `runner.py`
-3. Implement subprocess execution and JSON parsing
-4. Add CLI command in `src/cli/commands.py`
-5. Optionally add service method for orchestration
-6. Test tool execution and data storage
-
-**Database schema changes**:
-1. Review `src/data/database/sqlmodel_manager.py`
-2. Update SQLModel models in `src/data/models/`
-3. Test schema changes carefully
-4. Update service layer if needed
-5. Update DESIGN.md with schema documentation
-
-## Technology Stack
-
-### All Layers (Fully Implemented)
-- **API**: FastAPI 0.109+, Uvicorn, Pydantic v2, Python 3.11+
-- **Services**: Business logic, dependency injection
-- **CLI**: Click 8.1.7, Python 3.11+
-- **Analysis**: Risk scoring, vulnerability detection, finding management
-- **Tools**: Subprocess execution, JSON parsing, Asyncio
-- **Database**: SQLite with SQLModel ORM, 15+ tables
-
-
-### Security Tool Dependencies
-- **Subfinder**: https://github.com/projectdiscovery/subfinder (actively used)
-- **Amass**: https://github.com/owasp-amass/amass (module available)
-- **Nmap**: https://nmap.org/ (module available)
-- **Naabu**: https://github.com/projectdiscovery/naabu (module available)
-
-### Python Dependencies
-- **Package Manager**: uv (fast Python package installer)
-- **API Framework**: FastAPI 0.109+ - Modern async web framework
-- **Validation**: Pydantic 2.5+ - Data validation with type hints
-- **Server**: Uvicorn 0.27+ - ASGI server with uvloop
-- **HTTP Client**: HTTPX 0.26+ - Async HTTP client
-- **CLI Framework**: Click 8.1.7 - Command-line interface
-- **Database**: SQLModel with SQLite - ORM and embedded database
-
-- **Timezone**: pytz - IST timezone support
-- **Config**: PyYAML 6.0.1 - Configuration files
-- **Testing**: pytest 8.2.2 - Testing framework (dev dependency)
-
-## Testing
-
-### Run Tests
+## Test Suite
 
 ```bash
-# Run all tests with coverage
-uv run pytest tests/ --cov=src --cov-report=term-missing
+# Run all tests
+uv run pytest tests/ -v
 
-# Run specific test file
-uv run pytest tests/test_risk_scorer.py -v
-
-# Run tests matching pattern
-uv run pytest tests/ -k "test_domain" -v
-
-# Run with HTML coverage report
-uv run pytest tests/ --cov=src --cov-report=html
-# Open htmlcov/index.html in browser
+# Run with coverage
+uv run pytest tests/ --cov=src
 ```
 
-### Test Quality
-
-- **367/378 tests passing** (97.1% success rate)
-- **79% code coverage** with 2,928 statements covered
-- **Excellent coverage**: Analysis (95%), CLI (92%), Tools (93%)
-- **Good coverage**: Services (85%), API (77%), Database (77%)
-- **19 test modules** covering all major functionality
-- **56+ unit tests** for risk scoring and vulnerability detection
-
-### Areas for Test Improvement
-
-- API findings routes (32% coverage)
-- CLI main module (47% coverage)
-- Tool modules (0% coverage - need integration tests)
-
-See [TEST_COVERAGE_REPORT.md](docs/TEST_COVERAGE_REPORT.md) for detailed test statistics and improvement roadmap.
-
-## Best Practices
-
-1. **Security First**: API is read-only (GET only), CLI has full access
-2. **Layer Separation**: Respect boundaries between API, Service, CLI, Tools, Database
-3. **Service Layer**: Share business logic between API and CLI via services
-4. **Single Organization**: No multi-tenancy complexity
-5. **Direct Execution**: Call tools via subprocess, no orchestration layer
-6. **Error Handling**: Use proper try/except and logging
-7. **Async Patterns**: Use `async/await` for database operations
-8. **IST Timezone**: All timestamps in Indian Standard Time
-9. **Pydantic Validation**: Use Pydantic v2 for API request/response validation
-10. **Test Coverage**: Aim for 85%+ coverage on new code
-11. **Mock External Services**: Use pytest fixtures for database and service mocking
-
-## Quick Start for Development
-
-### Setup
-```bash
-# Install dependencies using uv
-uv sync
-```
-
-### Running the API Server (Read-Only)
-```bash
-# Start the API server
-uv run uvicorn src.api.main:app --host 0.0.0.0 --port 8000 --reload
-
-# Access the API documentation
-# Open browser: http://localhost:8000/api/docs
-
-# Test API endpoints
-curl http://localhost:8000/api/v1/health
-curl http://localhost:8000/api/v1/domains
-curl http://localhost:8000/api/v1/scans
-```
-
-### Using the CLI (Full Access)
-
-#### Domain Management (CLI Only)
-```bash
-# Add a domain
-uv run python openeasd.py domain add example.com --primary --notes "Production domain"
-
-# Update domain
-uv run python openeasd.py domain update example.com --primary true
-
-# View domain list
-uv run python openeasd.py domain list
-
-# Remove a domain
-uv run python openeasd.py domain remove example.com
-```
-
-#### Scan Operations (CLI Only)
-```bash
-# Run a single domain scan
-uv run python openeasd.py scan domain example.com
-
-# Run batch scan (all domains)
-uv run python openeasd.py scan
-
-# Run batch scan (primary domains only)
-uv run python openeasd.py scan --primary-only
-```
-
-#### Viewing Results (CLI or API)
-```bash
-# CLI: View all scans
-uv run python openeasd.py scans
-
-# CLI: View specific scan results
-uv run python openeasd.py results <scan-id>
-
-# API: Same data via HTTP
-curl http://localhost:8000/api/v1/scans
-curl http://localhost:8000/api/v1/scans/<scan-id>
-curl http://localhost:8000/api/v1/scans/<scan-id>/results
-```
-
-## Architecture Evolution
-
-### Version History
-
-- **v9.0** (December 2025): 6-layer with Analysis Layer - automated vulnerability detection and risk scoring
-- **v8.0** (November 2025): 5-layer with Read-Only API, API + Service + CLI + Tools + Database
-- **v7.0** (November 2025): 3-layer architecture, single-organization, production-ready (CLI only)
-- **v6.0** (October 2025): 5-layer architecture, 3 implemented + 2 planned (deprecated)
-- **v5.0** (January 2025): 4-layer simplified design (deprecated)
-- **Earlier**: 6-layer design with API/Scheduler (outdated)
-
-### Current Focus
-- ✅ Production-ready 6-layer architecture with Analysis
-- ✅ API for monitoring (GET only), CLI for operations (full access)
-
-
-
-- ✅ Automated vulnerability detection and risk scoring
-- ✅ Service layer for shared business logic
-- ✅ Single-organization model (simplified from multi-org)
-- ✅ All core features implemented and tested (400+ tests total)
-- ✅ FastAPI with Pydantic v2 validation
-- ✅ Direct subprocess tool execution
-- ✅ SQLite with SQLModel ORM
-
+**Current Status**: 312 tests passing (6 dead tests removed Dec 3, 2025)
 
 ---
 
-*This guide helps AI assistants understand the project structure. For detailed information, refer to DESIGN.md.*
-
-**Last Updated**: December 2, 2025
-**Architecture Version**: 6-Layer (Analysis + Read-Only API + Full-Access CLI)
-**Package Manager**: uv (migrated from pip)
-**Security Model**: API (read-only) + CLI (full access)
-
-**Analysis**: Deterministic risk scoring (0-100) + vulnerability detection
-**Test Coverage**: 79% (2,928/3,696 statements) - 367/378 tests passing 
-**Status**: Production-ready with comprehensive test coverage and analysis layer
-
-### Running Commands
-
-#### API Server (Read-Only)
-```bash
-# Start API server with auto-reload
-uv run uvicorn src.api.main:app --host 0.0.0.0 --port 8000 --reload
-
-# API Documentation
-http://localhost:8000/api/docs
-```
-
-#### CLI (Full Access)
-```bash
-# With uv
-uv run python openeasd.py <command>
-
-# Direct python
-/Users/rathnakara/projects/OpenEASD/.venv/bin/python openeasd.py <command>
-
-# With venv activated
-source .venv/bin/activate
-python openeasd.py <command>
-```
-- you alway run uv run python when you want run python
+**Last Updated**: December 4, 2025
+**Architecture Version**: 6-Layer API-Only with ZeroMQ + Job Persistence
+**Interface**: API only (no CLI)
+**Key Components**: ScanWorkflowOrchestrator, Job model, Worker with stale recovery

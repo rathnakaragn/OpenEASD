@@ -30,6 +30,11 @@ from typing import List, Dict, Any
 from src.utils.config import Config
 from src.utils.validation import validate_domain
 from src.utils.json_utils import safe_json_load
+from src.tools.exceptions import (
+    ToolExecutionError,
+    ToolTimeoutError,
+    ToolNotFoundError,
+)
 
 __version__ = "1.0.0"
 
@@ -66,7 +71,9 @@ def run_httpx(
         }
 
     Raises:
-        Exception: If httpx times out or is not installed
+        ToolTimeoutError: If httpx times out
+        ToolNotFoundError: If httpx is not installed
+        ToolExecutionError: If httpx returns non-zero exit code
 
     Example:
         >>> results = run_httpx(['https://example.com'])
@@ -115,6 +122,12 @@ def run_httpx(
             timeout=timeout
         )
 
+        # Validate return code
+        if result.returncode != 0:
+            error_msg = result.stderr.strip() if result.stderr else 'Unknown error'
+            logger.error(f"httpx failed with exit code {result.returncode}: {error_msg}")
+            raise ToolExecutionError(f"httpx failed: {error_msg}")
+
         probes = []
         for line in result.stdout.strip().split('\n'):
             if line:
@@ -137,11 +150,10 @@ def run_httpx(
         return probes
 
     except subprocess.TimeoutExpired:
-        raise Exception(f"httpx timed out after {timeout} seconds")
+        raise ToolTimeoutError(f"httpx timed out after {timeout} seconds")
     except FileNotFoundError:
-        raise Exception(
-            "httpx not found. Please install: "
-            "https://github.com/projectdiscovery/httpx"
+        raise ToolNotFoundError(
+            "httpx not found. Install: https://github.com/projectdiscovery/httpx"
         )
     finally:
         if targets_file and Path(targets_file).exists():

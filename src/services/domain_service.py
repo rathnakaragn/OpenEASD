@@ -24,6 +24,24 @@ class DomainService:
         """
         self.db = db_manager
 
+    def _validate_and_normalize_domain(self, domain: str) -> str:
+        """
+        Validate and normalize domain name.
+
+        Args:
+            domain: Domain name to validate
+
+        Returns:
+            Normalized domain name
+
+        Raises:
+            InvalidDomainFormat: If domain format is invalid
+        """
+        try:
+            return validate_domain(domain)
+        except ValueError as e:
+            raise InvalidDomainFormat(str(e))
+
     def create_domain(
         self,
         domain: str,
@@ -47,10 +65,7 @@ class DomainService:
             InvalidDomainFormat: If domain format is invalid.
             DomainAlreadyExists: If domain already exists.
         """
-        try:
-            domain = validate_domain(domain)
-        except ValueError as e:
-            raise InvalidDomainFormat(str(e))
+        domain = self._validate_and_normalize_domain(domain)
 
         if self.db.domain_exists(domain):
             raise DomainAlreadyExists(f'Domain {domain} already exists')
@@ -65,6 +80,7 @@ class DomainService:
     def list_domains(
         self,
         limit: int = 20,
+        offset: int = 0,
         primary_only: bool = False
     ) -> Dict[str, Any]:
         """
@@ -72,6 +88,7 @@ class DomainService:
 
         Args:
             limit: Maximum number of domains to return
+            offset: Number of domains to skip for pagination
             primary_only: Only return primary domains
 
         Returns:
@@ -79,6 +96,7 @@ class DomainService:
         """
         result = self.db.get_domains(
             limit=limit,
+            offset=offset,
             primary_only=primary_only
         )
 
@@ -86,6 +104,8 @@ class DomainService:
             'success': True,
             'domains': result['domains'],
             'total_count': result['total_count'],
+            'limit': limit,
+            'offset': offset,
             'has_more': result['has_more']
         }
 
@@ -102,10 +122,7 @@ class DomainService:
         Raises:
             DomainNotFound: If domain doesn't exist
         """
-        try:
-            domain = validate_domain(domain)
-        except ValueError as e:
-            raise InvalidDomainFormat(str(e))
+        domain = self._validate_and_normalize_domain(domain)
 
         if not self.db.domain_exists(domain):
             raise DomainNotFound(f'Domain {domain} not found')
@@ -142,7 +159,9 @@ class DomainService:
     def update_domain(
         self,
         domain: str,
-        is_primary: Optional[bool] = None
+        is_primary: Optional[bool] = None,
+        contact_email: Optional[str] = None,
+        scan_frequency: Optional[str] = None
     ) -> Domain:
         """
         Update domain metadata.
@@ -150,17 +169,17 @@ class DomainService:
         Args:
             domain: Domain name to update
             is_primary: New primary status
+            contact_email: New contact email
+            scan_frequency: New scan frequency
 
         Returns:
             The updated domain object.
 
         Raises:
-            DomainNotFound: If domain doesn't exist or no fields to update
+            DomainNotFound: If domain doesn't exist
+            InvalidUpdateOperation: If no fields provided to update
         """
-        try:
-            domain = validate_domain(domain)
-        except ValueError as e:
-            raise InvalidDomainFormat(str(e))
+        domain = self._validate_and_normalize_domain(domain)
 
         if not self.db.domain_exists(domain):
             raise DomainNotFound(f'Domain {domain} not found')
@@ -170,8 +189,17 @@ class DomainService:
         if is_primary is not None:
             update_fields['is_primary'] = is_primary
 
+        if contact_email is not None:
+            update_fields['contact_email'] = contact_email
+
+        if scan_frequency is not None:
+            update_fields['scan_frequency'] = scan_frequency
+
         if not update_fields:
-            raise InvalidUpdateOperation('No fields provided to update domain. Use is_primary parameter.')
+            raise InvalidUpdateOperation(
+                'No fields provided to update domain. '
+                'Use is_primary, contact_email, or scan_frequency.'
+            )
 
         return self.db.update_domain(domain, **update_fields)
 
@@ -188,10 +216,7 @@ class DomainService:
         Raises:
             DomainNotFound: If domain doesn't exist
         """
-        try:
-            domain = validate_domain(domain)
-        except ValueError as e:
-            raise InvalidDomainFormat(str(e))
+        domain = self._validate_and_normalize_domain(domain)
 
         if not self.db.domain_exists(domain):
             raise DomainNotFound(f'Domain {domain} not found')

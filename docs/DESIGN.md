@@ -2,8 +2,8 @@
 
 **Company**: Cybersecify
 **Author**: Rathnakara G N
-**Document Type**: Architecture Overview (7-Layer Design)
-**Version**: 11.0
+**Document Type**: Architecture Overview (6-Layer Design)
+**Version**: 12.0
 **Last Updated**: December 2025
 **Target Audience**: Architects, Technical Leads, Engineering Teams
 
@@ -20,12 +20,11 @@ This document provides a high-level architecture overview.
 
 ## Architecture Overview
 
-OpenEASD implements external attack surface detection through a **7-layer architecture** combining:
+OpenEASD implements external attack surface detection through a **6-layer architecture** combining:
 - Automated subdomain enumeration
 - Port scanning
 - Vulnerability detection
 - Risk analysis
-- Real-time event streaming
 - REST API and CLI interfaces
 
 ### Security Model
@@ -34,24 +33,24 @@ OpenEASD implements external attack surface detection through a **7-layer archit
 
 | Interface | Access Level | Use Cases |
 |-----------|--------------|-----------|
-| **API** | Read-only (GET + limited PATCH) | Monitoring, dashboards, integrations |
+| **API** | Read-only (GET only) | Monitoring, dashboards, integrations |
 | **CLI** | Full access (CRUD) | Operations, scanning, configuration |
 
 This separation minimizes attack surface while enabling remote monitoring.
 
 ---
 
-## 7-Layer Architecture
+## 6-Layer Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │ Layer 1: API Layer (FastAPI)                                    │
-│ Purpose: Read-only REST API + WebSocket for monitoring          │
-│ Access: Remote (HTTP), 24+ GET endpoints + 1 PATCH              │
+│ Purpose: Read-only REST API for monitoring                      │
+│ Access: Remote (HTTP), GET endpoints only                       │
 ├─────────────────────────────────────────────────────────────────┤
 │ Layer 2: Service Layer                                          │
 │ Purpose: Shared business logic between API and CLI              │
-│ Components: DomainService, ScanService, AlertService            │
+│ Components: DomainService, ScanService, FindingsService         │
 ├─────────────────────────────────────────────────────────────────┤
 │ Layer 3: CLI Layer (Click)                                      │
 │ Purpose: Full-featured command-line interface                   │
@@ -63,15 +62,11 @@ This separation minimizes attack surface while enabling remote monitoring.
 ├─────────────────────────────────────────────────────────────────┤
 │ Layer 5: Tools Layer                                            │
 │ Purpose: Execute external security tools                        │
-│ Tools: Subfinder, Naabu, Dnsx, Httpx, Amass, Nmap              │
+│ Tools: Subfinder, Naabu, Dnsx, Httpx, Tlsx, Nmap               │
 ├─────────────────────────────────────────────────────────────────┤
 │ Layer 6: Database Layer (SQLite + SQLModel)                     │
 │ Purpose: Persistent data storage                                │
-│ Storage: data/openeasd.sqlite                                   │
-├─────────────────────────────────────────────────────────────────┤
-│ Layer 7: Messaging Layer (ZeroMQ)                               │
-│ Purpose: Real-time event streaming and inter-layer communication│
-│ Transport: IPC socket with Pub/Sub pattern                      │
+│ Storage: data/openeasd.db                                   │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -82,15 +77,13 @@ This separation minimizes attack surface while enabling remote monitoring.
 ### Layer 1: API Layer
 - HTTP request handling with FastAPI
 - Pydantic v2 schema validation
-- API key authentication (SHA-256 hashed)
 - Rate limiting and CORS
-- WebSocket for real-time events
 - OpenAPI/Swagger documentation
 
 ### Layer 2: Service Layer
 - Domain CRUD operations
 - Scan orchestration
-- Alert management
+- Findings management
 - Analysis coordination
 - Dependency injection
 
@@ -122,13 +115,6 @@ This separation minimizes attack surface while enabling remote monitoring.
 - Timezone-aware timestamps (IST)
 - Efficient queries and aggregations
 
-### Layer 7: Messaging Layer
-- ZeroMQ Pub/Sub pattern
-- Topic-based event filtering
-- WebSocket integration
-- CLI progress updates
-- 11 event types
-
 ---
 
 ## Technology Stack
@@ -141,7 +127,6 @@ This separation minimizes attack surface while enabling remote monitoring.
 | CLI | Click | 8.1.7 |
 | Database | SQLModel | - |
 | Database | SQLite | 3.x |
-| Messaging | ZeroMQ (PyZMQ) | 27.1.0+ |
 | Runtime | Python | 3.11+ |
 
 ---
@@ -156,14 +141,14 @@ HTTP Request → API Layer → Service Layer → Database Layer
               Response ← Service Layer ← Query Results
 ```
 
-### CLI Path (Full Access with Events)
+### CLI Path (Full Access)
 
 ```
 User Command → CLI Layer → Service Layer → Tools Layer
                               ↓               ↓
-                         Database Layer   EventBus
-                              ↓               ↓
-              Display ← CLI Layer ← Progress Events
+                         Database Layer   Analysis Layer
+                              ↓
+              Display ← CLI Layer ← Results
 ```
 
 ---
@@ -180,7 +165,7 @@ OpenEASD/
 │   ├── services/         # Layer 2: Business logic
 │   │   ├── domain_service.py
 │   │   ├── scan_service.py
-│   │   └── alert_service.py
+│   │   └── findings_service.py
 │   ├── cli/              # Layer 3: CLI interface
 │   │   ├── main.py       # Click application
 │   │   ├── commands_*.py # Command implementations
@@ -193,14 +178,11 @@ OpenEASD/
 │   │   ├── subfinder/
 │   │   ├── naabu/
 │   │   ├── dnsx/
-│   │   └── httpx/
+│   │   ├── httpx/
+│   │   └── tlsx/
 │   ├── data/             # Layer 6: Database
 │   │   ├── database/     # SQLModel manager
 │   │   └── models/       # Data models (including findings)
-│   ├── messaging/        # Layer 7: Events
-│   │   ├── bus.py        # EventBus (ZeroMQ)
-│   │   ├── publisher.py
-│   │   └── subscriber.py
 │   ├── core/             # Interfaces and contracts
 │   └── utils/            # Utilities (config, timezone, logging)
 ├── data/                 # Database storage
@@ -220,9 +202,8 @@ OpenEASD/
 | Analysis Layer | Complete | 95% |
 | Tools Layer | Complete | 93% |
 | Database Layer | Complete | 77% |
-| Messaging Layer | Complete | 100% |
 
-**Overall**: 79% coverage, 489+ tests passing
+**Overall**: 79% coverage, 389+ tests passing
 
 ---
 
@@ -262,5 +243,5 @@ uv run python openeasd.py analysis findings --severity high
 ---
 
 **Last Updated**: December 2025
-**Architecture Version**: 7-Layer
+**Architecture Version**: 6-Layer
 **Status**: Production-ready

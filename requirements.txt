@@ -1,14 +1,9 @@
 fastapi
 uvicorn
-gunicorn
 sqlmodel
 click
 pyyaml
-pyzmq
 pytz
-httpx
-python-dotenv
-rich
 pytest
 pytest-mock
 freezegun

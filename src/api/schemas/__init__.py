@@ -19,6 +19,11 @@ from src.api.schemas.finding import (
     FindingListResponse,
     FindingStatisticsResponse
 )
+from src.api.schemas.job import (
+    JobResponse,
+    JobListResponse,
+    JobStatisticsResponse
+)
 from src.api.schemas.common import (
     HealthResponse,
     ErrorResponse
@@ -36,6 +41,9 @@ __all__ = [
     'FindingResponse',
     'FindingListResponse',
     'FindingStatisticsResponse',
+    'JobResponse',
+    'JobListResponse',
+    'JobStatisticsResponse',
     'HealthResponse',
     'ErrorResponse',
 ]

@@ -524,6 +524,22 @@ The qa-reviewer agent provides specialized validation for all layers:
 
 ## Recent Updates
 
+### December 3, 2025
+- ✅ **Analysis Layer Enhancement**: All finding generation now handled by Analysis Layer
+  - ServiceVulnerabilityDetector receives `nmap_service_results` directly
+  - Single source of truth for all security findings
+  - Removed legacy alert generation from ScanService
+- ✅ **Configuration-Driven Service Classifications**: Severity mappings loaded from `analysis_config.yaml`
+  - `critical_services`, `high_risk_services`, `medium_risk_services`, `low_risk_services`
+  - Easy customization without code changes
+- ✅ **Code Quality Improvements**:
+  - Eliminated 200+ lines of dead code
+  - Removed `_generate_service_alert()` and `_enrich_alert_with_vulns()` methods
+  - Consolidated host extraction into `_extract_host_from_port_info()` helper
+  - Replaced print statements with proper logging
+- ✅ **Test Suite**: 312 tests passing (6 dead tests removed)
+- ✅ **Documentation**: Updated QA_ACTION_ITEMS.md with completion status
+
 ### December 2, 2025
 - ✅ Created qa-reviewer agent (Haiku model)
 - ✅ Upgraded layer-architect to Opus
@@ -535,6 +551,35 @@ The qa-reviewer agent provides specialized validation for all layers:
 
 ---
 
-**Last Updated**: December 2, 2025
+## Current Architecture State
+
+### Layer Responsibilities (Updated)
+
+| Layer | Key Files | Recent Changes |
+|-------|-----------|----------------|
+| **Layer 1: API** | `src/api/` | Read-only GET endpoints |
+| **Layer 2: Service** | `src/services/scan_service.py` | Config-based severity mappings, removed legacy alert generation |
+| **Layer 4: Analysis** | `src/analysis/` | Handles ALL finding generation (PortDetector + ServiceDetector) |
+| **Layer 5: Tools** | `src/tools/` | Nmap results passed to Analysis Layer |
+| **Layer 6: Database** | `src/data/` | SQLModel with findings storage |
+
+### Data Flow (Current)
+```
+Scan Execution → Tools Layer → Service Layer → Analysis Layer → Findings
+                     ↓              ↓              ↓
+               naabu/httpx    orchestration   detectors → database
+               nmap/tlsx     passes data     generate findings
+```
+
+### Key Integration Points
+- **ScanService** passes `nmap_service_results` to AnalysisService via `scan_data`
+- **ServiceVulnerabilityDetector** analyzes nmap results for exposed services
+- **PortVulnerabilityDetector** analyzes port scan results for vulnerabilities
+- **RiskScorer** applies deterministic scoring (0-100) to all findings
+
+---
+
+**Last Updated**: December 3, 2025
 **Status**: All agents configured and optimized
 **Total Agents**: 9 (4 Opus + 4 Sonnet + 1 Haiku)
+**Test Coverage**: 312 tests passing

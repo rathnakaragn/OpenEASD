@@ -2,9 +2,11 @@
 Pydantic schemas for scan-related operations.
 """
 
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, field_validator
 from typing import Optional, List
 from datetime import datetime
+
+from src.api.schemas.common import ScanStatus, validate_domain_format
 
 
 class ScanCreate(BaseModel):
@@ -16,8 +18,24 @@ class ScanCreate(BaseModel):
         }
     })
 
-    domain: str = Field(..., description="Domain to scan")
-    timeout: Optional[int] = Field(300, description="Scan timeout in seconds")
+    domain: str = Field(
+        ...,
+        min_length=1,
+        max_length=253,
+        description="Domain to scan (e.g., example.com)"
+    )
+    timeout: Optional[int] = Field(
+        default=300,
+        ge=60,
+        le=3600,
+        description="Scan timeout in seconds (60-3600)"
+    )
+
+    @field_validator('domain')
+    @classmethod
+    def validate_domain(cls, v: str) -> str:
+        """Validate domain format and normalize to lowercase."""
+        return validate_domain_format(v)
 
 
 class BatchScanCreate(BaseModel):
@@ -30,7 +48,12 @@ class BatchScanCreate(BaseModel):
     })
 
     primary_only: bool = Field(default=False, description="Scan only primary domains")
-    timeout: Optional[int] = Field(300, description="Scan timeout in seconds per domain")
+    timeout: Optional[int] = Field(
+        default=300,
+        ge=60,
+        le=3600,
+        description="Scan timeout in seconds per domain (60-3600)"
+    )
 
 
 class ScanResponse(BaseModel):
@@ -48,14 +71,14 @@ class ScanResponse(BaseModel):
         }
     })
 
-    scan_id: str
-    domain: Optional[str] = None  # Made optional, computed from domains array
-    scan_type: str
-    tool_name: Optional[str] = None  # Made optional, may not be set
-    status: str
-    start_time: Optional[datetime] = None
-    end_time: Optional[datetime] = None
-    findings_count: int = 0
+    scan_id: str = Field(..., description="Unique scan session identifier")
+    domain: str = Field(..., description="Primary domain being scanned")
+    scan_type: str = Field(default="passive_subdomain_enum", description="Type of scan performed")
+    tool_name: Optional[str] = Field(None, description="Primary tool used for scanning")
+    status: ScanStatus = Field(..., description="Scan status: pending, running, completed, failed")
+    start_time: Optional[datetime] = Field(None, description="When scan started (null if pending)")
+    end_time: Optional[datetime] = Field(None, description="When scan completed (null if not finished)")
+    findings_count: int = Field(default=0, description="Number of security findings discovered")
 
 
 class SubdomainResult(BaseModel):
@@ -89,7 +112,10 @@ class ScanResultsResponse(BaseModel):
                 {"subdomain": "api.example.com", "ip_address": "192.168.1.1", "discovered_at": "2025-01-20T15:00:00"}
             ],
             "ports": [
-                {"subdomain": "api.example.com", "port": 443, "protocol": "tcp", "ip": "192.168.1.1", "discovered_at": "2025-01-20T15:02:00"}
+                {
+                    "subdomain": "api.example.com", "port": 443, "protocol": "tcp",
+                    "ip": "192.168.1.1", "discovered_at": "2025-01-20T15:02:00"
+                }
             ]
         }
     })
@@ -100,7 +126,7 @@ class ScanResultsResponse(BaseModel):
 
 
 class ScanListResponse(BaseModel):
-    """Schema for scan list response."""
+    """Schema for scan list response with pagination."""
     model_config = ConfigDict(json_schema_extra={
         "example": {
             "scans": [
@@ -112,9 +138,52 @@ class ScanListResponse(BaseModel):
                     "findings_count": 42
                 }
             ],
-            "total": 1
+            "total_count": 1,
+            "limit": 20,
+            "offset": 0,
+            "has_more": False
         }
     })
 
-    scans: List[ScanResponse]
-    total: int
+    scans: List[ScanResponse] = Field(..., description="List of scan sessions")
+    total_count: int = Field(..., description="Total number of scans")
+    limit: int = Field(default=20, description="Results per page")
+    offset: int = Field(default=0, description="Current offset")
+    has_more: bool = Field(default=False, description="More results available")
+
+
+class BatchScanResponse(BaseModel):
+    """Schema for batch scan response."""
+    model_config = ConfigDict(json_schema_extra={
+        "example": {
+            "scans": [
+                {
+                    "scan_id": "scan_12345",
+                    "domain": "example.com",
+                    "status": "pending"
+                }
+            ],
+            "total_queued": 1,
+            "message": "Queued 1 scans for processing"
+        }
+    })
+
+    scans: List[ScanResponse] = Field(..., description="List of queued scan sessions")
+    total_queued: int = Field(..., description="Number of scans queued")
+    message: str = Field(..., description="Status message")
+
+
+class ScanRetryRequest(BaseModel):
+    """Schema for retry scan request."""
+    model_config = ConfigDict(json_schema_extra={
+        "example": {
+            "timeout": 300
+        }
+    })
+
+    timeout: Optional[int] = Field(
+        default=None,
+        ge=60,
+        le=3600,
+        description="Override timeout in seconds (60-3600)"
+    )

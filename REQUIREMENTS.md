@@ -1,13 +1,15 @@
 Here is the full **OpenEASD Product Requirements Document (PRD)** converted into a clean and structured **Markdown format** for clarity and documentation use.
 
+> **Note (December 2025)**: The current implementation uses a **single-organization model** for simplicity. Multi-tenancy features described in this document are planned for future phases. The core scanning, analysis, and reporting capabilities are fully implemented.
+
 ***
 
 # OpenEASD Product Requirements Document (PRD)
 
-**Product:** OpenEASD — Automated External Attack Surface Detection (Multi‑tenant)
+**Product:** OpenEASD — Automated External Attack Surface Detection
 **Author:** Rathnakara G N / Cybersecify
-**Version:** 2.1 (Multi‑Org + Scheduling)
-**Date:** October 2025
+**Version:** 3.0 (Single-Org Implementation)
+**Date:** December 2025
 **Target Audience:** Product Managers, Engineering, Security Analysts, Operations, Sales
 
 ***

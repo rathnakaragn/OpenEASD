@@ -137,15 +137,17 @@ def test_analyze_with_tlsx_results(mock_analysis_config):
     with patch('src.analysis.detectors.port_detector.get_analysis_config', return_value=mock_analysis_config):
         detector = PortVulnerabilityDetector()
 
+        # Note: Port 80 (HTTP) is no longer in UNENCRYPTED_PROTOCOL_PORTS
+        # HTTP is handled by httpx redirect detection, not tlsx
         naabu_results = [
-            {'port': 80, 'target_host': 'http.example.com'},    # Will check tlsx
+            {'port': 21, 'target_host': 'ftp.example.com'},     # FTP - no TLS
             {'port': 443, 'target_host': 'https.example.com'},  # TLS enabled
             {'port': 3306, 'target_host': 'db.example.com'},    # No TLS
         ]
 
-        # tlsx results: 80 has no TLS, 443 has TLS, 3306 has no TLS
+        # tlsx results: 21 has no TLS, 443 has TLS, 3306 has no TLS
         tlsx_results = {
-            'http.example.com:80': {'tls_enabled': False, 'error': 'TLS handshake failed'},
+            'ftp.example.com:21': {'tls_enabled': False, 'error': 'TLS handshake failed'},
             'https.example.com:443': {'tls_enabled': True, 'tls_version': 'tls13'},
             'db.example.com:3306': {'tls_enabled': False, 'error': 'No TLS on MySQL'},
         }
@@ -158,15 +160,15 @@ def test_analyze_with_tlsx_results(mock_analysis_config):
         # Get unencrypted protocol findings
         unenc_findings = [f for f in findings if f['finding_type'] == 'unencrypted_protocol']
 
-        # Should have findings for port 80 and 3306 (verified by tlsx)
+        # Should have findings for port 21 and 3306 (verified by tlsx)
         # Port 443 should NOT have unencrypted finding (TLS enabled)
         assert len(unenc_findings) == 2
 
-        # Check port 80 finding
-        http_finding = next((f for f in unenc_findings if f['port'] == 80), None)
-        assert http_finding is not None
-        assert http_finding['evidence']['verified_by_tlsx'] is True
-        assert 'Verified by tlsx' in http_finding['title']
+        # Check port 21 finding (FTP)
+        ftp_finding = next((f for f in unenc_findings if f['port'] == 21), None)
+        assert ftp_finding is not None
+        assert ftp_finding['evidence']['verified_by_tlsx'] is True
+        assert 'Verified by tlsx' in ftp_finding['title']
 
         # Check port 3306 finding
         mysql_finding = next((f for f in unenc_findings if f['port'] == 3306), None)

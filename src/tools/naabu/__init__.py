@@ -21,6 +21,11 @@ from typing import List, Dict, Any
 from src.utils.config import Config
 from src.utils.validation import validate_domains
 from src.utils.json_utils import safe_json_load
+from src.tools.exceptions import (
+    ToolExecutionError,
+    ToolTimeoutError,
+    ToolNotFoundError,
+)
 
 __version__ = "1.0.0"
 
@@ -51,7 +56,9 @@ def run_naabu(
         }
 
     Raises:
-        Exception: If naabu times out or is not installed
+        ToolTimeoutError: If naabu times out
+        ToolNotFoundError: If naabu is not installed
+        ToolExecutionError: If naabu returns non-zero exit code
 
     Example:
         >>> ports = run_naabu(['example.com'], top_ports=100)
@@ -85,6 +92,12 @@ def run_naabu(
             timeout=timeout
         )
 
+        # Validate return code
+        if result.returncode != 0:
+            error_msg = result.stderr.strip() if result.stderr else 'Unknown error'
+            logger.error(f"Naabu failed with exit code {result.returncode}: {error_msg}")
+            raise ToolExecutionError(f"Naabu failed: {error_msg}")
+
         ports = []
         for line in result.stdout.strip().split('\n'):
             if line:
@@ -101,11 +114,10 @@ def run_naabu(
         return ports
 
     except subprocess.TimeoutExpired:
-        raise Exception(f"Naabu timed out after {timeout} seconds")
+        raise ToolTimeoutError(f"Naabu timed out after {timeout} seconds")
     except FileNotFoundError:
-        raise Exception(
-            "Naabu not found. Please install: "
-            "https://github.com/projectdiscovery/naabu"
+        raise ToolNotFoundError(
+            "Naabu not found. Install: https://github.com/projectdiscovery/naabu"
         )
     finally:
         if targets_file and Path(targets_file).exists():

@@ -22,29 +22,31 @@ class APISettings:
     @property
     def title(self) -> str:
         """Get API title."""
-        return self.config.get('api.title', 'OpenEASD API (Read-Only)')
+        return self.config.get('api.title', 'OpenEASD API')
 
     @property
     def description(self) -> str:
         """Get API description."""
         default_desc = """
-        Read-Only API for monitoring External Attack Surface Detection.
+        Full CRUD API for Open Source External Attack Surface Detection.
 
-        **Security Model:**
-        - API: Read-only access (GET requests only)
-        - CLI: Full access for all operations (add, update, delete, scan)
+        **Features:**
+        - Domain management (add, list, update, delete)
+        - Async scan execution via ZeroMQ job queue
+        - Security findings with risk scoring
+        - Web dashboard at /
 
-        **For write operations, use the CLI:**
-        - Domain management: `openeasd domain add/update/remove`
-        - Scan execution: `openeasd scan domain <domain>`
-        - Batch scanning: `openeasd scan`
+        **Async Scan Flow:**
+        1. POST /api/v1/scans - Creates scan, returns 202 Accepted
+        2. GET /api/v1/scans/{id} - Poll for status updates
+        3. GET /api/v1/scans/{id}/results - Get results when completed
         """
         return self.config.get('api.description', default_desc)
 
     @property
     def version(self) -> str:
         """Get API version."""
-        return self.config.get('api.version', '2.0.0-readonly')
+        return self.config.get('api.version', '3.0.0')
 
     @property
     def host(self) -> str:

@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenEASD - Attack Surface Detection</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <h1>OpenEASD</h1>
+            <p class="subtitle">Open Source External Attack Surface Detection</p>
+        </header>
+
+        <!-- Navigation Tabs -->
+        <nav class="tabs">
+            <button class="tab active" data-tab="domains">Domains</button>
+            <button class="tab" data-tab="scans">Scans</button>
+            <button class="tab" data-tab="findings">Findings</button>
+            <button class="tab" data-tab="jobs">Jobs</button>
+        </nav>
+
+        <!-- Domains Tab -->
+        <section id="domains-tab" class="tab-content active">
+            <div class="section-header">
+                <h2>Domain Management</h2>
+                <button class="btn btn-primary" onclick="showAddDomainModal()">+ Add Domain</button>
+            </div>
+
+            <div class="card">
+                <table class="data-table" id="domains-table">
+                    <thead>
+                        <tr>
+                            <th>Domain</th>
+                            <th>Primary</th>
+                            <th>Scans</th>
+                            <th>Last Scan</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="domains-body">
+                        <tr>
+                            <td colspan="5" class="loading">Loading domains...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- Scans Tab -->
+        <section id="scans-tab" class="tab-content">
+            <div class="section-header">
+                <h2>Scan Sessions</h2>
+                <div class="action-buttons">
+                    <button class="btn btn-secondary" onclick="startBatchScan(true)">Scan Primary Domains</button>
+                    <button class="btn btn-secondary" onclick="startBatchScan(false)">Scan All Domains</button>
+                    <button class="btn btn-primary" onclick="showNewScanModal()">+ New Scan</button>
+                </div>
+            </div>
+
+            <div class="card">
+                <table class="data-table" id="scans-table">
+                    <thead>
+                        <tr>
+                            <th>Scan ID</th>
+                            <th>Domain</th>
+                            <th>Status</th>
+                            <th>Started</th>
+                            <th>Findings</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="scans-body">
+                        <tr>
+                            <td colspan="6" class="loading">Loading scans...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- Findings Tab -->
+        <section id="findings-tab" class="tab-content">
+            <div class="section-header">
+                <h2>Security Findings</h2>
+                <div class="filters">
+                    <select id="severity-filter" onchange="loadFindings()">
+                        <option value="">All Severities</option>
+                        <option value="critical">Critical</option>
+                        <option value="high">High</option>
+                        <option value="medium">Medium</option>
+                        <option value="low">Low</option>
+                        <option value="info">Info</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Stats Cards -->
+            <div class="stats-grid" id="findings-stats">
+                <div class="stat-card critical">
+                    <span class="stat-value" id="stat-critical">0</span>
+                    <span class="stat-label">Critical</span>
+                </div>
+                <div class="stat-card high">
+                    <span class="stat-value" id="stat-high">0</span>
+                    <span class="stat-label">High</span>
+                </div>
+                <div class="stat-card medium">
+                    <span class="stat-value" id="stat-medium">0</span>
+                    <span class="stat-label">Medium</span>
+                </div>
+                <div class="stat-card low">
+                    <span class="stat-value" id="stat-low">0</span>
+                    <span class="stat-label">Low</span>
+                </div>
+                <div class="stat-card info">
+                    <span class="stat-value" id="stat-info">0</span>
+                    <span class="stat-label">Info</span>
+                </div>
+            </div>
+
+            <div class="card">
+                <table class="data-table" id="findings-table">
+                    <thead>
+                        <tr>
+                            <th>Severity</th>
+                            <th>Type</th>
+                            <th>Asset</th>
+                            <th>Risk Score</th>
+                            <th>Status</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="findings-body">
+                        <tr>
+                            <td colspan="6" class="loading">Loading findings...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- Jobs Tab -->
+        <section id="jobs-tab" class="tab-content">
+            <div class="section-header">
+                <h2>Job Queue Management</h2>
+                <div class="filters">
+                    <select id="job-status-filter" onchange="loadJobs()">
+                        <option value="">All Statuses</option>
+                        <option value="pending">Pending</option>
+                        <option value="queued">Queued</option>
+                        <option value="processing">Processing</option>
+                        <option value="completed">Completed</option>
+                        <option value="failed">Failed</option>
+                        <option value="cancelled">Cancelled</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Job Stats Cards -->
+            <div class="stats-grid stats-grid-6" id="job-stats">
+                <div class="stat-card pending">
+                    <span class="stat-value" id="stat-job-pending">0</span>
+                    <span class="stat-label">Pending</span>
+                </div>
+                <div class="stat-card queued">
+                    <span class="stat-value" id="stat-job-queued">0</span>
+                    <span class="stat-label">Queued</span>
+                </div>
+                <div class="stat-card processing">
+                    <span class="stat-value" id="stat-job-processing">0</span>
+                    <span class="stat-label">Processing</span>
+                </div>
+                <div class="stat-card completed">
+                    <span class="stat-value" id="stat-job-completed">0</span>
+                    <span class="stat-label">Completed</span>
+                </div>
+                <div class="stat-card failed">
+                    <span class="stat-value" id="stat-job-failed">0</span>
+                    <span class="stat-label">Failed</span>
+                </div>
+                <div class="stat-card cancelled">
+                    <span class="stat-value" id="stat-job-cancelled">0</span>
+                    <span class="stat-label">Cancelled</span>
+                </div>
+            </div>
+
+            <div class="card">
+                <table class="data-table" id="jobs-table">
+                    <thead>
+                        <tr>
+                            <th>Job ID</th>
+                            <th>Type</th>
+                            <th>Domain</th>
+                            <th>Status</th>
+                            <th>Worker</th>
+                            <th>Last Updated</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="jobs-body">
+                        <tr>
+                            <td colspan="7" class="loading">Loading jobs...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- Add Domain Modal -->
+        <div id="add-domain-modal" class="modal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3 id="add-domain-modal-title">Add New Domain</h3>
+                    <button class="close-btn" onclick="closeModal('add-domain-modal')">&times;</button>
+                </div>
+                <form id="add-domain-form" onsubmit="addDomain(event)">
+                    <div class="form-group">
+                        <label for="domain-name">Domain Name</label>
+                        <input type="text" id="domain-name" placeholder="example.com" required>
+                    </div>
+                    <div class="form-group">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="is-primary">
+                            Mark as Primary Domain
+                        </label>
+                    </div>
+                    <div class="form-group">
+                        <label for="contact-email">Contact Email (optional)</label>
+                        <input type="email" id="contact-email" placeholder="admin@example.com">
+                    </div>
+                    <div class="form-group">
+                        <label for="scan-frequency">Scan Frequency</label>
+                        <select id="scan-frequency">
+                            <option value="hourly">Hourly</option>
+                            <option value="daily">Daily</option>
+                            <option value="weekly" selected>Weekly</option>
+                            <option value="monthly">Monthly</option>
+                        </select>
+                    </div>
+                    <div class="form-actions">
+                        <button type="button" class="btn btn-secondary" onclick="closeModal('add-domain-modal')">Cancel</button>
+                        <button type="submit" class="btn btn-primary">Save Domain</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- New Scan Modal -->
+        <div id="new-scan-modal" class="modal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3>Start New Scan</h3>
+                    <button class="close-btn" onclick="closeModal('new-scan-modal')">&times;</button>
+                </div>
+                <form id="new-scan-form" onsubmit="startScan(event)">
+                    <div class="form-group">
+                        <label for="scan-domain">Select Domain</label>
+                        <select id="scan-domain" required>
+                            <option value="">-- Select a domain --</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="scan-timeout">Timeout (seconds)</label>
+                        <input type="number" id="scan-timeout" value="300" min="60" max="3600">
+                    </div>
+                    <div class="form-actions">
+                        <button type="button" class="btn btn-secondary" onclick="closeModal('new-scan-modal')">Cancel</button>
+                        <button type="submit" class="btn btn-primary">Start Scan</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Scan Results Modal -->
+        <div id="scan-results-modal" class="modal">
+            <div class="modal-content modal-large">
+                <div class="modal-header">
+                    <h3>Scan Results</h3>
+                    <button class="close-btn" onclick="closeModal('scan-results-modal')">&times;</button>
+                </div>
+                <div id="scan-results-content">
+                    <div class="loading">Loading results...</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Finding Details Modal -->
+        <div id="finding-details-modal" class="modal">
+            <div class="modal-content modal-large">
+                <div class="modal-header">
+                    <h3>Finding Details</h3>
+                    <button class="close-btn" onclick="closeModal('finding-details-modal')">&times;</button>
+                </div>
+                <div id="finding-details-content">
+                    <div class="loading">Loading details...</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Status Update Modal -->
+        <div id="status-update-modal" class="modal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3>Update Finding Status</h3>
+                    <button class="close-btn" onclick="closeModal('status-update-modal')">&times;</button>
+                </div>
+                <div id="status-update-content">
+                    <div class="loading">Loading...</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Toast Notifications -->
+        <div id="toast-container"></div>
+    </div>
+
+    <script src="/static/js/app.js"></script>
+</body>
+</html>

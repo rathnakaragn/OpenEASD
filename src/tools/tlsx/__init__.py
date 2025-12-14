@@ -26,6 +26,11 @@ from typing import List, Dict, Any, Tuple
 
 from src.utils.config import Config
 from src.utils.json_utils import safe_json_load
+from src.tools.exceptions import (
+    ToolExecutionError,
+    ToolTimeoutError,
+    ToolNotFoundError,
+)
 
 __version__ = "1.0.0"
 
@@ -70,7 +75,9 @@ def run_tlsx(
         ]
 
     Raises:
-        Exception: If tlsx is not found or times out
+        ToolTimeoutError: If tlsx times out
+        ToolNotFoundError: If tlsx is not installed
+        ToolExecutionError: If tlsx returns non-zero exit code
 
     Example:
         >>> results = run_tlsx([('example.com', 443)])
@@ -119,6 +126,12 @@ def run_tlsx(
             timeout=timeout
         )
 
+        # Validate return code
+        if result.returncode != 0:
+            error_msg = result.stderr.strip() if result.stderr else 'Unknown error'
+            logger.error(f"tlsx failed with exit code {result.returncode}: {error_msg}")
+            raise ToolExecutionError(f"tlsx failed: {error_msg}")
+
         probes = []
         for line in result.stdout.strip().split('\n'):
             if line:
@@ -146,11 +159,10 @@ def run_tlsx(
         return probes
 
     except subprocess.TimeoutExpired:
-        raise Exception(f"tlsx timed out after {timeout} seconds")
+        raise ToolTimeoutError(f"tlsx timed out after {timeout} seconds")
     except FileNotFoundError:
-        raise Exception(
-            "tlsx not found. Please install: "
-            "https://github.com/projectdiscovery/tlsx"
+        raise ToolNotFoundError(
+            "tlsx not found. Install: https://github.com/projectdiscovery/tlsx"
         )
     finally:
         if targets_file and Path(targets_file).exists():

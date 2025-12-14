@@ -27,6 +27,11 @@ from typing import List, Dict, Any
 from src.utils.config import Config
 from src.utils.validation import validate_domains
 from src.utils.json_utils import safe_json_load
+from src.tools.exceptions import (
+    ToolExecutionError,
+    ToolTimeoutError,
+    ToolNotFoundError,
+)
 
 __version__ = "1.0.0"
 
@@ -63,7 +68,9 @@ def run_dnsx(
         }
 
     Raises:
-        Exception: If dnsx times out or is not installed
+        ToolTimeoutError: If dnsx times out
+        ToolNotFoundError: If dnsx is not installed
+        ToolExecutionError: If dnsx returns non-zero exit code
 
     Example:
         >>> records = run_dnsx(['example.com'], record_types=['a', 'mx'])
@@ -101,6 +108,12 @@ def run_dnsx(
 
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
 
+        # Validate return code
+        if result.returncode != 0:
+            error_msg = result.stderr.strip() if result.stderr else 'Unknown error'
+            logger.error(f"dnsx failed with exit code {result.returncode}: {error_msg}")
+            raise ToolExecutionError(f"dnsx failed: {error_msg}")
+
         def normalize_records(record_list):
             if not record_list:
                 return []
@@ -129,11 +142,10 @@ def run_dnsx(
         return records
 
     except subprocess.TimeoutExpired:
-        raise Exception(f"dnsx timed out after {timeout} seconds")
+        raise ToolTimeoutError(f"dnsx timed out after {timeout} seconds")
     except FileNotFoundError:
-        raise Exception(
-            "dnsx not found. Please install: "
-            "https://github.com/projectdiscovery/dnsx"
+        raise ToolNotFoundError(
+            "dnsx not found. Install: https://github.com/projectdiscovery/dnsx"
         )
     finally:
         if domains_file and Path(domains_file).exists():

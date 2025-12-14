@@ -75,6 +75,7 @@ class PortVulnerabilityDetector(BaseDetector):
                 Expected keys:
                 - 'naabu_results': List of open port dictionaries
                 - 'tlsx_results': Optional dict mapping "host:port" to TLS probe results
+                - 'httpx_results': Optional list of HTTP probe results (for redirect detection)
 
         Returns:
             List of finding dictionaries
@@ -90,10 +91,16 @@ class PortVulnerabilityDetector(BaseDetector):
         # Format: {"host:port": {"tls_enabled": True/False, "tls_version": "...", ...}}
         tlsx_results = scan_data.get('tlsx_results', {})
 
+        # Get httpx results for redirect detection (optional)
+        # Build lookup: host -> httpx result for port 80 (HTTP)
+        httpx_results = scan_data.get('httpx_results', [])
+        http_redirects = self._build_http_redirect_lookup(httpx_results)
+
         # Analyze each open port
         for port_info in naabu_results:
             port = port_info.get('port')
-            host = port_info.get('target_host', port_info.get('subdomain', 'unknown'))
+            # Support multiple key names: target_host (db), host (generic), subdomain (naabu raw output)
+            host = port_info.get('target_host') or port_info.get('host') or port_info.get('subdomain') or 'unknown'
             protocol = port_info.get('protocol', 'tcp')
             ip = port_info.get('ip', '')
 
@@ -134,24 +141,77 @@ class PortVulnerabilityDetector(BaseDetector):
                 # Determine if TLS is enabled
                 tls_enabled = tlsx_probe.get('tls_enabled')
 
+                # Check for HTTP→HTTPS redirect (port 80 only)
+                redirects_to_https = False
+                if port == 80:
+                    redirects_to_https = http_redirects.get(host.lower(), False)
+
                 if tls_enabled is False:
-                    # tlsx confirmed NO TLS - definitely unencrypted
+                    # tlsx confirmed NO TLS - check for redirect
                     finding = self._create_unencrypted_protocol_finding(
                         port, host, protocol, ip,
                         verified_by_tlsx=True,
-                        tlsx_error=tlsx_probe.get('error')
+                        tlsx_error=tlsx_probe.get('error'),
+                        redirects_to_https=redirects_to_https
                     )
                     findings.append(finding)
                 elif tls_enabled is None and not tlsx_results:
                     # No tlsx data available - fall back to port-based assumption
                     finding = self._create_unencrypted_protocol_finding(
                         port, host, protocol, ip,
-                        verified_by_tlsx=False
+                        verified_by_tlsx=False,
+                        redirects_to_https=redirects_to_https
                     )
                     findings.append(finding)
                 # If tls_enabled is True, service has TLS - no finding needed
 
         return findings
+
+    def _build_http_redirect_lookup(self, httpx_results: List[Dict[str, Any]]) -> Dict[str, bool]:
+        """
+        Build a lookup for HTTP→HTTPS redirects from httpx results.
+
+        Args:
+            httpx_results: List of httpx probe results
+
+        Returns:
+            Dict mapping hostname (lowercase) to whether it redirects HTTP to HTTPS
+        """
+        redirects = {}
+
+        if not httpx_results:
+            return redirects
+
+        for result in httpx_results:
+            host = (result.get('host') or '').lower()
+            if not host:
+                continue
+
+            url = result.get('url', '')
+            status_code = result.get('status_code', 0)
+            scheme = result.get('scheme', '')
+            port = result.get('port')
+
+            # Check if this is an HTTP request that redirected to HTTPS
+            # Indicators of HTTP→HTTPS redirect:
+            # 1. Status code is 3xx (redirect) - httpx follows redirects, so final URL is HTTPS
+            # 2. Original was HTTP (port 80) but final scheme is HTTPS
+            # 3. Final URL contains https://
+
+            if port == 80 or ':80' in url or url.startswith('http://'):
+                # This was an HTTP probe
+                if scheme == 'https' or 'https://' in url:
+                    # Final destination is HTTPS - redirect detected
+                    redirects[host] = True
+                elif status_code in (301, 302, 307, 308):
+                    # Redirect status code (though httpx usually follows these)
+                    redirects[host] = True
+                else:
+                    # No redirect to HTTPS
+                    if host not in redirects:
+                        redirects[host] = False
+
+        return redirects
 
     def _create_high_risk_port_finding(
         self, port: int, host: str, protocol: str, ip: str
@@ -179,7 +239,10 @@ class PortVulnerabilityDetector(BaseDetector):
                 'ip': ip,
                 'service': service_name
             },
-            remediation=port_data.get('remediation', f'Restrict access to {service_name} or disable the service if not needed')
+            remediation=port_data.get(
+                'remediation',
+                f'Restrict access to {service_name} or disable the service if not needed'
+            )
         )
 
     def _create_database_exposure_finding(
@@ -250,7 +313,10 @@ class PortVulnerabilityDetector(BaseDetector):
         if port == 23:  # Telnet
             severity = 'critical'
             title = 'Telnet Service Exposed - Unencrypted Remote Access'
-            description = 'Telnet transmits all data including passwords in plain text. This is a critical security risk.'
+            description = (
+                'Telnet transmits all data including passwords in plain text. '
+                'This is a critical security risk.'
+            )
         else:
             severity = 'high' if risk_level == 'critical' else 'medium'
             title = f'Remote Access Service Exposed: {service_name} (Port {port})'
@@ -274,7 +340,11 @@ class PortVulnerabilityDetector(BaseDetector):
                 'ip': ip,
                 'service': service_name
             },
-            remediation=port_data.get('remediation', f'Use VPN for remote access. Disable {service_name} if not needed. Implement strong authentication.')
+            remediation=port_data.get(
+                'remediation',
+                f'Use VPN for remote access. Disable {service_name} if not needed. '
+                f'Implement strong authentication.'
+            )
         )
 
     def _create_medium_risk_port_finding(
@@ -308,7 +378,8 @@ class PortVulnerabilityDetector(BaseDetector):
 
     def _create_unencrypted_protocol_finding(
         self, port: int, host: str, protocol: str, ip: str,
-        verified_by_tlsx: bool = False, tlsx_error: str = None
+        verified_by_tlsx: bool = False, tlsx_error: str = None,
+        redirects_to_https: bool = False
     ) -> Dict[str, Any]:
         """Create finding for unencrypted protocol that should use TLS.
 
@@ -319,6 +390,7 @@ class PortVulnerabilityDetector(BaseDetector):
             ip: IP address
             verified_by_tlsx: Whether tlsx was used to verify no TLS
             tlsx_error: Error from tlsx if any
+            redirects_to_https: Whether HTTP redirects to HTTPS (port 80 only)
         """
         proto_info = self.unencrypted_protocols.get(port, {})
         service_name = proto_info.get('name', f'Port {port}')
@@ -326,29 +398,68 @@ class PortVulnerabilityDetector(BaseDetector):
         encrypted_port = proto_info.get('encrypted_port')
         config_severity = proto_info.get('severity', 'high')
 
-        # Severity based on TLS verification status:
-        # - Verified no TLS by tlsx → CRITICAL (confirmed cleartext transmission)
+        # Severity based on TLS verification and redirect status:
+        # - HTTP (port 80) with redirect to HTTPS → INFO (best practice implemented)
+        # - Verified no TLS by tlsx, no redirect → CRITICAL (confirmed cleartext)
         # - Unverified (fallback) → Use configured severity (lower confidence)
-        if verified_by_tlsx:
+        if port == 80 and redirects_to_https:
+            severity = 'info'  # HTTP redirects to HTTPS - good practice
+            verification_note = " (Redirects to HTTPS)"
+            finding_type = 'http_redirects_to_https'
+            description = (
+                f'{service_name} on port {port} properly redirects to HTTPS. '
+                f'This is good security practice. Consider enabling HSTS (HTTP Strict Transport Security) '
+                f'to prevent downgrade attacks and ensure browsers always use HTTPS.'
+            )
+            remediation = (
+                f'HTTP to HTTPS redirect is properly configured. '
+                f'Consider adding HSTS header to enforce HTTPS at the browser level. '
+                f'Also consider closing port 80 if all traffic should go through HTTPS.'
+            )
+        elif verified_by_tlsx:
             severity = 'critical'  # tlsx confirmed NO TLS - definitely unencrypted
             verification_note = " (Verified by tlsx - TLS handshake failed)"
+            finding_type = 'unencrypted_protocol'
+            description = (
+                f'{service_name} is running without encryption on port {port}. '
+                f'This service transmits data in plaintext, exposing credentials, '
+                f'authentication tokens, and sensitive information to interception (MITM attacks). '
+                f'Use {encrypted_name} instead for secure communication.'
+            )
+            if encrypted_port:
+                remediation = (
+                    f'Migrate from {service_name} (port {port}) to {encrypted_name} (port {encrypted_port}). '
+                    f'Enable TLS/SSL encryption to protect data in transit. '
+                    f'Credentials and sensitive data are exposed in plaintext without encryption.'
+                )
+            else:
+                remediation = (
+                    f'Enable TLS/SSL encryption for {service_name}. '
+                    f'Configure the service to require encrypted connections. '
+                    f'Credentials and sensitive data are exposed in plaintext without encryption.'
+                )
         else:
             severity = config_severity  # Fallback to configured severity
             verification_note = " (Based on port number - unverified)"
-
-        # Build remediation text
-        if encrypted_port:
-            remediation = (
-                f'Migrate from {service_name} (port {port}) to {encrypted_name} (port {encrypted_port}). '
-                f'Enable TLS/SSL encryption to protect data in transit. '
-                f'Credentials and sensitive data are exposed in plaintext without encryption.'
+            finding_type = 'unencrypted_protocol'
+            description = (
+                f'{service_name} is running without encryption on port {port}. '
+                f'This service transmits data in plaintext, exposing credentials, '
+                f'authentication tokens, and sensitive information to interception (MITM attacks). '
+                f'Use {encrypted_name} instead for secure communication.'
             )
-        else:
-            remediation = (
-                f'Enable TLS/SSL encryption for {service_name}. '
-                f'Configure the service to require encrypted connections. '
-                f'Credentials and sensitive data are exposed in plaintext without encryption.'
-            )
+            if encrypted_port:
+                remediation = (
+                    f'Migrate from {service_name} (port {port}) to {encrypted_name} (port {encrypted_port}). '
+                    f'Enable TLS/SSL encryption to protect data in transit. '
+                    f'Credentials and sensitive data are exposed in plaintext without encryption.'
+                )
+            else:
+                remediation = (
+                    f'Enable TLS/SSL encryption for {service_name}. '
+                    f'Configure the service to require encrypted connections. '
+                    f'Credentials and sensitive data are exposed in plaintext without encryption.'
+                )
 
         evidence = {
             'port': port,
@@ -356,25 +467,21 @@ class PortVulnerabilityDetector(BaseDetector):
             'host': host,
             'ip': ip,
             'service': service_name,
-            'encryption': 'none',
+            'encryption': 'none' if not redirects_to_https else 'redirect_to_https',
             'recommended_service': encrypted_name,
             'recommended_port': encrypted_port,
-            'vulnerability': 'cleartext_transmission',
-            'verified_by_tlsx': verified_by_tlsx
+            'vulnerability': 'cleartext_transmission' if not redirects_to_https else 'http_without_hsts',
+            'verified_by_tlsx': verified_by_tlsx,
+            'redirects_to_https': redirects_to_https
         }
 
         if tlsx_error:
             evidence['tlsx_error'] = tlsx_error
 
         return self._create_finding(
-            finding_type='unencrypted_protocol',
+            finding_type=finding_type,
             title=f'Unencrypted Protocol: {service_name} (Port {port}) - No TLS{verification_note}',
-            description=(
-                f'{service_name} is running without encryption on port {port}. '
-                f'This service transmits data in plaintext, exposing credentials, '
-                f'authentication tokens, and sensitive information to interception (MITM attacks). '
-                f'Use {encrypted_name} instead for secure communication.'
-            ),
+            description=description,
             affected_asset=host,
             severity_hint=severity,
             port=port,

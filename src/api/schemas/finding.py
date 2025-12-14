@@ -6,6 +6,8 @@ from typing import Optional, Dict, Any, List
 from datetime import datetime
 from pydantic import BaseModel, Field, ConfigDict
 
+from src.api.schemas.common import FindingStatus, Severity
+
 
 class FindingBase(BaseModel):
     """Base schema for finding data."""
@@ -17,7 +19,7 @@ class FindingBase(BaseModel):
     title: str = Field(..., description="Human-readable title")
     description: Optional[str] = Field(None, description="Detailed description")
     service_name: Optional[str] = Field(None, description="Service name")
-    severity: str = Field(..., description="Severity level (critical/high/medium/low/info)")
+    severity: Severity = Field(..., description="Severity level (critical/high/medium/low/info)")
     risk_score: int = Field(..., ge=0, le=100, description="Risk score (0-100)")
     confidence_level: Optional[str] = Field("medium", description="Confidence level (high/medium/low)")
     cwe_id: Optional[str] = Field(None, description="CWE identifier")
@@ -32,8 +34,8 @@ class FindingResponse(FindingBase):
     scan_id: str = Field(..., description="Scan session UUID")
     evidence: Optional[Dict[str, Any]] = Field(default=None, description="Technical evidence")
     score_breakdown: Optional[Dict[str, Any]] = Field(default=None, description="Score breakdown")
-    status: str = Field(
-        default="new",
+    status: FindingStatus = Field(
+        default=FindingStatus.NEW,
         description="Status (new/open/acknowledged/resolved/reopened/false_positive)"
     )
     false_positive: bool = Field(default=False, description="Marked as false positive")
@@ -86,7 +88,7 @@ class FindingStatisticsResponse(BaseModel):
 class FindingStatusUpdate(BaseModel):
     """Request schema for updating finding status."""
 
-    status: str = Field(
+    status: FindingStatus = Field(
         ...,
         description="New status (new/open/acknowledged/resolved/reopened/false_positive)"
     )

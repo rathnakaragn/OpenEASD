@@ -1,83 +1,87 @@
 # OpenEASD Layer Architecture Guide
 
-**Version**: 1.2
-**Last Updated**: December 1, 2025
-**Status**: Production-Ready (7-Layer Architecture)
+**Version**: 2.1
+**Last Updated**: December 4, 2025
+**Status**: Production-Ready (6-Layer API-Only Architecture)
 
-> **New in v1.2**: Added Layer 7 (Messaging Layer) for real-time event streaming with ZeroMQ Pub/Sub.
-> **New in v1.1**: Added High-Level Functions sections to all layers, providing a comprehensive catalog of available functions and their purposes.
+> **New in v2.1**: Added Job persistence (database-backed queue), ScanWorkflowOrchestrator (8-step workflow), stale job recovery, and worker ID tracking.
+>
+> **New in v2.0**: Removed CLI Layer, added ZeroMQ Messaging Layer for async job processing. API now supports full CRUD operations.
 
 ## Table of Contents
 
 1. [Architecture Overview](#1-architecture-overview)
-2. [Layer 1: API Layer](#2-layer-1-api-layer-read-only-rest)
+2. [Layer 1: API Layer](#2-layer-1-api-layer-full-crud-rest)
 3. [Layer 2: Service Layer](#3-layer-2-service-layer-business-logic)
-4. [Layer 3: CLI Layer](#4-layer-3-cli-layer-full-access)
+4. [Layer 3: Messaging Layer](#4-layer-3-messaging-layer-zeromq)
 5. [Layer 4: Analysis Layer](#5-layer-4-analysis-layer-vulnerability-detection)
 6. [Layer 5: Tools Layer](#6-layer-5-tools-layer-security-tools)
 7. [Layer 6: Database Layer](#7-layer-6-database-layer-persistence)
-8. [Layer 7: Messaging Layer](#8-layer-7-messaging-layer-real-time-events)
-9. [Data Flow Patterns](#9-data-flow-patterns)
-10. [Layer Interactions](#10-layer-interactions)
-11. [Security Model](#11-security-model)
-12. [File Reference](#12-file-reference-by-layer)
-13. [Best Practices](#13-best-practices)
+8. [Data Flow Patterns](#8-data-flow-patterns)
+9. [Layer Interactions](#9-layer-interactions)
+10. [Background Workers](#10-background-workers)
+11. [File Reference](#11-file-reference-by-layer)
+12. [Best Practices](#12-best-practices)
 
 ---
 
 ## 1. Architecture Overview
 
-### 1.1 Seven-Layer Stack
+### 1.1 Six-Layer Stack
 
-OpenEASD implements a **7-layer architecture** with clear separation of concerns:
+OpenEASD implements a **6-layer API-only architecture** with clear separation of concerns:
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │ Layer 1: API Layer (FastAPI)                                    │
-│ Purpose: Read-only REST API for monitoring and dashboards       │
-│ Access: Remote (HTTP), GET requests + 1 PATCH                   │
+│ Purpose: Full CRUD REST API for all operations                  │
+│ Access: Remote (HTTP), GET/POST/PUT/DELETE                      │
 │ Port: 8000                                                      │
 ├─────────────────────────────────────────────────────────────────┤
 │ Layer 2: Service Layer                                          │
-│ Purpose: Shared business logic between API and CLI              │
+│ Purpose: Shared business logic for API and workers              │
 │ Access: Internal (Python imports)                               │
-│ Components: DomainService, ScanService, AlertService            │
+│ Components: ScanService (CRUD), ScanWorkflowOrchestrator (8-step)│
 ├─────────────────────────────────────────────────────────────────┤
-│ Layer 3: CLI Layer (Click)                                      │
-│ Purpose: Full-featured command-line interface                   │
-│ Access: Local shell, Full CRUD operations                       │
-│ Entry Point: openeasd.py                                        │
+│ Layer 3: Messaging Layer (ZeroMQ + Job Persistence)             │
+│ Purpose: Async job distribution with database-backed queue      │
+│ Access: PUSH/PULL sockets (tcp://127.0.0.1:5555)               │
+│ Components: JobQueue, Job model, stale recovery                 │
 ├─────────────────────────────────────────────────────────────────┤
 │ Layer 4: Analysis Layer                                         │
 │ Purpose: Automated vulnerability detection and risk scoring     │
 │ Access: Internal (called by Service Layer)                      │
 │ Components: RiskScorer, Detectors, Finding models               │
 ├─────────────────────────────────────────────────────────────────┤
-│ Layer 5: Tools Layer                                           │
+│ Layer 5: Tools Layer                                            │
 │ Purpose: Execute external security tools                        │
 │ Access: Subprocess execution                                    │
-│ Tools: Subfinder, Naabu, Dnsx, Httpx, Amass, Nmap              │
+│ Tools: Subfinder, Naabu, Dnsx, Httpx, Tlsx, Nmap               │
 ├─────────────────────────────────────────────────────────────────┤
 │ Layer 6: Database Layer (SQLite + SQLModel)                     │
 │ Purpose: Persistent data storage                                │
 │ Access: Internal (SQLModel ORM)                                 │
-│ Storage: data/openeasd.sqlite                                   │
-├─────────────────────────────────────────────────────────────────┤
-│ Layer 7: Messaging Layer (ZeroMQ)                               │
-│ Purpose: Real-time event streaming and inter-layer communication│
-│ Access: Internal (ZeroMQ Pub/Sub), WebSocket (external)         │
-│ Transport: IPC socket (/tmp/openeasd-events.ipc)                │
+│ Storage: data/openeasd.db                                   │
+└─────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────┐
+│ Background Workers (workers/scan_worker.py)                     │
+│ Purpose: Process scan jobs from ZeroMQ queue                    │
+│ Access: Pulls from ZeroMQ, writes to Database                   │
+│ Features: Job persistence, stale recovery, worker ID tracking   │
+│ Run: python -m workers.scan_worker                              │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
 ### 1.2 Design Principles
 
 1. **Separation of Concerns**: Each layer has specific, well-defined responsibilities
-2. **Security by Design**: API read-only, CLI full-access
-3. **Loose Coupling**: Layers communicate through well-defined interfaces
-4. **Dependency Injection**: Services injected at runtime
-5. **Single Responsibility**: Each component does one thing well
-6. **Extensibility**: Easy to add new detectors, tools, or endpoints
+2. **API-First Design**: All operations through REST API, no CLI
+3. **Async Processing**: Scans run asynchronously via ZeroMQ job queue
+4. **Loose Coupling**: Layers communicate through well-defined interfaces
+5. **Dependency Injection**: Services injected at runtime
+6. **Single Responsibility**: Each component does one thing well
+7. **Extensibility**: Easy to add new detectors, tools, or endpoints
 
 ### 1.3 Technology Stack
 
@@ -87,85 +91,78 @@ OpenEASD implements a **7-layer architecture** with clear separation of concerns
 | API | Pydantic | 2.5+ | Data validation |
 | API | Uvicorn | 0.27+ | ASGI server |
 | Service | Python | 3.11+ | Business logic |
-| CLI | Click | 8.1.7 | Command-line interface |
+| Messaging | ZeroMQ | 25.0+ | Job queue (PUSH/PULL) |
 | Analysis | Python | 3.11+ | Vulnerability detection |
 | Tools | Subprocess | stdlib | Tool execution |
 | Database | SQLModel | - | ORM layer |
 | Database | SQLite | 3.x | Embedded database |
-| Messaging | ZeroMQ | 27.1.0+ | Event streaming |
-| Messaging | PyZMQ | 27.1.0+ | Python bindings |
 
 ### 1.4 Current Status
 
-- **Implementation**: 100% complete (all 7 layers)
-- **Test Coverage**: 79% (2,928/3,696 statements) + 26 messaging tests
-- **Tests Passing**: 367/378 (97.1%) + 26/26 messaging (100%)
-- **API Endpoints**: 24+ GET + 1 PATCH + 1 WebSocket
-- **CLI Commands**: 15+ commands with real-time progress
+- **Implementation**: 100% complete (all 6 layers)
+- **Test Coverage**: 79% (2,928/3,696 statements)
+- **Tests Passing**: 318+ (API-only)
+- **API Endpoints**: 15+ endpoints (full CRUD)
+- **Background Workers**: 1 (scan_worker.py)
 - **Database Tables**: 15+ tables
-- **Security Tools**: 6 integrated
-- **Event Types**: 11 event types (scan, tool, finding, analysis, alert)
+- **Security Tools**: 6 integrated (Subfinder, Naabu, Dnsx, Httpx, Tlsx, Nmap)
 
 ---
 
-## 2. Layer 1: API Layer (Read-Only REST)
+## 2. Layer 1: API Layer (Full CRUD REST)
 
 ### 2.1 Purpose
 
-Provide **safe remote monitoring and dashboard access** through a read-only REST API. Allows third-party integrations and remote monitoring without risk of accidental modifications.
+Provide **complete REST API access** for all domain management, scan operations, and findings retrieval. All operations are performed through the API - there is no CLI.
 
 **Key Characteristics**:
-- Read-only by design (GET requests only)
-- One PATCH endpoint (finding status updates with API key auth)
+- Full CRUD operations (GET, POST, PUT, DELETE)
+- Async scan creation (returns 202 Accepted)
 - FastAPI with automatic OpenAPI documentation
-- Rate limiting and audit logging
 - CORS middleware for web integrations
+- Pydantic v2 validation
 
 ### 2.2 Responsibilities
 
 #### Core Responsibilities
 - **HTTP Request Handling**: Parse and validate incoming HTTP requests
-- **API Key Authentication**: SHA-256 hashed key verification
-- **Rate Limiting**: 50 domain ops/hour, 10 scans/hour per key
 - **Request Validation**: Pydantic v2 schema validation
 - **CORS Configuration**: Cross-origin request handling
-- **Audit Logging**: Log all write operations (PATCH)
 - **API Documentation**: Auto-generated OpenAPI/Swagger docs
 - **Response Formatting**: JSON serialization with proper status codes
 - **Error Handling**: HTTP exception handling with proper codes
+- **Job Queue Integration**: Push scan jobs to ZeroMQ for async processing
 
-#### Security Features
-- API keys with SHA-256 hashing (never stored plain)
-- Rate limiting per API key
-- Revocable API keys
-- Audit trail for all write operations
-- CORS whitelist configuration
+#### Async Scan Pattern
+- POST /api/v1/scans creates scan record and pushes job to ZeroMQ
+- Returns 202 Accepted immediately with scan_id
+- Client polls GET /api/v1/scans/{scan_id} for status updates
+- Worker processes job and updates status in database
 
 ### 2.3 High-Level Functions
 
 The API Layer exposes the following high-level functions:
 
-#### Domain Operations (Read-Only)
-- `list_domains()` - Retrieve paginated list of all domains
-- `get_domain()` - Get detailed information for a specific domain
-- `get_domain_statistics()` - Get domain scan statistics and history
+#### Domain Operations (Full CRUD)
+- `list_domains()` - GET /api/v1/domains - Retrieve paginated list of all domains
+- `create_domain()` - POST /api/v1/domains - Create a new domain
+- `get_domain()` - GET /api/v1/domains/{domain} - Get detailed information for a specific domain
+- `update_domain()` - PUT /api/v1/domains/{domain} - Update domain settings
+- `delete_domain()` - DELETE /api/v1/domains/{domain} - Remove a domain
 
-#### Scan Operations (Read-Only)
-- `list_scans()` - Retrieve paginated list of scan sessions
-- `get_scan()` - Get status and details of a specific scan
-- `get_scan_results()` - Get complete results from a scan (subdomains, ports, etc.)
+#### Scan Operations (Async)
+- `list_scans()` - GET /api/v1/scans - Retrieve paginated list of scan sessions
+- `create_scan()` - POST /api/v1/scans - Create and queue a new scan (returns 202)
+- `get_scan()` - GET /api/v1/scans/{scan_id} - Get status and details of a specific scan
+- `get_scan_results()` - GET /api/v1/scans/{scan_id}/results - Get complete results from a scan
 
-#### Alert/Finding Operations
-- `list_alerts()` - Retrieve security alerts with filtering (severity, domain, min_severity)
-- `get_alert_statistics()` - Get alert counts by severity
-- `list_findings()` - Retrieve findings with filtering (severity, status, asset)
-- `get_finding()` - Get detailed finding information with evidence
-- `update_finding_status()` - Update finding status (requires API key authentication)
-- `get_finding_statistics()` - Get finding summaries and risk distribution
+#### Finding Operations
+- `list_findings()` - GET /api/v1/findings - Retrieve findings with filtering
+- `get_finding()` - GET /api/v1/findings/{id} - Get detailed finding information
+- `get_finding_statistics()` - GET /api/v1/findings/statistics/summary - Get finding summaries
 
 #### Health & Monitoring
-- `health_check()` - Verify API and database connectivity
-- `get_api_info()` - Get API version and metadata
+- `health_check()` - GET /api/v1/health - Verify API and database connectivity
 
 ### 2.4 Key Components
 
@@ -379,14 +376,14 @@ async def verify_api_key(request: Request, db: SQLModelManager):
 
 ### 3.1 Purpose
 
-Provide **shared business logic** between API and CLI layers. The service layer acts as an orchestration layer, coordinating between multiple components and enforcing business rules.
+Provide **shared business logic** for the API layer. The service layer acts as an orchestration layer, coordinating between multiple components and enforcing business rules.
 
 **Key Characteristics**:
-- Reused by both API and CLI
 - Domain logic and validation
-- Orchestrates complex workflows
+- Orchestrates complex workflows via ScanWorkflowOrchestrator
 - Handles errors and logging
 - Dependency injection ready
+- Clear separation: ScanService (CRUD) vs ScanWorkflowOrchestrator (execution)
 
 ### 3.2 Responsibilities
 
@@ -411,12 +408,25 @@ The Service Layer provides the following high-level business functions:
 - `update_domain()` - Modify domain properties (primary flag, contact, frequency)
 - `delete_domain()` - Remove domain with cascade deletion preview
 
-#### ScanService Functions
-- `execute_scan()` - Orchestrate complete scan workflow (Subfinder → Naabu → Dnsx → Httpx → Analysis)
+#### ScanService Functions (CRUD Operations)
+- `create_scan()` - Create new scan session
 - `get_scan_status()` - Get current scan progress and status
 - `get_scan_results()` - Retrieve all scan outputs (subdomains, ports, HTTP data)
 - `list_scans()` - Get paginated scan history with filtering
-- `create_scan_session()` - Initialize new scan with UUID and metadata
+- `update_scan_status()` - Update scan status (pending/running/completed/failed)
+- `execute_scan_workflow()` - Delegate to ScanWorkflowOrchestrator
+
+#### ScanWorkflowOrchestrator Functions (NEW - Workflow Execution)
+The 8-step scan workflow, extracted from ScanService:
+- `step1_discover_subdomains()` - Subfinder for subdomain enumeration
+- `step2_resolve_dns()` - Dnsx for DNS resolution and IP filtering
+- `step3_scan_ports()` - Naabu for port scanning
+- `step4_probe_http()` - Httpx for web service detection
+- `step5_verify_tls()` - Tlsx for TLS verification on non-web ports
+- `step6_detect_services()` - Nmap for service identification
+- `step7_detect_vulnerabilities()` - Nmap for vulnerability scanning
+- `step8_analyze()` - Risk scoring and finding generation
+- `execute_workflow()` - Run complete 8-step workflow
 
 #### AlertService Functions
 - `list_alerts()` - Get alerts with severity/domain filtering
@@ -452,22 +462,46 @@ class DomainService:
 ```
 
 #### ScanService
-**File**: `src/services/scan_service.py` (550+ lines)
+**File**: `src/services/scan_service.py` (~520 lines after refactor)
 
 **Responsibilities**:
-- Create scan sessions
-- Orchestrate tool execution (Subfinder → Naabu → Dnsx → Httpx)
-- Store scan results
-- Trigger analysis layer
+- Create scan sessions (CRUD)
 - Track scan status
+- Delegate workflow execution to ScanWorkflowOrchestrator
 
 **Methods**:
 ```python
 class ScanService:
-    def execute_scan(domain) -> Dict
+    def create_scan(domains, scan_type, tool_name) -> Dict
     def get_scan_status(scan_id) -> Dict
     def get_scan_results(scan_id) -> Dict
     def list_scans(limit, domain_filter) -> Dict
+    def update_scan_status(scan_id, status, error) -> None
+    def execute_scan_workflow(scan_id, domain, timeout) -> Dict
+```
+
+#### ScanWorkflowOrchestrator (NEW)
+**File**: `src/services/scan_workflow_orchestrator.py` (~600 lines)
+
+**Responsibilities**:
+- Execute 8-step scan workflow
+- Coordinate security tool execution
+- Handle port categorization (web vs non-web)
+- Service severity mapping
+- Integration with analysis layer
+
+**Methods**:
+```python
+class ScanWorkflowOrchestrator:
+    def step1_discover_subdomains(domain, scan_id, timeout) -> List[str]
+    def step2_resolve_dns(subdomains, timeout) -> Tuple[List, List]
+    def step3_scan_ports(active_subdomains, scan_id, timeout) -> List[Dict]
+    def step4_probe_http(ports_found, timeout) -> Tuple[List, Dict]
+    def step5_verify_tls(ports_found, timeout) -> Dict
+    def step6_detect_services(non_web_ports) -> Dict
+    def step7_detect_vulnerabilities(nmap_service_results) -> Dict
+    def step8_analyze(scan_id, scan_data) -> Optional[Dict]
+    def execute_workflow(scan_id, domain, timeout) -> Dict
 ```
 
 #### AlertService
@@ -688,309 +722,241 @@ class AlertService:
 
 ---
 
-## 4. Layer 3: CLI Layer (Full-Access)
+## 4. Layer 3: Messaging Layer (ZeroMQ + Job Persistence)
 
 ### 4.1 Purpose
 
-Provide **complete operational control** through a command-line interface. The CLI has full CRUD access and is used for all administrative operations.
+Provide **async job distribution** between the API layer and background workers using ZeroMQ PUSH/PULL pattern with **database-backed job persistence**. This enables non-blocking scan operations where the API can return immediately while workers process jobs, with crash recovery support.
 
 **Key Characteristics**:
-- Full read/write access
-- Click framework for commands
-- Multiple output formats (table, JSON, CSV, txt)
-- Interactive operations with confirmation
-- Direct tool execution capability
+- ZeroMQ PUSH/PULL pattern for job distribution
+- **Database-persisted jobs** (jobs saved to SQLite BEFORE ZeroMQ push)
+- Multiple workers can process jobs in parallel
+- Automatic job distribution across workers
+- **Stale job recovery** (jobs stuck >30 minutes are recovered)
+- **Worker ID tracking** for job claiming
 
 ### 4.2 Responsibilities
 
 #### Core Responsibilities
-- **Command Parsing**: Parse CLI arguments and options (Click)
-- **Domain Management**: Add, list, update, remove domains
-- **Scan Execution**: Single domain or batch scans
-- **Analysis Commands**: Run analysis, view findings
-- **API Key Management**: Create, list, revoke API keys
-- **Output Formatting**: Format results in multiple formats
-- **User Interaction**: Confirmation prompts, progress display
-- **Direct Tool Access**: Execute tools without scan workflow
+- **Job Queue Management**: Push/pull jobs between API and workers
+- **Socket Management**: PUSH socket for API, PULL socket for workers
+- **Job Persistence**: Save jobs to database before ZeroMQ push (NEW)
+- **Job Lifecycle Tracking**: Track job state through lifecycle (NEW)
+- **Stale Job Recovery**: Detect and recover stuck jobs (NEW)
+- **Worker Coordination**: Track which worker is processing which job (NEW)
+- **Connection Handling**: Connect, bind, and close sockets
+- **Configuration**: Configurable addresses and timeouts
 
 ### 4.3 High-Level Functions
 
-The CLI Layer provides **user interface and interaction** functions. It delegates business logic to the Service Layer.
+The Messaging Layer provides **job distribution** functions. It connects the API layer to background workers.
 
-**Key Distinction**: CLI Layer handles command parsing, user prompts, and output formatting. Service Layer handles the actual business logic.
+**Key Pattern**: API pushes jobs → ZeroMQ distributes → Workers pull and process → Database stores results
 
-#### Command Parsing & Validation
-- `parse_arguments()` - Parse Click command arguments and options
-- `validate_user_input()` - Validate domain names, scan IDs, etc.
-- `handle_command_errors()` - Display user-friendly error messages
+#### Job Queue Operations
+- `push_job()` - Push a job to the queue (API side)
+- `pull_job()` - Pull a job from the queue (Worker side)
+- `complete_job()` - Mark job as completed/failed (NEW)
+- `connect_push()` - Connect PUSH socket (API server)
+- `connect_pull()` - Bind PULL socket (Worker)
+- `set_worker_id()` - Set worker ID for job claiming (NEW)
+- `close()` - Close all sockets
 
-#### User Interaction
-- `prompt_confirmation()` - Interactive yes/no prompts (e.g., domain deletion)
-- `display_preview()` - Show what will be deleted before confirmation
-- `show_progress()` - Display scan progress indicators
-- `handle_keyboard_interrupt()` - Graceful Ctrl+C handling
+#### Job Persistence (NEW - `src/data/models/job.py`)
 
-#### Output Formatting (Multiple Formats)
-- `format_table()` - ASCII table output (default)
-- `format_json()` - JSON output for programmatic use
-- `format_csv()` - CSV output for spreadsheets
-- `format_txt()` - Plain text output for piping
-- `format_colors()` - Colorized output (success/error/warning)
-
-#### Domain Commands (wraps DomainService)
-- `domain_add_command()` - Parse args → call `DomainService.create_domain()` → format output
-- `domain_list_command()` - Parse args → call `DomainService.list_domains()` → format table/json/csv
-- `domain_update_command()` - Parse args → call `DomainService.update_domain()` → format output
-- `domain_remove_command()` - Show preview → prompt confirmation → call `DomainService.delete_domain()`
-- `domain_show_command()` - Call `DomainService.get_domain()` → format detailed output
-
-#### Scan Commands (wraps ScanService)
-- `scan_domain_command()` - Parse domain → call `ScanService.execute_scan()` → show progress → format results
-- `scan_batch_command()` - Get domains → loop scans → aggregate results → format summary
-- `history_command()` - Call `ScanService.list_scans()` → format as table with timestamps
-- `results_command()` - Call `ScanService.get_scan_results()` → format in requested output format
-
-#### Analysis Commands (wraps AnalysisService)
-- `analysis_run_command()` - Call `AnalysisService.run_analysis()` → show progress → format summary
-- `analysis_findings_command()` - Parse filters → call service → format findings table
-- `analysis_show_command()` - Call service → format finding details with evidence
-- `analysis_stats_command()` - Call service → format statistics with charts
-- `analysis_update_command()` - Parse status → call service → confirm update
-
-#### Direct Tool Commands (wraps Tools Layer)
-- `run_subfinder_command()` - Parse options → call `run_subfinder()` → format output
-- `run_naabu_command()` - Parse options → call `run_naabu()` → format output
-- `run_dnsx_command()` - Parse options → call `run_dnsx()` → format output
-- `run_httpx_command()` - Parse options → call `run_httpx()` → format output
-
-#### API Key Commands (wraps Service Layer)
-- `apikey_create_command()` - Parse permissions → call service → **display plain key once**
-- `apikey_list_command()` - Call service → format keys table (hashed values only)
-- `apikey_revoke_command()` - Prompt confirmation → call service → confirm revocation
-
-### 4.4 Command Structure
-
-```
-openeasd/
-├── domain              # Domain management
-│   ├── add            # Add new domain
-│   ├── list           # List all domains
-│   ├── update         # Update domain properties
-│   └── remove         # Delete domain (with confirmation)
-│
-├── scan               # Scan operations
-│   ├── domain         # Scan single domain
-│   └── (default)      # Batch scan all/primary domains
-│
-├── analysis           # Vulnerability analysis
-│   ├── run            # Execute analysis on scan
-│   ├── findings       # List findings
-│   ├── show           # Show finding details
-│   ├── stats          # Display statistics
-│   └── update         # Update finding status
-│
-├── run                # Direct tool execution
-│   ├── subfinder      # Run subfinder
-│   ├── naabu          # Run naabu
-│   ├── dnsx           # Run dnsx
-│   └── httpx          # Run httpx
-│
-├── apikey             # API key management
-│   ├── create         # Generate new API key
-│   ├── list           # List all API keys
-│   └── revoke         # Deactivate API key
-│
-├── history            # View scan history
-├── scans              # List all scans
-└── results            # View scan results
-```
-
-### 4.4 Code Examples
-
-#### Example 1: Domain Add Command
-**File**: `src/cli/main.py`
+Jobs are persisted to SQLite BEFORE being pushed to ZeroMQ:
 
 ```python
-import click
-from src.data.database.sqlmodel_manager import SQLModelManager
-from src.services.domain_service import DomainService
-
-@click.group(name='domain')
-def domain_group():
-    """Domain management commands."""
-    pass
-
-@domain_group.command('add')
-@click.argument('domain')
-@click.option('--primary', is_flag=True, help='Mark as primary domain')
-@click.option('--email', help='Contact email')
-@click.option('--frequency',
-              type=click.Choice(['hourly', 'daily', 'weekly', 'monthly']),
-              help='Scan frequency')
-def domain_add_command(domain, primary, email, frequency):
-    """Add a new domain to tracking."""
-    db = SQLModelManager()
-    db.initialize()
-    service = DomainService(db)
-
-    try:
-        result = service.create_domain(
-            domain=domain,
-            is_primary=primary,
-            contact_email=email,
-            scan_frequency=frequency
-        )
-
-        click.echo(click.style('✓ Domain added successfully', fg='green'))
-        click.echo(f"Domain: {result['domain']['domain']}")
-        click.echo(f"Primary: {result['domain']['is_primary']}")
-
-    except ValueError as e:
-        click.echo(click.style(f'✗ Error: {e}', fg='red'))
-    finally:
-        db.close()
+class Job(SQLModel, table=True):
+    id: str                    # Primary key (UUID)
+    job_type: str              # "scan", "analysis", etc.
+    payload: Optional[str]     # JSON payload
+    status: str                # pending/queued/processing/completed/failed/cancelled
+    scan_id: Optional[str]     # Associated scan session ID
+    worker_id: Optional[str]   # Worker that claimed the job
+    created_at: datetime       # Job creation time
+    queued_at: datetime        # When pushed to ZeroMQ
+    started_at: datetime       # When worker started processing
+    completed_at: datetime     # When job finished
+    error_message: Optional[str]  # Error details if failed
+    retry_count: int           # Number of retry attempts (default: 0)
+    max_retries: int           # Maximum retry limit (default: 3)
+    priority: int              # Job priority (lower = higher, default: 100)
 ```
 
-#### Example 2: Scan Execution with Progress
-**File**: `src/cli/commands_scan.py`
+#### Job Lifecycle States
+```
+pending -> queued -> processing -> completed
+                  ↘            ↗
+                    failed/cancelled
+```
+
+#### SQLModelManager Job Methods (10+ methods)
+- `create_job()` - Create new job record
+- `mark_job_queued()` - Update status when pushed to ZeroMQ
+- `claim_job()` - Worker claims job for processing
+- `complete_job()` - Mark job as completed/failed
+- `get_job()` - Retrieve job by ID
+- `get_stale_jobs()` - Find jobs stuck in processing (>30 min)
+- `get_pending_jobs()` - List jobs waiting for workers
+- `retry_job()` - Reset job for retry
+- `cancel_job()` - Cancel a pending/queued job
+- `get_job_statistics()` - Get counts by status
+- `cleanup_old_jobs()` - Remove old completed jobs (>7 days)
+
+#### Job Format
+```json
+{
+  "id": "uuid-string",
+  "type": "scan",
+  "payload": {
+    "scan_id": "scan-uuid",
+    "domain": "example.com",
+    "timeout": 300
+  },
+  "timestamp": "2025-12-03T10:00:00Z"
+}
+```
+
+#### Configuration Options
+- `push_address` - Address for PUSH socket (default: tcp://127.0.0.1:5555)
+- `pull_address` - Address for PULL socket (default: tcp://127.0.0.1:5555)
+- `send_timeout` - Timeout for send operations (default: 5000ms)
+- `recv_timeout` - Timeout for receive operations (default: 1000ms)
+- `high_water_mark` - Maximum queued messages (default: 1000)
+
+### 4.4 Architecture Pattern
+
+```
+┌─────────────────┐         ┌─────────────────┐         ┌─────────────────┐
+│   API Server    │         │     ZeroMQ      │         │    Workers      │
+│                 │         │                 │         │                 │
+│  POST /scans    │  PUSH   │   tcp://5555    │  PULL   │ scan_worker.py  │
+│  ─────────────► │ ──────► │                 │ ──────► │                 │
+│                 │         │   Job Queue     │         │  Process Jobs   │
+│  Returns 202    │         │                 │         │  Update DB      │
+└─────────────────┘         └─────────────────┘         └─────────────────┘
+        │                                                       │
+        │                      ┌──────────────────┐             │
+        └─────────────────────►│    Database      │◄────────────┘
+                              │   (SQLite)       │
+                              │  Status Updates  │
+                              └──────────────────┘
+```
+
+### 4.5 Code Examples
+
+#### Example 1: Job Queue Class
+**File**: `src/messaging/job_queue.py`
 
 ```python
-from rich.progress import Progress, SpinnerColumn, TextColumn
+import zmq
+import uuid
+from datetime import datetime
+from typing import Dict, Any, Optional
 
-@click.command('scan')
-@click.argument('domain')
-def scan_domain_command(domain):
-    """Scan a single domain."""
-    db = SQLModelManager()
-    db.initialize()
-    service = ScanService(db)
+class JobQueue:
+    def __init__(self, config=None):
+        self.config = config or MessagingConfig()
+        self.context = zmq.Context()
+        self.push_socket = None
+        self.pull_socket = None
 
-    with Progress(
-        SpinnerColumn(),
-        TextColumn("[progress.description]{task.description}"),
-        transient=True
-    ) as progress:
+    def connect_push(self) -> None:
+        """Connect PUSH socket (API server side)."""
+        self.push_socket = self.context.socket(zmq.PUSH)
+        self.push_socket.setsockopt(zmq.SNDTIMEO, self.config.send_timeout)
+        self.push_socket.connect(self.config.push_address)
 
-        task1 = progress.add_task("Running subfinder...", total=None)
-        subdomains = run_subfinder(domain)
-        progress.update(task1, completed=True)
+    def connect_pull(self) -> None:
+        """Bind PULL socket (worker side)."""
+        self.pull_socket = self.context.socket(zmq.PULL)
+        self.pull_socket.setsockopt(zmq.RCVTIMEO, self.config.recv_timeout)
+        self.pull_socket.bind(self.config.pull_address)
 
-        task2 = progress.add_task(f"Running naabu on {len(subdomains)} subdomains...", total=None)
-        ports = run_naabu(subdomains)
-        progress.update(task2, completed=True)
+    def push_job(self, job_type: str, payload: Dict) -> str:
+        """Push a job to the queue."""
+        job = {
+            "id": str(uuid.uuid4()),
+            "type": job_type,
+            "payload": payload,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+        self.push_socket.send_json(job)
+        return job["id"]
 
-        task3 = progress.add_task("Analyzing results...", total=None)
-        analysis = service.analysis_service.analyze_scan(scan_id, scan_data)
-        progress.update(task3, completed=True)
-
-    # Display results
-    click.echo(click.style(f'\n✓ Scan complete', fg='green'))
-    click.echo(f"Subdomains found: {len(subdomains)}")
-    click.echo(f"Ports discovered: {len(ports)}")
-    click.echo(f"Findings: {len(analysis['findings'])}")
+    def pull_job(self, block: bool = True) -> Optional[Dict]:
+        """Pull a job from the queue."""
+        flags = 0 if block else zmq.NOBLOCK
+        return self.pull_socket.recv_json(flags=flags)
 ```
 
-#### Example 3: Multiple Output Formats
-**File**: `src/cli/formatters.py`
+#### Example 2: Worker Process with Job Persistence (NEW)
+**File**: `workers/scan_worker.py`
 
 ```python
-from tabulate import tabulate
-import json
+class ScanWorker:
+    def __init__(self):
+        self.worker_id = f"worker-{uuid.uuid4().hex[:8]}"  # Unique worker ID
+        self.db_manager = SQLModelManager()
+        self.db_manager.initialize()
 
-def format_domains(domains: List[Dict], format: str = 'table') -> str:
-    """Format domain list in specified format."""
+        # Initialize job queue with database manager
+        self.job_queue = JobQueue(db_manager=self.db_manager)
+        self.job_queue.set_worker_id(self.worker_id)
 
-    if format == 'json':
-        return json.dumps(domains, indent=2)
+        self.scan_service = ScanService(db_manager=self.db_manager)
+        self._last_recovery_check = 0
 
-    elif format == 'csv':
-        if not domains:
-            return ''
-        headers = domains[0].keys()
-        lines = [','.join(headers)]
-        for domain in domains:
-            lines.append(','.join(str(domain.get(h, '')) for h in headers))
-        return '\n'.join(lines)
+    def start(self):
+        """Start processing jobs."""
+        self.job_queue.connect_pull()
+        self._recover_stale_jobs()  # Recover on startup
 
-    elif format == 'table':
-        if not domains:
-            return 'No domains found'
-        headers = domains[0].keys()
-        rows = [[domain.get(h, '') for h in headers] for domain in domains]
-        return tabulate(rows, headers=headers, tablefmt='grid')
+        while self.running:
+            self._periodic_recovery_check()  # Check every 60 seconds
+            job = self.job_queue.pull_job(block=True)
+            if job:
+                self._process_job(job)
 
-    else:  # txt
-        lines = []
-        for domain in domains:
-            lines.append(f"Domain: {domain['domain']}")
-            lines.append(f"  Primary: {domain['is_primary']}")
-            lines.append(f"  Scans: {domain['scan_count']}")
-            lines.append('')
-        return '\n'.join(lines)
+    def _process_scan_job(self, job_id, payload):
+        scan_id = payload.get("scan_id")
+        domain = payload.get("domain")
 
-# Usage
-@click.command()
-@click.option('--format', type=click.Choice(['table', 'json', 'csv', 'txt']),
-              default='table')
-def list_domains(format):
-    """List all domains."""
-    domains = service.list_domains()
-    output = format_domains(domains['domains'], format)
-    click.echo(output)
+        # Update status to running
+        self.scan_service.update_scan_status(scan_id, "running")
+
+        # Execute 8-step workflow
+        self.scan_service.execute_scan_workflow(scan_id, domain)
+
+        # Update status to completed
+        self.scan_service.update_scan_status(scan_id, "completed")
+
+        # Mark job as completed
+        self.job_queue.complete_job(job_id, success=True)
+
+    def _recover_stale_jobs(self):
+        """Recover jobs stuck in processing (>30 min)."""
+        stale_jobs = self.db_manager.get_stale_jobs(stale_minutes=30)
+        for job in stale_jobs:
+            if self.db_manager.retry_job(job['id']):
+                logger.info(f"Job {job['id']} reset for retry")
+            else:
+                self.db_manager.complete_job(job['id'], success=False,
+                    error_message="Max retries exceeded")
 ```
 
-#### Example 4: Interactive Deletion with Preview
-**File**: `src/cli/commands_domain.py`
-
-```python
-@domain_group.command('remove')
-@click.argument('domain')
-@click.option('--force', is_flag=True, help='Skip confirmation')
-def domain_remove_command(domain, force):
-    """Remove a domain from tracking."""
-    db = SQLModelManager()
-    db.initialize()
-    service = DomainService(db)
-
-    try:
-        # Get deletion preview
-        preview = service.get_deletion_preview(domain)
-
-        # Display what will be deleted
-        click.echo(click.style(f'\nDeletion Preview for {domain}:', fg='yellow'))
-        click.echo(f"  Scan sessions: {preview['scan_sessions']}")
-        click.echo(f"  Subdomains: {preview['subdomains']}")
-        click.echo(f"  Findings: {preview['findings']}")
-        click.echo(f"  Tool results: {preview['tool_results']}")
-
-        # Confirm deletion
-        if not force:
-            if not click.confirm('\nAre you sure you want to delete this domain?'):
-                click.echo('Deletion cancelled')
-                return
-
-        # Perform deletion
-        result = service.delete_domain(domain, force=True)
-
-        click.echo(click.style('\n✓ Domain deleted successfully', fg='green'))
-        click.echo(f"Deleted: {result['deleted_count']} records")
-
-    except ValueError as e:
-        click.echo(click.style(f'✗ Error: {e}', fg='red'))
-    finally:
-        db.close()
-```
-
-### 4.5 Files
+### 4.6 Files
 
 | File | Lines | Purpose |
 |------|-------|---------|
-| `src/cli/main.py` | 670+ | Click CLI entry point |
-| `src/cli/commands_scan.py` | 500+ | Scan commands |
-| `src/cli/commands_domain.py` | 200+ | Domain commands |
-| `src/cli/commands_analysis.py` | 450+ | Analysis commands |
-| `src/cli/commands_apikey.py` | 300+ | API key commands |
-| `src/cli/formatters.py` | 500+ | Output formatters |
+| `src/messaging/__init__.py` | 10+ | Module exports |
+| `src/messaging/config.py` | 30+ | ZeroMQ configuration |
+| `src/messaging/job_queue.py` | 150+ | Job queue with DB integration |
+| `src/data/models/job.py` | 45 | Job persistence model (NEW) |
+| `workers/__init__.py` | 5+ | Workers module |
+| `workers/scan_worker.py` | 310+ | Scan job processor with recovery |
 
 ---
 
@@ -2040,7 +2006,7 @@ class SQLModelManager:
         """
         if db_path is None:
             config = Config()
-            db_path = config.get('database.database_path', 'data/openeasd.sqlite')
+            db_path = config.get('database.database_path', 'data/openeasd.db')
 
         # Create parent directory if needed
         Path(db_path).parent.mkdir(parents=True, exist_ok=True)
@@ -2305,196 +2271,9 @@ def get_domain_statistics(self) -> Dict[str, Any]:
 
 ---
 
-## 8. Layer 7: Messaging Layer (Real-Time Events)
+## 8. Data Flow Patterns
 
-### 8.1 Purpose
-
-The Messaging Layer provides real-time event streaming capabilities using ZeroMQ's Pub/Sub pattern, enabling:
-- Live progress tracking during scan execution
-- Real-time event streaming to WebSocket clients
-- Decoupled inter-layer communication
-- Non-blocking event delivery with topic filtering
-
-### 8.2 Architecture
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    Messaging Layer (Layer 7)                 │
-│                                                              │
-│  ┌──────────────┐       ┌──────────────┐                   │
-│  │  EventBus    │◄──────┤EventPublisher│                   │
-│  │   (PUB)      │       │              │                   │
-│  └──────┬───────┘       └──────▲───────┘                   │
-│         │                      │                            │
-│         │ IPC Socket          publish()                    │
-│         │ (ZeroMQ)             │                            │
-│         │                      │                            │
-│  ┌──────▼───────┐       ┌─────┴────────┐                  │
-│  │EventSubscriber◄──────┤   Services   │                   │
-│  │    (SUB)     │       │              │                   │
-│  └──────────────┘       └──────────────┘                   │
-└─────────────────────────────────────────────────────────────┘
-         │                       ▲
-         │ Events                │ Events
-         ▼                       │
-┌─────────────────┐    ┌────────┴───────┐
-│  WebSocket API  │    │  ScanService   │
-│    Clients      │    │AnalysisService │
-└─────────────────┘    └────────────────┘
-```
-
-### 8.3 Key Components
-
-**EventBus** (`src/messaging/bus.py`)
-- Central Pub/Sub broker using ZeroMQ
-- Single PUB socket bound to IPC endpoint
-- Handles event distribution to all subscribers
-- Automatic cleanup on shutdown
-
-**EventPublisher** (`src/messaging/publisher.py`)
-- Type-safe publishing API with 11 event types
-- Automatic JSON serialization
-- Timestamp injection (IST timezone)
-- Used by Service Layer to publish events
-
-**EventSubscriber** (`src/messaging/subscriber.py`)
-- Non-blocking event reception
-- Topic-based filtering with wildcards (e.g., `scan.*`, `finding.*`)
-- Batch polling support for efficiency
-- Used by CLI progress display and WebSocket API
-
-**EventBusManager** (`src/messaging/manager.py`)
-- Singleton manager for global EventBus instance
-- Lifecycle management (start/stop)
-- Shared across CLI and API processes
-
-### 8.4 Event Schema
-
-All events follow a common structure:
-
-```python
-{
-    "event_type": str,      # e.g., "scan.started", "finding.discovered"
-    "timestamp": str,       # ISO format timestamp (IST)
-    "scan_id": str,         # UUID of the scan
-    ...                     # Event-specific fields
-}
-```
-
-**Event Types (11 total)**:
-1. `scan.started` - Scan initiated
-2. `scan.completed` - Scan finished successfully
-3. `scan.failed` - Scan encountered error
-4. `scan.tool.started` - Individual tool execution started
-5. `scan.tool.completed` - Tool execution completed
-6. `scan.tool.failed` - Tool execution failed
-7. `finding.discovered` - Vulnerability finding detected
-8. `alert.created` - Security alert generated
-9. `analysis.started` - Analysis phase initiated
-10. `analysis.completed` - Analysis phase completed
-11. `analysis.failed` - Analysis phase failed
-
-### 8.5 Integration Points
-
-**Service Layer Integration**:
-```python
-from src.messaging.manager import EventBusManager
-from src.services.scan_service import ScanService
-
-# Start EventBus (done automatically by CLI/API)
-publisher = EventBusManager.start()
-
-# Create ScanService with event publishing
-scan_service = ScanService(
-    db_manager=db_manager,
-    enable_analysis=True,
-    event_publisher=publisher  # Enable real-time events
-)
-
-# Execute scan - events published automatically
-result = scan_service.execute_scan('example.com')
-```
-
-**WebSocket API Integration** (`src/api/routes/events.py`):
-```python
-@router.websocket("/events")
-async def websocket_events(websocket: WebSocket, topics: str = "scan.*,tool.*"):
-    await websocket.accept()
-    subscriber = EventSubscriber(ipc_path, topics=topics.split(','))
-
-    while True:
-        event = subscriber.poll(timeout_ms=100)
-        if event:
-            await websocket.send_json(event)
-```
-
-**CLI Progress Display** (`src/cli/progress.py`):
-```python
-from src.cli.progress import ContextProgressDisplay
-
-# Use as context manager for automatic cleanup
-with ContextProgressDisplay(scan_id) as progress:
-    # Scan runs here, progress displayed in real-time
-    scan_service.execute_scan(domain)
-
-# Progress display stops automatically
-```
-
-### 8.6 File Reference
-
-| File | Purpose | Lines | Complexity |
-|------|---------|-------|------------|
-| `src/messaging/bus.py` | EventBus implementation | ~162 | Low |
-| `src/messaging/publisher.py` | EventPublisher with 11 methods | ~291 | Medium |
-| `src/messaging/subscriber.py` | EventSubscriber | ~167 | Low |
-| `src/messaging/manager.py` | Singleton EventBusManager | ~78 | Low |
-| `src/messaging/events.py` | Event dataclass schemas | ~160 | Low |
-| `src/api/routes/events.py` | WebSocket endpoint | ~100 | Medium |
-| `src/cli/progress.py` | Real-time CLI progress | ~265 | Medium |
-
-### 8.7 Testing
-
-**Test Coverage**: 100% (26/26 tests passing)
-
-**Test Categories**:
-- **EventBus Tests** (8 tests): Initialization, start/stop, publishing, context managers
-- **Pub/Sub Integration** (8 tests): Message flow, topic filtering, multiple subscribers
-- **Service Integration** (8 tests): ScanService and AnalysisService event publishing
-- **WebSocket Tests** (2 tests): Connectivity and status endpoint
-
-**Run Tests**:
-```bash
-pytest tests/messaging/ tests/test_websocket_events.py -v
-```
-
-### 8.8 Performance
-
-- **Latency**: < 1ms for local IPC events
-- **Throughput**: 10,000+ events/sec
-- **Memory**: ~10MB overhead for EventBus
-- **CPU**: Negligible impact on scan performance
-
-### 8.9 Configuration
-
-**IPC Socket Path**: `/tmp/openeasd-events.ipc` (default)
-**High Water Mark**: 1000 messages (configurable)
-**Send Timeout**: 5000ms (configurable)
-**Receive Timeout**: 5000ms (configurable)
-
-### 8.10 Benefits
-
-✅ **Real-time visibility** - See scan progress as it happens
-✅ **Decoupled architecture** - Services don't directly depend on consumers
-✅ **Non-blocking** - Events delivered asynchronously
-✅ **Scalable** - ZeroMQ handles high-frequency events efficiently
-✅ **Type-safe** - Dataclass-based event schemas
-✅ **Backwards compatible** - Optional layer, doesn't break existing functionality
-
----
-
-## 9. Data Flow Patterns
-
-### 9.1 API GET Request Flow
+### 8.1 API GET Request Flow
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
@@ -2697,7 +2476,7 @@ Time: ~2-5 minutes (depending on domain size)
 
 ## 9. Layer Interactions
 
-### 9.1 Dependency Graph
+### 8.1 Dependency Graph
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -2746,7 +2525,7 @@ Time: ~2-5 minutes (depending on domain size)
 └─────────┘ └────────┘ └──────────────────┘ └──────────────┘
 ```
 
-### 9.2 Layer Communication Patterns
+### 8.2 Layer Communication Patterns
 
 #### Pattern 1: API → Service → Database
 ```
@@ -2789,7 +2568,7 @@ Example:
   openeasd run subfinder example.com → run_subfinder() directly
 ```
 
-### 9.3 Interface Boundaries
+### 8.3 Interface Boundaries
 
 #### Service Layer → Database Interface
 ```python
@@ -2830,7 +2609,7 @@ ports = run_naabu(subdomains)       # Returns List[Dict]
 
 ## 10. Security Model
 
-### 10.1 Two-Tier Access Model
+### 12.1 Two-Tier Access Model
 
 OpenEASD implements a **security-first architecture** with two distinct access tiers:
 
@@ -2874,7 +2653,7 @@ OpenEASD implements a **security-first architecture** with two distinct access t
 - API key management
 - Administrative operations
 
-### 10.2 API Key Management
+### 12.2 API Key Management
 
 #### Key Generation
 ```bash
@@ -2918,7 +2697,7 @@ if not stored_key or not stored_key.is_active:
 }
 ```
 
-### 10.3 Rate Limiting
+### 12.3 Rate Limiting
 
 **Per API Key Limits**:
 - Domain operations: 50 requests/hour
@@ -2944,7 +2723,7 @@ async def rate_limit_middleware(request: Request, call_next):
     return await call_next(request)
 ```
 
-### 10.4 Audit Logging
+### 12.4 Audit Logging
 
 **All write operations are logged**:
 - Domain creation/update/deletion

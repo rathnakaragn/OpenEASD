@@ -13,6 +13,7 @@ from datetime import datetime
 from src.analysis.config import get_analysis_config
 from src.analysis.scoring.risk_scorer import RiskScorer
 from src.analysis.detectors.port_detector import PortVulnerabilityDetector
+from src.analysis.detectors.service_detector import ServiceVulnerabilityDetector
 from src.utils.timezone import get_ist_now
 
 
@@ -65,13 +66,65 @@ class AnalysisService:
             detectors.append(PortVulnerabilityDetector(config=port_config))
             logger.info("Loaded PortVulnerabilityDetector")
 
-        # TODO: Add more detectors as they are implemented
+        # Service Detector (analyzes nmap service detection results)
+        if self.config.get('analysis.detectors.service_detector.enabled', True):
+            service_config = self.config.get('analysis.detectors.service_detector', {})
+            detectors.append(ServiceVulnerabilityDetector(config=service_config))
+            logger.info("Loaded ServiceVulnerabilityDetector")
+
+        # Future detectors:
         # - WebVulnerabilityDetector
         # - TLSVulnerabilityDetector
         # - DNSVulnerabilityDetector
         # - EmailSecurityDetector
 
         return detectors
+
+    def _validate_scan_data(self, scan_data: Dict[str, Any]) -> None:
+        """
+        Validate scan_data structure before analysis.
+
+        Args:
+            scan_data: Dictionary containing scan results
+
+        Raises:
+            ValueError: If scan_data is invalid or missing required structure
+        """
+        if scan_data is None:
+            raise ValueError("scan_data cannot be None")
+
+        if not isinstance(scan_data, dict):
+            raise ValueError(f"scan_data must be a dictionary, got {type(scan_data).__name__}")
+
+        # Validate known result types have correct structure
+        expected_list_keys = [
+            'subfinder_results',
+            'dnsx_results',
+            'naabu_results',
+            'httpx_results'
+        ]
+
+        for key in expected_list_keys:
+            if key in scan_data:
+                value = scan_data[key]
+                if value is not None and not isinstance(value, list):
+                    raise ValueError(
+                        f"scan_data['{key}'] must be a list or None, got {type(value).__name__}"
+                    )
+
+        # Validate dict-type result fields
+        expected_dict_keys = [
+            'nmap_service_results',
+            'tlsx_results'  # tlsx returns {host:port -> result} mapping
+        ]
+
+        for key in expected_dict_keys:
+            if key in scan_data:
+                value = scan_data[key]
+                if value is not None and not isinstance(value, dict):
+                    raise ValueError(
+                        f"scan_data['{key}'] must be a dict or None, got {type(value).__name__}"
+                    )
 
     def analyze_scan_results(
         self,
@@ -106,6 +159,9 @@ class AnalysisService:
             }
         """
         logger.info(f"Starting analysis for scan_id: {scan_id}")
+
+        # Validate input data structure
+        self._validate_scan_data(scan_data)
 
         try:
             # Step 1: Collect findings from all detectors

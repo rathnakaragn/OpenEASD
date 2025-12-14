@@ -11,7 +11,7 @@ from src.data.models import Domain
 from src.api.dependencies import get_db_manager
 from src.api.settings import settings
 
-router = APIRouter()
+router = APIRouter(redirect_slashes=False)
 
 
 @router.get("/health", response_model=HealthResponse)

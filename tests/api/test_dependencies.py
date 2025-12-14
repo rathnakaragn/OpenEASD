@@ -10,28 +10,29 @@ from src.api.dependencies import (
     get_scan_service,
     get_findings_service,
 )
+import src.api.dependencies as deps
 from src.services.domain_service import DomainService
 from src.services.scan_service import ScanService
 from src.services.findings_service import FindingsService
 from src.data.database.sqlmodel_manager import SQLModelManager
 
-@patch('src.api.dependencies.SQLModelManager')
-def test_get_db_manager(mock_sql_manager):
-    """Test the database manager dependency."""
-    mock_instance = MagicMock()
-    mock_sql_manager.return_value = mock_instance
+def test_get_db_manager():
+    """Test the database manager dependency returns singleton."""
+    # Reset the singleton for testing
+    deps._db_manager = None
+    deps._db_initialized = False
 
-    # The dependency is a generator, so we iterate over it
-    db_gen = get_db_manager()
-    db = next(db_gen)
+    # First call should create instance
+    db1 = get_db_manager()
+    assert isinstance(db1, SQLModelManager)
 
-    assert db == mock_instance
-    mock_instance.initialize.assert_called_once()
+    # Second call should return same instance (singleton)
+    db2 = get_db_manager()
+    assert db1 is db2
 
-    # Test that the finally block is called
-    with pytest.raises(StopIteration):
-        next(db_gen)
-    mock_instance.close.assert_called_once()
+    # Reset for other tests
+    deps._db_manager = None
+    deps._db_initialized = False
 
 
 def test_get_domain_service():

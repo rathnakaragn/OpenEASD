@@ -9,7 +9,7 @@ temp_directory: /tmp/openeasd
 # API Configuration
 api:
   title: "OpenEASD API (Read-Only)"
-  description: "Read-Only API for monitoring External Attack Surface Detection"
+  description: "API for Open Source External Attack Surface Detection"
   version: "2.0.0-readonly"
   host: "0.0.0.0"
   port: 8000
@@ -17,10 +17,14 @@ api:
   redoc_url: "/api/redoc"
   openapi_url: "/api/openapi.json"
   cors:
-    allow_origins: ["*"]           # Allow all origins by default
-    allow_credentials: true
-    allow_methods: ["*"]
-    allow_headers: ["*"]
+    # Single-server setup: frontend served from same origin as API
+    # CORS only needed for external dashboard/monitoring tools
+    allow_origins:
+      - "http://localhost:8000"    # Same-origin (dev)
+      - "http://127.0.0.1:8000"    # Same-origin (dev)
+    allow_credentials: false       # Read-only API doesn't need credentials
+    allow_methods: ["GET", "OPTIONS"]  # Read-only API methods only
+    allow_headers: ["Content-Type", "Accept"]
   frontend_dir: "frontend"         # Frontend directory path
   reload: false                    # Auto-reload for development
 
@@ -36,7 +40,7 @@ workflow:
 
 # Database Configuration
 database:
-  database_path: data/openeasd.sqlite  # Path to SQLite database file
+  database_path: data/openeasd.db  # Path to SQLite database file
   max_connections: 10                  # Maximum database connections
   connection_timeout: 30.0             # Connection timeout in seconds
   query_timeout: 60.0                  # Query timeout in seconds

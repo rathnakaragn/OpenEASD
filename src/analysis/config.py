@@ -148,6 +148,11 @@ class AnalysisConfig:
         return self.get('analysis.detectors.service_detector.medium_risk_services',
                        ['ssh', 'smtp', 'dns', 'snmp', 'ldap', 'nfs', 'rpc'])
 
+    def get_low_risk_services(self) -> List[str]:
+        """Get list of low-risk services."""
+        return self.get('analysis.detectors.service_detector.low_risk_services',
+                       ['ntp', 'ntp-time'])
+
     def get_severity_thresholds(self) -> Dict[str, int]:
         """Get severity threshold mapping."""
         return {

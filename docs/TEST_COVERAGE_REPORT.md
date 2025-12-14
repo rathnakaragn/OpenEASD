@@ -1,6 +1,6 @@
 # OpenEASD Test Coverage Report
 
-**Date**: November 26, 2025
+**Date**: December 3, 2025
 **Project**: OpenEASD - Automated External Attack Surface Detection
 **Coverage Summary**: 79% overall code coverage
 
@@ -10,10 +10,15 @@
 
 This report details the comprehensive test coverage for the OpenEASD project. The test suite includes:
 
-- **Total Tests**: 378 (367 passing, 11 failing)
+- **Total Tests**: 312 (all passing)
 - **Overall Coverage**: 79%
-- **Test Files**: 19 test modules
+- **Test Files**: 18 test modules
 - **Test Framework**: pytest 8.2.2
+
+### Recent Changes (December 3, 2025)
+- Removed 6 dead tests for deprecated `_generate_service_alert()` and `_enrich_alert_with_vulns()` methods
+- Alert/finding generation now handled exclusively by Analysis Layer
+- All 312 remaining tests passing
 
 ---
 

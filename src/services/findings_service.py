@@ -13,19 +13,16 @@ from typing import List, Dict, Any, Optional
 import logging
 
 from src.data.database.sqlmodel_manager import SQLModelManager
+from src.services.exceptions import (
+    FindingNotFound,
+    InvalidFindingStatus,
+    InvalidFilterValue,
+)
 
+# Re-export for backward compatibility
+__all__ = ['FindingsService', 'FindingNotFound', 'InvalidFindingStatus']
 
 logger = logging.getLogger(__name__)
-
-
-class FindingNotFound(Exception):
-    """Raised when a finding is not found."""
-    pass
-
-
-class InvalidFindingStatus(Exception):
-    """Raised when an invalid finding status is provided."""
-    pass
 
 
 VALID_STATUSES = ['new', 'open', 'acknowledged', 'resolved', 'reopened', 'false_positive']
@@ -257,5 +254,38 @@ class FindingsService:
             offset=offset
         )
 
+    def delete_finding(self, finding_id: str) -> Dict[str, Any]:
+        """
+        Delete a finding by ID.
 
-__all__ = ['FindingsService', 'FindingNotFound', 'InvalidFindingStatus']
+        Args:
+            finding_id: UUID of the finding to delete
+
+        Returns:
+            Dict with success status and message
+
+        Raises:
+            FindingNotFound: If finding doesn't exist
+        """
+        # Check if finding exists
+        existing = self.db.get_finding_by_id(finding_id)
+        if not existing:
+            raise FindingNotFound(f"Finding {finding_id} not found")
+
+        # Delete the finding
+        success = self.db.delete_finding(finding_id)
+
+        if success:
+            logger.info(f"Deleted finding {finding_id}")
+            return {
+                "success": True,
+                "message": f"Finding {finding_id} deleted successfully",
+                "finding_id": finding_id
+            }
+        else:
+            logger.error(f"Failed to delete finding {finding_id}")
+            return {
+                "success": False,
+                "message": f"Failed to delete finding {finding_id}",
+                "finding_id": finding_id
+            }

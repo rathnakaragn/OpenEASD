@@ -1,0 +1,65 @@
+Alembic Database Migrations for OpenEASD
+========================================
+
+This directory contains database migrations for the OpenEASD project.
+
+Quick Start
+-----------
+
+1. Install dependencies:
+   uv sync --extra dev
+
+2. For existing databases (mark current schema as migrated):
+   alembic stamp head
+
+3. For new databases (run all migrations):
+   alembic upgrade head
+
+Common Commands
+---------------
+
+# Show current migration status
+alembic current
+
+# Show migration history
+alembic history
+
+# Create a new migration (auto-detect changes)
+alembic revision --autogenerate -m "Description of changes"
+
+# Create a manual migration
+alembic revision -m "Description of changes"
+
+# Upgrade to latest
+alembic upgrade head
+
+# Upgrade to specific version
+alembic upgrade <revision_id>
+
+# Downgrade one version
+alembic downgrade -1
+
+# Downgrade to specific version
+alembic downgrade <revision_id>
+
+# Show SQL without executing
+alembic upgrade head --sql
+
+Environment Variables
+---------------------
+
+OPENEASD_DATABASE_URL: Override database URL (default: sqlite:///data/openeasd.db)
+
+Example:
+  export OPENEASD_DATABASE_URL="sqlite:///data/production.db"
+  alembic upgrade head
+
+Directory Structure
+-------------------
+
+alembic/
+├── env.py          # Alembic environment configuration
+├── script.py.mako  # Migration template
+├── versions/       # Migration scripts
+│   └── 001_initial_schema.py
+└── README          # This file

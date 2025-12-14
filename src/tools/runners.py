@@ -42,6 +42,13 @@ from src.tools.nmap import (
     _extract_cves_from_nmap_output,
 )
 
+# Re-export from nuclei module
+from src.tools.nuclei import (
+    run_nuclei_network,
+    run_nuclei_network_parallel,
+    run_nuclei_service,
+)
+
 __all__ = [
     # Subfinder
     'run_subfinder',
@@ -64,4 +71,8 @@ __all__ = [
     'run_nmap_vuln_detection_parallel',
     '_parse_nmap_xml',
     '_extract_cves_from_nmap_output',
+    # Nuclei
+    'run_nuclei_network',
+    'run_nuclei_network_parallel',
+    'run_nuclei_service',
 ]

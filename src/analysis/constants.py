@@ -54,10 +54,12 @@ REMOTE_ACCESS_PORTS: Set[int] = {
 }
 
 # Unencrypted protocol ports (should use TLS)
+# NOTE: Port 80 (HTTP) is NOT included - web services are handled separately
+# via httpx redirect detection, not tlsx unencrypted protocol detection
 UNENCRYPTED_PROTOCOL_PORTS: Set[int] = {
     21,     # FTP (should use FTPS)
     23,     # Telnet (should use SSH)
-    80,     # HTTP (should use HTTPS)
+    # 80 - HTTP handled by httpx redirect detection, not here
     110,    # POP3 (should use POP3S)
     143,    # IMAP (should use IMAPS)
     3306,   # MySQL (should use TLS)

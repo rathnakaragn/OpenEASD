@@ -10,6 +10,7 @@ from .scan import ScanSession
 from .subdomain import SubdomainHistory
 from .tool_results import SubfinderResult, AmassResult, NmapResult, NaabuResult
 from .finding import Finding, Vulnerability, CVEMapping, FindingGroup
+from .job import Job
 
 __all__ = [
     'Domain',
@@ -23,4 +24,5 @@ __all__ = [
     'Vulnerability',
     'CVEMapping',
     'FindingGroup',
+    'Job',
 ]

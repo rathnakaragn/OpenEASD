@@ -13,9 +13,9 @@ import json
 import uuid
 from datetime import datetime
 from pathlib import Path
-from typing import List, Dict, Optional, Any
+from typing import List, Dict, Optional, Any, TypedDict
 
-from sqlmodel import SQLModel, Session, create_engine, select, func, and_, delete
+from sqlmodel import SQLModel, Session, create_engine, select, func, and_, or_, delete
 
 from src.core.interfaces.database import DatabaseManager
 from src.data.models.domain import Domain
@@ -34,14 +34,64 @@ from src.data.models.finding import (
     CVEMapping,
     FindingGroup
 )
+from src.data.models.job import Job
 # Import converters for model-to-dict conversion (eliminates duplicate code)
 from src.data.converters import (
     ScanConverter,
     ToolResultConverter,
     FindingConverter
 )
+# Import DTOs for improved type hints (QA enhancement)
+from src.data.dto import (
+    JobDTO,
+    JobStatisticsDTO,
+    FindingStatisticsDTO
+)
 from src.utils.timezone import get_ist_now, to_ist
 from src.utils.config import Config
+
+
+# TypedDict definitions for improved type hints (QA enhancement)
+class JobDict(TypedDict, total=False):
+    """Type hint for job dictionary returned by database methods."""
+    id: str
+    job_type: str
+    payload: Dict[str, Any]
+    status: str
+    scan_id: Optional[str]
+    created_at: Optional[str]
+    queued_at: Optional[str]
+    started_at: Optional[str]
+    completed_at: Optional[str]
+    worker_id: Optional[str]
+    error_message: Optional[str]
+    retry_count: int
+    max_retries: int
+    priority: int
+
+
+class JobListResult(TypedDict):
+    """Type hint for paginated job list result."""
+    jobs: List[JobDict]
+    total: int
+    has_more: bool
+
+
+def _escape_sql_wildcards(value: str) -> str:
+    """
+    Escape SQL wildcard characters to prevent SQL injection in LIKE queries.
+
+    The .contains() method uses LIKE with wildcards. User input containing
+    '%' or '_' could alter query behavior without escaping.
+
+    Args:
+        value: User-provided string value
+
+    Returns:
+        Escaped string safe for use in LIKE queries
+    """
+    # Escape backslash first, then wildcards
+    return value.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_')
 
 
 class SQLModelManager(DatabaseManager):
@@ -52,11 +102,11 @@ class SQLModelManager(DatabaseManager):
         Initialize SQLModel database manager.
 
         Args:
-            db_path: Path to SQLite database file (default: from config or data/openeasd.sqlite)
+            db_path: Path to SQLite database file (default: from config or data/openeasd.db)
         """
         if db_path is None:
             config = Config()
-            db_path = config.get('database.database_path', 'data/openeasd.sqlite')
+            db_path = config.get('database.database_path', 'data/openeasd.db')
 
         # Create parent directory if needed
         Path(db_path).parent.mkdir(parents=True, exist_ok=True)
@@ -71,8 +121,9 @@ class SQLModelManager(DatabaseManager):
         self.db_path = db_path
 
     def initialize(self) -> None:
-        """Initialize database and create all tables."""
-        SQLModel.metadata.create_all(self.engine)
+        """Initialize database and create all tables if they don't exist."""
+        # checkfirst=True ensures tables are only created if they don't exist
+        SQLModel.metadata.create_all(self.engine, checkfirst=True)
 
     def close(self) -> None:
         """Close database connection."""
@@ -403,8 +454,9 @@ class SQLModelManager(DatabaseManager):
 
             # Apply filters
             if domain:
-                # Search in domains_scanned JSON array
-                query = query.where(ScanSession.domains_scanned.contains(domain))
+                # Search in domains_scanned JSON array (escape wildcards for security)
+                escaped_domain = _escape_sql_wildcards(domain)
+                query = query.where(ScanSession.domains_scanned.contains(escaped_domain))
             if scan_type:
                 query = query.where(ScanSession.scan_type == scan_type)
             if tool_name:
@@ -413,7 +465,8 @@ class SQLModelManager(DatabaseManager):
             # Get total count
             count_query = select(func.count()).select_from(ScanSession)
             if domain:
-                count_query = count_query.where(ScanSession.domains_scanned.contains(domain))
+                escaped_domain = _escape_sql_wildcards(domain)
+                count_query = count_query.where(ScanSession.domains_scanned.contains(escaped_domain))
             if scan_type:
                 count_query = count_query.where(ScanSession.scan_type == scan_type)
             if tool_name:
@@ -435,6 +488,61 @@ class SQLModelManager(DatabaseManager):
                 'limit': limit,
                 'offset': offset
             }
+
+    def delete_scan(self, scan_id: str) -> Dict[str, Any]:
+        """
+        Delete a scan session and all associated data in a single transaction.
+
+        Args:
+            scan_id: Scan ID to delete
+
+        Returns:
+            Dictionary with success status and counts of deleted records
+
+        Raises:
+            ValueError: If scan not found
+
+        Note:
+            All deletions are performed in a single transaction to ensure
+            data consistency. If any deletion fails, the entire operation
+            is rolled back.
+        """
+        with Session(self.engine) as session:
+            try:
+                scan = session.get(ScanSession, scan_id)
+
+                if not scan:
+                    raise ValueError(f"Scan {scan_id} not found")
+
+                # Delete associated findings
+                findings_stmt = delete(Finding).where(Finding.scan_id == scan_id)
+                findings_result = session.exec(findings_stmt)
+                findings_deleted = findings_result.rowcount
+
+                # Delete associated tool results
+                subfinder_stmt = delete(SubfinderResult).where(SubfinderResult.scan_id == scan_id)
+                subfinder_result = session.exec(subfinder_stmt)
+                subfinder_deleted = subfinder_result.rowcount
+
+                naabu_stmt = delete(NaabuResult).where(NaabuResult.scan_id == scan_id)
+                naabu_result = session.exec(naabu_stmt)
+                naabu_deleted = naabu_result.rowcount
+
+                # Delete the scan session itself
+                session.delete(scan)
+                session.commit()
+
+                return {
+                    'success': True,
+                    'scan_id': scan_id,
+                    'findings_deleted': findings_deleted,
+                    'tool_results_deleted': subfinder_deleted + naabu_deleted
+                }
+
+            except Exception as e:
+                # Rollback transaction on any error
+                session.rollback()
+                raise
 
     # ============================================================================
     # Security Alerts
@@ -1011,6 +1119,9 @@ class SQLModelManager(DatabaseManager):
         Returns:
             Dictionary with counts of associated data
         """
+        # Escape wildcards for security in LIKE queries
+        escaped_domain = _escape_sql_wildcards(domain)
+
         with Session(self.engine) as session:
             preview = {
                 'domain': domain,
@@ -1020,7 +1131,7 @@ class SQLModelManager(DatabaseManager):
             # Count scan sessions
             scan_count = session.exec(
                 select(func.count()).select_from(ScanSession).where(
-                    ScanSession.domains_scanned.contains(domain)
+                    ScanSession.domains_scanned.contains(escaped_domain)
                 )
             ).one()
             preview['totals']['scan_sessions'] = scan_count
@@ -1056,17 +1167,17 @@ class SQLModelManager(DatabaseManager):
             ).one()
             preview['totals']['amass_results'] = amass_count
 
-            # Nmap and Naabu counts
+            # Nmap and Naabu counts (use escaped domain for LIKE queries)
             nmap_count = session.exec(
                 select(func.count()).select_from(NmapResult).where(
-                    NmapResult.target_host.contains(domain)
+                    NmapResult.target_host.contains(escaped_domain)
                 )
             ).one()
             preview['totals']['nmap_results'] = nmap_count
 
             naabu_count = session.exec(
                 select(func.count()).select_from(NaabuResult).where(
-                    NaabuResult.target_host.contains(domain)
+                    NaabuResult.target_host.contains(escaped_domain)
                 )
             ).one()
             preview['totals']['naabu_results'] = naabu_count
@@ -1106,6 +1217,9 @@ class SQLModelManager(DatabaseManager):
             data consistency. If any deletion fails, the entire operation
             is rolled back.
         """
+        # Escape wildcards for security in LIKE queries
+        escaped_domain = _escape_sql_wildcards(domain)
+
         with Session(self.engine) as session:
             try:
                 deleted = {}
@@ -1119,9 +1233,13 @@ class SQLModelManager(DatabaseManager):
                 deleted['subdomain_history'] = result.rowcount
 
                 # Delete findings (security alerts now stored as findings)
+                # Match exact domain AND subdomains (e.g., api.example.com for example.com)
                 result = session.exec(
                     delete(Finding).where(
-                        Finding.affected_asset == domain
+                        or_(
+                            Finding.affected_asset == domain,
+                            Finding.affected_asset.endswith(f".{domain}")
+                        )
                     )
                 )
                 deleted['findings'] = result.rowcount
@@ -1141,24 +1259,25 @@ class SQLModelManager(DatabaseManager):
                 )
                 deleted['amass_results'] = result.rowcount
 
+                # Use escaped domain for LIKE queries (contains)
                 result = session.exec(
                     delete(NmapResult).where(
-                        NmapResult.target_host.contains(domain)
+                        NmapResult.target_host.contains(escaped_domain)
                     )
                 )
                 deleted['nmap_results'] = result.rowcount
 
                 result = session.exec(
                     delete(NaabuResult).where(
-                        NaabuResult.target_host.contains(domain)
+                        NaabuResult.target_host.contains(escaped_domain)
                     )
                 )
                 deleted['naabu_results'] = result.rowcount
 
-                # Delete scan sessions
+                # Delete scan sessions (use escaped domain)
                 result = session.exec(
                     delete(ScanSession).where(
-                        ScanSession.domains_scanned.contains(domain)
+                        ScanSession.domains_scanned.contains(escaped_domain)
                     )
                 )
                 deleted['scan_sessions'] = result.rowcount
@@ -1580,6 +1699,25 @@ class SQLModelManager(DatabaseManager):
             session.commit()
             return True
 
+    def delete_finding(self, finding_id: str) -> bool:
+        """
+        Delete a finding by ID.
+
+        Args:
+            finding_id: UUID of the finding to delete
+
+        Returns:
+            True if deleted, False if finding not found
+        """
+        with Session(self.engine) as session:
+            finding = session.get(Finding, finding_id)
+            if not finding:
+                return False
+
+            session.delete(finding)
+            session.commit()
+            return True
+
     def get_findings_statistics(
         self,
         scan_id: Optional[str] = None,
@@ -1658,6 +1796,420 @@ class SQLModelManager(DatabaseManager):
                     by_status.get('false_positive', 0)
                 )
             }
+
+    # ============================================================================
+    # Job Queue Management (Persistent Jobs)
+    # ============================================================================
+
+    def create_job(
+        self,
+        job_id: str,
+        job_type: str,
+        payload: Dict[str, Any],
+        scan_id: Optional[str] = None,
+        priority: int = 100
+    ) -> Job:
+        """
+        Create a new job in the database.
+
+        Jobs are persisted before being pushed to ZeroMQ to prevent
+        job loss if workers crash.
+
+        Args:
+            job_id: Unique job identifier (UUID)
+            job_type: Type of job (e.g., "scan", "analysis")
+            payload: Job payload dictionary
+            scan_id: Optional associated scan ID
+            priority: Job priority (lower = higher priority)
+
+        Returns:
+            The created Job object
+        """
+        with Session(self.engine) as session:
+            now = get_ist_now()
+
+            job = Job(
+                id=job_id,
+                job_type=job_type,
+                payload=json.dumps(payload),
+                scan_id=scan_id,
+                status='pending',
+                created_at=now,
+                priority=priority
+            )
+
+            session.add(job)
+            session.commit()
+            session.refresh(job)
+
+            return job
+
+    def mark_job_queued(self, job_id: str) -> bool:
+        """
+        Mark a job as queued (pushed to ZeroMQ).
+
+        Args:
+            job_id: Job ID to update
+
+        Returns:
+            True if updated, False if job not found
+        """
+        with Session(self.engine) as session:
+            job = session.get(Job, job_id)
+            if not job:
+                return False
+
+            job.status = 'queued'
+            job.queued_at = get_ist_now()
+            session.add(job)
+            session.commit()
+            return True
+
+    def claim_job(self, job_id: str, worker_id: str) -> bool:
+        """
+        Atomically claim a job for processing.
+
+        Uses atomic UPDATE with WHERE clause to prevent race conditions.
+        Only one worker can successfully claim a job even if multiple
+        workers try simultaneously.
+
+        Args:
+            job_id: Job ID to claim
+            worker_id: Worker ID claiming the job
+
+        Returns:
+            True if claimed, False if job not found or already claimed
+        """
+        from sqlalchemy import update
+
+        with Session(self.engine) as session:
+            now = get_ist_now()
+
+            # Atomic UPDATE with WHERE clause ensures only one worker can claim
+            # The UPDATE only succeeds if status is still claimable
+            stmt = (
+                update(Job)
+                .where(
+                    and_(
+                        Job.id == job_id,
+                        Job.status.in_(('pending', 'queued'))
+                    )
+                )
+                .values(
+                    status='processing',
+                    worker_id=worker_id,
+                    started_at=now
+                )
+            )
+
+            result = session.execute(stmt)
+            session.commit()
+
+            # rowcount == 1 means we successfully claimed the job
+            # rowcount == 0 means job doesn't exist or was already claimed
+            return result.rowcount == 1
+
+    def complete_job(
+        self,
+        job_id: str,
+        success: bool = True,
+        error_message: Optional[str] = None
+    ) -> bool:
+        """
+        Mark a job as completed or failed.
+
+        Args:
+            job_id: Job ID to complete
+            success: True for completed, False for failed
+            error_message: Error message if failed
+
+        Returns:
+            True if updated, False if job not found
+        """
+        with Session(self.engine) as session:
+            job = session.get(Job, job_id)
+            if not job:
+                return False
+
+            job.status = 'completed' if success else 'failed'
+            job.completed_at = get_ist_now()
+            if error_message:
+                job.error_message = error_message[:2000]  # Truncate to field limit
+
+            session.add(job)
+            session.commit()
+            return True
+
+    def get_job(self, job_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Get job by ID.
+
+        Args:
+            job_id: Job ID to retrieve
+
+        Returns:
+            Job dictionary or None if not found
+        """
+        with Session(self.engine) as session:
+            job = session.get(Job, job_id)
+            if job:
+                return self._job_to_dict(job)
+            return None
+
+    def get_stale_jobs(self, stale_minutes: int = 30) -> List[JobDict]:
+        """
+        Get jobs that have been processing for too long (stale).
+
+        These jobs likely belong to crashed workers and need recovery.
+
+        Args:
+            stale_minutes: Minutes after which a processing job is considered stale
+
+        Returns:
+            List of stale job dictionaries with keys:
+            - id: str (Job UUID)
+            - job_type: str
+            - payload: Dict[str, Any]
+            - status: str
+            - scan_id: Optional[str]
+            - created_at: Optional[str] (ISO format)
+            - started_at: Optional[str] (ISO format)
+            - worker_id: Optional[str]
+            - error_message: Optional[str]
+            - retry_count: int
+            - priority: int
+        """
+        from datetime import timedelta
+
+        with Session(self.engine) as session:
+            cutoff_time = get_ist_now() - timedelta(minutes=stale_minutes)
+
+            query = select(Job).where(
+                and_(
+                    Job.status == 'processing',
+                    Job.started_at < cutoff_time
+                )
+            )
+
+            jobs = session.exec(query).all()
+            return [self._job_to_dict(j) for j in jobs]
+
+    def get_pending_jobs(self, limit: int = 100) -> List[JobDict]:
+        """
+        Get pending jobs that haven't been queued yet.
+
+        Used for recovery when ZeroMQ push failed.
+
+        Args:
+            limit: Maximum number of jobs to return
+
+        Returns:
+            List of pending job dictionaries (see JobDict for structure)
+        """
+        with Session(self.engine) as session:
+            query = select(Job).where(
+                Job.status == 'pending'
+            ).order_by(Job.priority, Job.created_at).limit(limit)
+
+            jobs = session.exec(query).all()
+            return [self._job_to_dict(j) for j in jobs]
+
+    def list_jobs(
+        self,
+        status: Optional[str] = None,
+        job_type: Optional[str] = None,
+        limit: int = 100,
+        offset: int = 0
+    ) -> JobListResult:
+        """
+        List jobs with optional status filter.
+
+        Args:
+            status: Filter by job status (pending, queued, processing, completed, failed, cancelled)
+            job_type: Filter by job type (scan, analysis, etc.)
+            limit: Maximum number of jobs to return
+            offset: Number of jobs to skip
+
+        Returns:
+            JobListResult with:
+            - jobs: List[JobDict] - List of job dictionaries
+            - total: int - Total count of matching jobs
+            - has_more: bool - Whether more results exist
+        """
+        with Session(self.engine) as session:
+            # Build query
+            query = select(Job)
+            filters = []
+
+            if status:
+                filters.append(Job.status == status)
+            if job_type:
+                filters.append(Job.job_type == job_type)
+
+            if filters:
+                query = query.where(and_(*filters))
+
+            # Get total count
+            count_query = select(func.count()).select_from(Job)
+            if filters:
+                count_query = count_query.where(and_(*filters))
+            total_count = session.exec(count_query).one()
+
+            # Apply pagination and ordering (most recent first)
+            query = query.order_by(Job.created_at.desc())
+            query = query.offset(offset).limit(limit)
+
+            # Execute query
+            jobs = session.exec(query).all()
+
+            return {
+                'jobs': [self._job_to_dict(j) for j in jobs],
+                'total': total_count,
+                'has_more': (offset + len(jobs)) < total_count,
+                'limit': limit,
+                'offset': offset
+            }
+
+    def retry_job(self, job_id: str) -> bool:
+        """
+        Reset a failed job for retry.
+
+        Args:
+            job_id: Job ID to retry
+
+        Returns:
+            True if reset for retry, False if not found or max retries exceeded
+        """
+        with Session(self.engine) as session:
+            job = session.get(Job, job_id)
+            if not job:
+                return False
+
+            if job.retry_count >= job.max_retries:
+                return False
+
+            job.status = 'pending'
+            job.retry_count += 1
+            job.started_at = None
+            job.completed_at = None
+            job.worker_id = None
+            job.error_message = None
+
+            session.add(job)
+            session.commit()
+            return True
+
+    def cancel_job(self, job_id: str) -> bool:
+        """
+        Cancel a pending or queued job atomically.
+
+        Uses atomic UPDATE to prevent race conditions if multiple
+        requests try to cancel the same job simultaneously.
+
+        Args:
+            job_id: Job ID to cancel
+
+        Returns:
+            True if cancelled, False if not found or not cancellable
+        """
+        from sqlalchemy import update
+
+        with Session(self.engine) as session:
+            now = get_ist_now()
+
+            # Atomic UPDATE ensures only one cancel succeeds
+            stmt = (
+                update(Job)
+                .where(
+                    and_(
+                        Job.id == job_id,
+                        Job.status.in_(('pending', 'queued'))
+                    )
+                )
+                .values(
+                    status='cancelled',
+                    completed_at=now
+                )
+            )
+
+            result = session.execute(stmt)
+            session.commit()
+            return result.rowcount == 1
+
+    def get_job_statistics(self) -> Dict[str, int]:
+        """
+        Get job queue statistics.
+
+        Returns:
+            Dictionary with job counts by status
+        """
+        with Session(self.engine) as session:
+            stats = {}
+
+            for status in ['pending', 'queued', 'processing', 'completed', 'failed', 'cancelled']:
+                count = session.exec(
+                    select(func.count()).select_from(Job).where(Job.status == status)
+                ).one()
+                stats[status] = count
+
+            stats['total'] = session.exec(
+                select(func.count()).select_from(Job)
+            ).one()
+
+            return stats
+
+    def cleanup_old_jobs(self, days: int = 7) -> int:
+        """
+        Delete completed/failed/cancelled jobs older than specified days.
+
+        Args:
+            days: Delete jobs older than this many days
+
+        Returns:
+            Number of jobs deleted
+        """
+        from datetime import timedelta
+
+        with Session(self.engine) as session:
+            cutoff_time = get_ist_now() - timedelta(days=days)
+
+            result = session.exec(
+                delete(Job).where(
+                    and_(
+                        Job.status.in_(['completed', 'failed', 'cancelled']),
+                        Job.completed_at < cutoff_time
+                    )
+                )
+            )
+
+            session.commit()
+            return result.rowcount
+
+    def _job_to_dict(self, job: Job) -> Dict[str, Any]:
+        """Convert Job object to dictionary."""
+        payload = {}
+        if job.payload:
+            try:
+                payload = json.loads(job.payload)
+            except (json.JSONDecodeError, TypeError):
+                payload = {}
+
+        return {
+            'id': job.id,
+            'job_type': job.job_type,
+            'payload': payload,
+            'status': job.status,
+            'scan_id': job.scan_id,
+            'created_at': job.created_at.isoformat() if job.created_at else None,
+            'queued_at': job.queued_at.isoformat() if job.queued_at else None,
+            'started_at': job.started_at.isoformat() if job.started_at else None,
+            'completed_at': job.completed_at.isoformat() if job.completed_at else None,
+            'worker_id': job.worker_id,
+            'error_message': job.error_message,
+            'retry_count': job.retry_count,
+            'max_retries': job.max_retries,
+            'priority': job.priority
+        }
 
     # ============================================================================
     # Helper Methods (Internal)

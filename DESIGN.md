@@ -2,8 +2,8 @@
 
 **Company**: Cybersecify
 **Author**: Rathnakara G N
-**Document Type**: Architecture Overview (6-Layer Design)
-**Version**: 9.0 - Production-Ready with Analysis Layer
+**Document Type**: Architecture Overview (6-Layer API-Only Design)
+**Version**: 10.0 - API-Only with ZeroMQ Messaging
 **Last Updated**: December 2025
 **Target Audience**: Architects, Technical Leads, Engineering Teams
 
@@ -11,44 +11,56 @@
 
 ## Architecture Overview
 
-OpenEASD implements automated external attack surface detection through a streamlined 6-layer architecture with read-only API monitoring and full-access CLI operations.
+OpenEASD implements automated external attack surface detection through a streamlined 6-layer API-only architecture with ZeroMQ-based async job processing.
 
-### System Architecture (6-Layer Design)
+### System Architecture (6-Layer API-Only Design)
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │              OpenEASD - 6-Layer Architecture                │
 ├─────────────────────────────────────────────────────────────┤
-│  Layer 1: API Layer (Read-Only Monitoring) ✅               │
-│    • FastAPI REST endpoints (GET only)                     │
+│  Layer 1: API Layer (Full CRUD REST API) ✅                 │
+│    • FastAPI REST endpoints (GET, POST, PUT, DELETE)       │
 │    • Pydantic v2 validation                                │
 │    • CORS middleware                                       │
+│    • Async scan creation via job queue                     │
 ├─────────────────────────────────────────────────────────────┤
 │  Layer 2: Service Layer (Business Logic) ✅                 │
-│    • DomainService, ScanService, AlertService              │
-│    • AnalysisService, FindingsService                      │
-│    • Shared between API and CLI                            │
+│    • DomainService, ScanService, FindingsService           │
+│    • AnalysisService                                       │
+│    • Shared business logic                                 │
 ├─────────────────────────────────────────────────────────────┤
-│  Layer 3: CLI Layer (Full Access Operations) ✅             │
-│    • Domain management: add | list | update | remove       │
-│    • Scan operations: scan domain | scan                   │
-│    • Analysis: findings | stats | run                      │
+│  Layer 3: Messaging Layer (ZeroMQ Job Queue) ✅             │
+│    • PUSH/PULL pattern for job distribution                │
+│    • Async scan job processing                             │
+│    • Worker process coordination                           │
 ├─────────────────────────────────────────────────────────────┤
-│  Layer 4: Analysis Layer (Vulnerability Detection) ✅       │
-│    • RiskScorer (0-100 deterministic scoring)              │
-│    • PortVulnerabilityDetector                             │
-│    • Finding deduplication and CVE mapping                 │
-├─────────────────────────────────────────────────────────────┤
-│  Layer 5: Tools Layer (Security Tools) ✅                   │
+│  Layer 4: Tools Layer (Security Tools) ✅                   │
 │    • Subfinder - Passive subdomain discovery               │
 │    • Naabu - Fast port scanning                            │
 │    • Dnsx - DNS resolution                                 │
 │    • Httpx - HTTP probing                                  │
+│    • Tlsx - TLS verification                               │
+│    • Nmap - Service detection + NSE scripts                │
+│    • Nuclei - Network vulnerability scanning               │
+├─────────────────────────────────────────────────────────────┤
+│  Layer 5: Analysis Layer (Vulnerability Detection) ✅       │
+│    • RiskScorer (0-100 deterministic scoring)              │
+│    • PortVulnerabilityDetector                             │
+│    • ServiceDetector                                       │
+│    • Finding deduplication and CVE mapping                 │
 ├─────────────────────────────────────────────────────────────┤
 │  Layer 6: Database Layer (Storage) ✅                       │
 │    • SQLite with SQLModel ORM                              │
 │    • 15+ tables for domains, scans, findings               │
 │    • Timezone-aware timestamps (IST)                       │
+└─────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────┐
+│  Background Worker Process                                  │
+│    • Pulls jobs from ZeroMQ queue                          │
+│    • Executes scan workflows                               │
+│    • Updates scan status in database                       │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -56,30 +68,30 @@ OpenEASD implements automated external attack surface detection through a stream
 
 | Layer | Status | Components | Notes |
 |-------|--------|------------|-------|
-| **Layer 1: API** | ✅ Complete | FastAPI, Pydantic v2 | Read-only GET endpoints |
-| **Layer 2: Service** | ✅ Complete | 5 services | Shared business logic |
-| **Layer 3: CLI** | ✅ Complete | Click commands | Full access operations |
-| **Layer 4: Analysis** | ✅ Complete | RiskScorer, Detectors | 95% test coverage |
-| **Layer 5: Tools** | ✅ Complete | 4 security tools | Direct subprocess |
-| **Layer 6: Database** | ✅ Complete | SQLite + SQLModel | Single-org model |
+| **Layer 1: API** | Complete | FastAPI, Pydantic v2 | Full CRUD endpoints |
+| **Layer 2: Service** | Complete | ScanService, ScanWorkflowOrchestrator | 8-step workflow |
+| **Layer 3: Messaging** | Complete | ZeroMQ + Job persistence | Database-backed queue |
+| **Layer 4: Tools** | Complete | 7 security tools | Subfinder, Naabu, Dnsx, Httpx, Tlsx, Nmap, Nuclei |
+| **Layer 5: Analysis** | Complete | RiskScorer, Detectors | 95% test coverage |
+| **Layer 6: Database** | Complete | SQLite + SQLModel + Job model | 15+ tables |
 
 ---
 
-## Security Model
+## API-Only Design
 
-### Read-Only API + Full-Access CLI
+### Why API-Only?
 
-**Critical Design Decision**: Separation of monitoring and operations for enhanced security.
+**Simplified Architecture**:
+- Single entry point for all operations
+- No CLI layer to maintain
+- Clean separation via REST endpoints
+- Easy integration with external systems
 
-**API Layer (Port 8000)**:
-- GET requests only (no write operations)
-- Safe for dashboards, monitoring, integrations
-- No authentication required for read access
-
-**CLI Layer**:
-- Full read/write access
-- Requires local/SSH access
-- All modifications go through CLI
+**Async Processing**:
+- Scans run asynchronously via worker process
+- Immediate API response (HTTP 202 Accepted)
+- Poll for status updates
+- Database-backed job persistence
 
 ---
 
@@ -87,58 +99,122 @@ OpenEASD implements automated external attack surface detection through a stream
 
 ### Layer 1: API Layer
 
-**Purpose**: Read-only monitoring and dashboard integration
+**Purpose**: Full CRUD REST API for all operations
 **Technology**: FastAPI 0.109+, Pydantic v2, Uvicorn
 
 **Endpoints**:
 ```
-GET /api/v1/health                     # Health check
-GET /api/v1/domains                    # List domains
-GET /api/v1/domains/{domain}           # Domain details
-GET /api/v1/scans                      # List scans
-GET /api/v1/scans/{scan_id}            # Scan status
-GET /api/v1/scans/{scan_id}/results    # Scan results
-GET /api/v1/alerts                     # List alerts
-GET /api/v1/findings                   # List findings
-GET /api/v1/findings/{id}              # Finding details
-GET /api/v1/findings/statistics/summary # Statistics
+# Health
+GET  /api/v1/health                     # Health check
+
+# Domains (Full CRUD)
+GET  /api/v1/domains                    # List domains
+POST /api/v1/domains                    # Create domain
+GET  /api/v1/domains/{domain}           # Domain details
+PUT  /api/v1/domains/{domain}           # Update domain
+DELETE /api/v1/domains/{domain}         # Delete domain
+
+# Scans (Async)
+GET  /api/v1/scans                      # List scans
+POST /api/v1/scans                      # Create scan (async, returns 202)
+GET  /api/v1/scans/{scan_id}            # Scan status (poll this)
+GET  /api/v1/scans/{scan_id}/results    # Scan results
+
+# Findings
+GET  /api/v1/findings                   # List findings
+GET  /api/v1/findings/{id}              # Finding details
+GET  /api/v1/findings/statistics/summary # Statistics
 ```
 
 ### Layer 2: Service Layer
 
-**Purpose**: Shared business logic between API and CLI
+**Purpose**: Shared business logic for API and worker
 **Services**:
 - **DomainService**: Domain CRUD operations
-- **ScanService**: Scan execution and tracking
-- **AlertService**: Security alert management
+- **ScanService**: Scan CRUD operations and status management
+- **ScanWorkflowOrchestrator**: 8-step scan workflow execution
 - **AnalysisService**: Vulnerability detection orchestration
 - **FindingsService**: Finding retrieval and statistics
 
-### Layer 3: CLI Layer
+**ScanWorkflowOrchestrator** (NEW):
+Handles the complete scan workflow with 8 discrete steps:
+1. `step1_discover_subdomains` - Subfinder for subdomain enumeration
+2. `step2_resolve_dns` - Dnsx for DNS resolution and IP filtering
+3. `step3_scan_ports` - Naabu for port scanning
+4. `step4_probe_http` - Httpx for web service detection
+5. `step5_verify_tls` - Tlsx for TLS verification on non-web ports
+6. `step6_detect_services` - Nmap for service identification
+7. `step7_detect_vulnerabilities` - Nmap for vulnerability scanning
+8. `step8_analyze` - Risk scoring and finding generation
 
-**Purpose**: Full-access command-line operations
-**Technology**: Click 8.1.7
+### Layer 3: Messaging Layer
 
-**Commands**:
-```bash
-# Domain Management
-openeasd domain add <domain> --primary
-openeasd domain list [--primary]
-openeasd domain update <domain> --primary true
-openeasd domain remove <domain> --force
+**Purpose**: Async job distribution between API and workers with database persistence
+**Technology**: ZeroMQ (pyzmq) + SQLite job persistence
 
-# Scan Operations
-openeasd scan domain <domain>          # Single domain
-openeasd scan [--primary]              # Batch scan
+**Components**:
+- **JobQueue**: PUSH/PULL socket management with DB integration
+- **MessagingConfig**: Connection settings
+- **Job Model**: Database-persisted job records (NEW)
 
-# Results
-openeasd scans                         # List scans
-openeasd results <scan-id>             # View results
+**Job Model** (NEW - `src/data/models/job.py`):
+Jobs are persisted to SQLite BEFORE being pushed to ZeroMQ, ensuring no jobs are lost if workers crash.
 
-# Analysis
-openeasd analysis findings             # List findings
-openeasd analysis stats                # Statistics
-openeasd analysis run <scan-id>        # Run analysis
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | str | Primary key (UUID) |
+| `job_type` | str | Job type ("scan", "analysis") |
+| `payload` | JSON | Job payload data |
+| `status` | str | pending/queued/processing/completed/failed/cancelled |
+| `scan_id` | str | Associated scan session ID |
+| `worker_id` | str | Worker that claimed the job |
+| `created_at` | datetime | Job creation time |
+| `queued_at` | datetime | When pushed to ZeroMQ |
+| `started_at` | datetime | When worker started processing |
+| `completed_at` | datetime | When job finished |
+| `error_message` | str | Error details if failed |
+| `retry_count` | int | Number of retry attempts |
+| `max_retries` | int | Maximum retry limit (default: 3) |
+| `priority` | int | Job priority (lower = higher priority) |
+
+**Job Lifecycle**:
+```
+pending -> queued -> processing -> completed
+                  ↘            ↗
+                    failed/cancelled
+```
+
+**Job CRUD Methods** (SQLModelManager):
+- `create_job()` - Create new job record
+- `mark_job_queued()` - Update status when pushed to ZeroMQ
+- `claim_job()` - Worker claims job for processing
+- `complete_job()` - Mark job as completed/failed
+- `get_job()` - Retrieve job by ID
+- `get_stale_jobs()` - Find jobs stuck in processing (>30 min)
+- `get_pending_jobs()` - List jobs waiting for workers
+- `retry_job()` - Reset job for retry
+- `cancel_job()` - Cancel a pending/queued job
+- `get_job_statistics()` - Get counts by status
+- `cleanup_old_jobs()` - Remove old completed jobs
+
+**Pattern with Job Persistence**:
+```
+API Server                    Database                    Worker
+     │                            │                          │
+     │ POST /scans               │                          │
+     │ ─────────────────────────>│ Create job (pending)     │
+     │                            │                          │
+     │ PUSH to ZeroMQ            │                          │
+     │ ─────────────────────────>│ Mark job queued          │
+     │                            │                          │
+     │ Return 202                 │                          │
+     │                            │<─────────────────────────│ PULL job
+     │                            │<─────────────────────────│ Claim job
+     │                            │                          │
+     │                            │                      8-step workflow
+     │                            │                          │
+     │                            │<─────────────────────────│ Complete job
+     ▼                            ▼                          ▼
 ```
 
 ### Layer 4: Analysis Layer
@@ -154,117 +230,13 @@ openeasd analysis run <scan-id>        # Run analysis
 
 ### Layer 5: Tools Layer
 
-**Purpose**: Security tool execution via subprocess with parallel execution optimization
+**Purpose**: Security tool execution via subprocess
 **Tools**:
 - **Subfinder**: Passive subdomain discovery
 - **Naabu**: Fast port scanning
 - **Dnsx**: DNS resolution
 - **Httpx**: HTTP probing
-- **Nmap**: Service detection and vulnerability scanning (NEW)
-
-#### Nmap Service Detection & Vulnerability Scanning (Phase 3 & 3.5)
-
-**Phase 3: Parallel Service Detection**
-- **Function**: `run_nmap_service_detection_parallel(ports, max_workers=5)`
-- **Purpose**: Identify running services on non-web ports with version information
-- **Process**:
-  1. Collects all non-web ports from httpx probing
-  2. Executes parallel `nmap -sV` on 5 ports simultaneously
-  3. Extracts service name, version, and confidence (0-100)
-  4. Maps services to severity: CRITICAL (databases), HIGH (FTP/Telnet), MEDIUM (SSH/SMTP), LOW (NTP)
-- **Performance**:
-  - Sequential: ~4.6 seconds (46% overhead)
-  - Parallel (5 workers): ~2.0 seconds (20% overhead) → **2.3x faster!**
-
-**Example Output**:
-```python
-{
-  'example.com:3306': {
-    'service': 'mysql',
-    'version': '5.7.30-0-log',
-    'confidence': 95,
-    'product': 'MySQL',
-    'status': 'success'
-  }
-}
-```
-
-**Phase 3.5: Parallel Vulnerability Detection**
-- **Function**: `run_nmap_vuln_detection_parallel(ports_with_services, max_workers=3)`
-- **Purpose**: Detect known CVEs in identified services using NSE scripts
-- **Process**:
-  1. Runs service-specific NSE scripts: `--script=mysql-vuln*`, `postgresql-vuln*`, etc.
-  2. Extracts CVE IDs using regex: `CVE-\d{4}-\d{4,5}`
-  3. Maps CVE to CVSS scores and severity levels
-  4. Generates remediation suggestions per service
-- **Service-Specific Scripts**:
-  - MySQL: `mysql-vuln*,mysql-enum`
-  - PostgreSQL: `postgresql-vuln*`
-  - MongoDB: `mongodb-enum`
-  - Redis: `redis-info`
-  - SSH: `ssh2-enum-algos`
-  - HTTP/HTTPS: `http-vuln*`
-
-**Example Vulnerability Detection Result**:
-```python
-{
-  'vulnerabilities': [
-    {
-      'cve_id': 'CVE-2012-2122',
-      'cvss_score': 9.8,
-      'severity': 'critical',
-      'description': 'MySQL Authentication Bypass'
-    },
-    {
-      'cve_id': 'CVE-2016-6663',
-      'cvss_score': 7.5,
-      'severity': 'high',
-      'description': 'MySQL Privilege Escalation'
-    }
-  ],
-  'status': 'success'
-}
-```
-
-#### Alert Generation with Service & CVE Details
-
-Alerts now include:
-- **Service Information**: `service_type`, `service_version`, `service_confidence`
-- **CVE Information**: `cve_ids` (JSON list), `cvss_score`, `vulnerability_description`
-- **Remediation Steps**: Service-specific fix recommendations
-- **Detection Method**: httpx, nmap, or banner grabbing
-
-**Alert Example**:
-```python
-{
-  'scan_id': 'scan-123',
-  'domain': 'example.com',
-  'vulnerability_type': 'exposed_mysql_service',
-  'service_type': 'mysql',
-  'service_version': '5.7.30-0-log',
-  'service_confidence': 95,
-  'severity': 'critical',
-  'cve_ids': '["CVE-2012-2122", "CVE-2016-6663", "CVE-2019-2627"]',
-  'cvss_score': 9.8,
-  'vulnerability_description': 'CVE-2012-2122 (CVSS 9.8): CRITICAL | CVE-2016-6663 (CVSS 7.5): HIGH',
-  'remediation_steps': 'Update MySQL to the latest stable version. Current version has known vulnerabilities.'
-}
-```
-
-#### Scan Workflow with Parallel Execution
-
-**Before Phase 3 & 3.5**:
-```
-Subfinder (3s) → Dnsx (2s) → Naabu (4s) → Httpx (2s) → Nmap -sV (sequential, 4.6s)
-Total: 15.6s
-```
-
-**After Phase 3 & 3.5**:
-```
-Subfinder (3s) → Dnsx (2s) → Naabu (4s) → Httpx (2s) → Nmap -sV (parallel, 2s) → Nmap --script=vuln (parallel, 8s)
-Total: 21s (includes full vulnerability detection!)
-Performance: Sequential vs. Nmap calls = 2.3x faster
-```
+- **Nmap**: Service detection and vulnerability scanning
 
 ### Layer 6: Database Layer
 
@@ -278,38 +250,104 @@ Performance: Sequential vs. Nmap calls = 2.3x faster
 
 ---
 
+## Async Scan Flow
+
+```
+1. Client: POST /api/v1/scans {"domain": "example.com"}
+    ↓
+2. API Layer:
+    - Validate request (Pydantic)
+    - Create scan record (status: pending)
+    - Create job record (status: pending) <- NEW: Job persistence
+    - Push job to ZeroMQ queue
+    - Mark job as queued <- NEW: Track queue state
+    - Return 202 Accepted with scan_id
+    ↓
+3. Client polls: GET /api/v1/scans/{scan_id}
+    ↓
+4. Worker Process (background):
+    - Pull job from ZeroMQ
+    - Claim job in database (tracks worker_id) <- NEW: Job claiming
+    - Update scan status to "running"
+    - Execute 8-step workflow via ScanWorkflowOrchestrator:
+      1. Subfinder (subdomain discovery)
+      2. Dnsx (DNS resolution)
+      3. Naabu (port scanning)
+      4. Httpx (HTTP probing)
+      5. Tlsx (TLS verification)
+      6. Nmap (service detection)
+      7. Nmap (vulnerability detection)
+      8. Analysis (risk scoring)
+    - Save results to database
+    - Update scan status to "completed"
+    - Mark job as completed <- NEW: Job completion tracking
+    ↓
+5. Client: GET /api/v1/scans/{scan_id}/results
+    - Returns full scan results
+```
+
+## Stale Job Recovery
+
+Workers periodically check for stale jobs (processing > 30 minutes):
+
+```
+1. Worker checks every 60 seconds for stale jobs
+2. If found, worker marks associated scan as "failed"
+3. Job is either:
+   - Reset for retry (if retry_count < max_retries)
+   - Marked as permanently failed (if max retries exceeded)
+4. Recovered jobs can be picked up by any worker
+```
+
+---
+
 ## Project Structure
 
 ```
 OpenEASD/
 ├── src/
 │   ├── api/                  # Layer 1: API
-│   │   ├── main.py
+│   │   ├── main.py           # FastAPI application
+│   │   ├── dependencies.py   # Dependency injection
 │   │   ├── routes/
+│   │   │   ├── domains.py    # Domain CRUD
+│   │   │   ├── scans.py      # Scan operations
+│   │   │   ├── findings.py   # Findings retrieval
+│   │   │   └── health.py     # Health check
 │   │   └── schemas/
+│   │       ├── domain.py
+│   │       ├── scan.py
+│   │       └── finding.py
 │   ├── services/             # Layer 2: Services
 │   │   ├── domain_service.py
-│   │   ├── scan_service.py
+│   │   ├── scan_service.py              # CRUD operations
+│   │   ├── scan_workflow_orchestrator.py # 8-step workflow
 │   │   └── findings_service.py
-│   ├── cli/                  # Layer 3: CLI
-│   │   ├── main.py
-│   │   ├── commands_*.py
-│   │   └── formatters.py
+│   ├── messaging/            # Layer 3: Messaging
+│   │   ├── __init__.py
+│   │   ├── config.py         # ZeroMQ configuration
+│   │   └── job_queue.py      # PUSH/PULL job queue
 │   ├── analysis/             # Layer 4: Analysis
 │   │   ├── scoring/
+│   │   │   └── risk_scorer.py
 │   │   └── detectors/
+│   │       └── port_detector.py
 │   ├── tools/                # Layer 5: Tools
 │   │   ├── subfinder/
 │   │   ├── naabu/
 │   │   ├── dnsx/
 │   │   ├── httpx/
-│   │   └── nmap/ (NEW: service detection + NSE vuln scanning)
+│   │   └── nmap/
 │   └── data/                 # Layer 6: Database
 │       ├── database/
-│       │   └── sqlmodel_manager.py
+│       │   └── sqlmodel_manager.py  # 10+ job CRUD methods
 │       └── models/
-├── tests/                    # 351 tests
-├── openeasd.py              # CLI entry point
+│           └── job.py               # Job persistence model
+├── workers/                  # Background Workers
+│   ├── __init__.py
+│   └── scan_worker.py        # Scan job processor
+├── tests/                    # Test suite
+├── openeasd.py              # API server entry point
 └── pyproject.toml           # Dependencies (uv)
 ```
 
@@ -318,7 +356,7 @@ OpenEASD/
 ## Technology Stack
 
 - **API**: FastAPI 0.109+, Pydantic v2, Uvicorn
-- **CLI**: Click 8.1.7
+- **Messaging**: ZeroMQ (pyzmq 25.0+)
 - **Database**: SQLite, SQLModel
 - **Analysis**: Custom risk scoring engine
 - **Tools**:
@@ -326,31 +364,82 @@ OpenEASD/
   - Naabu (port scanning)
   - Dnsx (DNS resolution)
   - Httpx (HTTP probing)
-  - **Nmap** (service detection + NSE vulnerability scanning) ✨ NEW
-- **Parallel Execution**: ThreadPoolExecutor (5 workers for service detection, 3 for vulnerability detection)
-- **Testing**: pytest (327 tests, 79%+ coverage including 22 vulnerability detection tests)
+  - Nmap (service detection + vulnerability scanning)
+- **Testing**: pytest (318 tests, 79%+ coverage)
 - **Package Manager**: uv
 
 ---
 
 ## Quick Start
 
+### Option 1: Single Command (Development)
 ```bash
 # Install dependencies
 uv sync
 
-# Start API server (read-only)
-uv run uvicorn src.api.main:app --port 8000
+# Start both API server and worker
+python run_dev.py
 
-# CLI operations
-uv run python openeasd.py domain add example.com --primary
-uv run python openeasd.py scan domain example.com
-uv run python openeasd.py analysis findings
+# With custom port and multiple workers
+python run_dev.py --port 8080 --workers 3
+```
+
+### Option 2: Separate Processes (Production)
+```bash
+# Terminal 1: Start API server
+python openeasd.py --port 8000
+
+# Terminal 2: Start worker
+python -m workers.scan_worker
+```
+
+### API Usage
+```bash
+# Health check
+curl http://localhost:8000/api/v1/health
+
+# Create a domain
+curl -X POST http://localhost:8000/api/v1/domains \
+  -H "Content-Type: application/json" \
+  -d '{"domain": "example.com", "is_primary": true}'
+
+# Start a scan (async)
+curl -X POST http://localhost:8000/api/v1/scans \
+  -H "Content-Type: application/json" \
+  -d '{"domain": "example.com"}'
+
+# Poll scan status
+curl http://localhost:8000/api/v1/scans/{scan_id}
+
+# Get results when completed
+curl http://localhost:8000/api/v1/scans/{scan_id}/results
 ```
 
 ---
 
-**Architecture Status**: 6-Layer (All Complete) + Phase 3 & 3.5 Features
-**New Features**: Nmap service detection (Phase 1) + Parallel execution (Phase 3) + Vulnerability detection (Phase 3.5)
-**Test Coverage**: 79%+ (327+ tests passing, including 22 new vulnerability detection tests)
-**Last Updated**: December 2, 2025
+## Running Multiple Workers
+
+For higher throughput, run multiple worker instances:
+
+```bash
+# Terminal 1
+python -m workers.scan_worker
+
+# Terminal 2
+python -m workers.scan_worker
+
+# Terminal 3
+python -m workers.scan_worker
+```
+
+ZeroMQ will automatically distribute jobs across workers.
+
+---
+
+**Architecture Status**: 6-Layer API-Only (All Complete)
+**Key Changes**:
+- Job persistence (database-backed queue, stale recovery)
+- ScanWorkflowOrchestrator (8-step workflow extracted from ScanService)
+- Worker ID tracking and graceful shutdown
+**Test Coverage**: 79%+ (318 tests passing)
+**Last Updated**: December 4, 2025

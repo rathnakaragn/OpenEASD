@@ -94,16 +94,27 @@ class RiskScorer:
         context_score = self._calculate_context_score(finding)
         exposure_score = self._calculate_exposure_score(finding)
 
-        # Calculate weighted total
+        # Normalize each component to 0-100 scale
+        # base_score: 0-40 → 0-100
+        # context_score: 0-40 → 0-100
+        # exposure_score: 0-20 → 0-100
+        base_normalized = (base_score / 40) * 100
+        context_normalized = (context_score / 40) * 100
+        exposure_normalized = (exposure_score / 20) * 100
+
+        # Normalize weights to sum to 1.0 for proper weighted average
+        total_weight = self.base_weight + self.context_weight + self.exposure_weight
+        if total_weight == 0:
+            total_weight = 1.0  # Avoid division by zero
+
+        # Calculate weighted average (result is 0-100)
         total = (
-            base_score * (self.base_weight / 0.4) +
-            context_score * (self.context_weight / 0.4) +
-            exposure_score * (self.exposure_weight / 0.2)
+            base_normalized * (self.base_weight / total_weight) +
+            context_normalized * (self.context_weight / total_weight) +
+            exposure_normalized * (self.exposure_weight / total_weight)
         )
 
-        # Normalize to 0-100 range
-        normalized = int(total)
-        return min(100, max(0, normalized))
+        return min(100, max(0, int(total)))
 
     def _calculate_base_score(self, finding: Dict[str, Any]) -> int:
         """

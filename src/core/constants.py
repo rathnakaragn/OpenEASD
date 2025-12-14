@@ -54,16 +54,6 @@ SEVERITY_ORDER = [
 ]
 
 
-# Severity display icons for CLI output
-SEVERITY_ICONS = {
-    Severity.CRITICAL.value: "[C]",
-    Severity.HIGH.value: "[H]",
-    Severity.MEDIUM.value: "[M]",
-    Severity.LOW.value: "[L]",
-    Severity.INFO.value: "[I]",
-}
-
-
 # ============================================================================
 # Risk Scoring Constants
 # ============================================================================
@@ -167,18 +157,6 @@ class ToolName(str, Enum):
 
 
 # ============================================================================
-# Output Format Constants
-# ============================================================================
-
-class OutputFormat(str, Enum):
-    """Supported output formats for CLI."""
-    TABLE = "table"
-    JSON = "json"
-    CSV = "csv"
-    TXT = "txt"
-
-
-# ============================================================================
 # Scan Frequency Constants
 # ============================================================================
 
@@ -189,24 +167,6 @@ class ScanFrequency(str, Enum):
     MONTHLY = "monthly"
     QUARTERLY = "quarterly"
     MANUAL = "manual"
-
-
-# ============================================================================
-# Evidence Field Names (for JSON storage)
-# ============================================================================
-
-class EvidenceFields:
-    """Standard field names for finding evidence JSON."""
-    CVE_IDS = "cve_ids"
-    CVSS_SCORE = "cvss_score"
-    CVSS_VECTOR = "cvss_vector"
-    SERVICE_NAME = "service_name"
-    SERVICE_VERSION = "service_version"
-    BANNER = "banner"
-    TLS_VERSION = "tls_version"
-    CERTIFICATE_INFO = "certificate_info"
-    HTTP_HEADERS = "http_headers"
-    RESPONSE_CODE = "response_code"
 
 
 # ============================================================================
@@ -270,24 +230,3 @@ def get_severity_from_score(score: int) -> str:
         return Severity.LOW.value
     else:
         return Severity.INFO.value
-
-
-def compare_severity(severity1: str, severity2: str) -> int:
-    """
-    Compare two severity levels.
-
-    Args:
-        severity1: First severity level
-        severity2: Second severity level
-
-    Returns:
-        -1 if severity1 < severity2
-         0 if severity1 == severity2
-         1 if severity1 > severity2
-    """
-    try:
-        idx1 = SEVERITY_ORDER.index(severity1)
-        idx2 = SEVERITY_ORDER.index(severity2)
-        return (idx1 > idx2) - (idx1 < idx2)
-    except ValueError:
-        return 0
