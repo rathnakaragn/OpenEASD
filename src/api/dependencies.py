@@ -5,12 +5,14 @@ Provides reusable dependencies for database connections and services.
 """
 
 import threading
-from typing import Generator, Optional
+from typing import Optional
 from fastapi import Depends
 from src.data.database.sqlmodel_manager import SQLModelManager
 from src.services.domain_service import DomainService
 from src.services.scan_service import ScanService
 from src.services.findings_service import FindingsService
+from src.services.job_service import JobService
+from src.services.health_service import HealthCheckService
 from src.messaging.job_queue import JobQueue, get_job_queue as _get_job_queue
 
 
@@ -115,3 +117,48 @@ def get_job_queue(db: SQLModelManager = Depends(get_db_manager)) -> JobQueue:
         JobQueue instance with db_manager for job persistence
     """
     return _get_job_queue(db_manager=db)
+
+
+def get_job_service(db: SQLModelManager = Depends(get_db_manager)) -> JobService:
+    """
+    Dependency to get job service instance.
+
+    Args:
+        db: Database manager (injected by FastAPI)
+
+    Returns:
+        JobService instance
+    """
+    return JobService(db)
+
+
+def get_health_service(db: SQLModelManager = Depends(get_db_manager)) -> HealthCheckService:
+    """
+    Dependency to get health check service instance.
+
+    Args:
+        db: Database manager (injected by FastAPI)
+
+    Returns:
+        HealthCheckService instance
+    """
+    return HealthCheckService(db)
+
+
+def get_scan_service_with_queue(
+    db: SQLModelManager = Depends(get_db_manager),
+    job_queue: JobQueue = Depends(get_job_queue)
+) -> ScanService:
+    """
+    Dependency to get scan service instance with job queue.
+
+    Use this for routes that need to queue async scans.
+
+    Args:
+        db: Database manager (injected by FastAPI)
+        job_queue: Job queue (injected by FastAPI)
+
+    Returns:
+        ScanService instance with job queue configured
+    """
+    return ScanService(db, job_queue=job_queue)

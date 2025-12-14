@@ -32,7 +32,7 @@ from src.services.exceptions import (
     ToolOutputParseError,
 )
 from src.services.findings_service import FindingNotFound, InvalidFindingStatus
-from src.api.routes.jobs import JobNotFound, JobCannotBeRetried, JobCannotBeCancelled
+from src.services.job_service import JobNotFound, JobCannotBeRetried, JobCannotBeCancelled
 from src.utils.config import Config
 from src.utils.logging import setup_logging
 

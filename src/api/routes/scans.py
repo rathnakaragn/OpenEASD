@@ -7,7 +7,7 @@ Scans are executed asynchronously via ZeroMQ job queue.
 Exception handling is centralized in main.py via @app.exception_handler.
 """
 
-from typing import List, Optional
+from typing import Optional
 from fastapi import APIRouter, Depends, Query, Response, status
 from src.api.schemas.scan import (
     ScanCreate,
@@ -22,9 +22,13 @@ from src.api.schemas.finding import FindingListResponse
 from src.api.schemas.common import DEFAULT_PAGE_LIMIT, MAX_PAGE_LIMIT, Severity
 from src.services.scan_service import ScanService
 from src.services.findings_service import FindingsService
-from src.api.dependencies import get_scan_service, get_domain_service, get_findings_service, get_job_queue
 from src.services.domain_service import DomainService
-from src.messaging.job_queue import JobQueue
+from src.api.dependencies import (
+    get_scan_service,
+    get_scan_service_with_queue,
+    get_domain_service,
+    get_findings_service,
+)
 
 
 router = APIRouter(redirect_slashes=False)
@@ -71,8 +75,7 @@ async def list_scans(
 async def create_scan(
     data: ScanCreate,
     response: Response,
-    service: ScanService = Depends(get_scan_service),
-    job_queue: JobQueue = Depends(get_job_queue)
+    service: ScanService = Depends(get_scan_service_with_queue)
 ):
     """
     Create a new scan (async).
@@ -82,18 +85,10 @@ async def create_scan(
 
     The Location header in the response points to the status endpoint.
     """
-    # Create scan record in database (status: pending)
-    scan = service.create_scan(domains=[data.domain])
-
-    # Push job to ZeroMQ queue for async processing (with database persistence)
-    job_queue.push_job(
-        job_type="scan",
-        payload={
-            "scan_id": scan['scan_id'],
-            "domain": data.domain,
-            "timeout": data.timeout
-        },
-        scan_id=scan['scan_id']
+    # Create scan record and queue for async processing
+    scan = service.create_and_queue_scan(
+        domain=data.domain,
+        timeout=data.timeout
     )
 
     # Set Location header per RFC 7231 for 202 Accepted
@@ -118,9 +113,8 @@ async def create_scan(
 )
 async def create_batch_scan(
     data: BatchScanCreate,
-    service: ScanService = Depends(get_scan_service),
-    domain_service: DomainService = Depends(get_domain_service),
-    job_queue: JobQueue = Depends(get_job_queue)
+    service: ScanService = Depends(get_scan_service_with_queue),
+    domain_service: DomainService = Depends(get_domain_service)
 ):
     """
     Create batch scans for multiple domains (async).
@@ -144,34 +138,22 @@ async def create_batch_scan(
             message="No domains found to scan"
         )
 
-    scan_responses = []
-    for domain_obj in domains:
-        domain_name = domain_obj.domain if hasattr(domain_obj, 'domain') else domain_obj.get('domain')
+    # Queue all scans via service
+    scans = service.queue_batch_scans(domains=domains, timeout=data.timeout)
 
-        # Create scan record
-        scan = service.create_scan(domains=[domain_name])
-
-        # Queue the job (with database persistence)
-        job_queue.push_job(
-            job_type="scan",
-            payload={
-                "scan_id": scan['scan_id'],
-                "domain": domain_name,
-                "timeout": data.timeout
-            },
-            scan_id=scan['scan_id']
-        )
-
-        scan_responses.append(ScanResponse(
+    scan_responses = [
+        ScanResponse(
             scan_id=scan['scan_id'],
-            domain=domain_name,
+            domain=scan['domain'],
             scan_type=scan.get('scan_type', 'full_scan'),
             tool_name=scan.get('tool_name'),
             status='pending',
             start_time=None,
             end_time=None,
             findings_count=0
-        ))
+        )
+        for scan in scans
+    ]
 
     return BatchScanResponse(
         scans=scan_responses,
@@ -253,8 +235,7 @@ async def retry_scan(
     scan_id: str,
     data: ScanRetryRequest,
     response: Response,
-    service: ScanService = Depends(get_scan_service),
-    job_queue: JobQueue = Depends(get_job_queue)
+    service: ScanService = Depends(get_scan_service_with_queue)
 ):
     """
     Retry a failed scan.
@@ -264,19 +245,8 @@ async def retry_scan(
 
     Returns the new scan information with 202 Accepted status.
     """
-    # Retry the scan (creates new scan record)
-    retry_result = service.retry_scan(scan_id, timeout=data.timeout)
-
-    # Queue the new scan job (with database persistence)
-    job_queue.push_job(
-        job_type="scan",
-        payload={
-            "scan_id": retry_result['new_scan_id'],
-            "domain": retry_result['domain'],
-            "timeout": data.timeout or 300
-        },
-        scan_id=retry_result['new_scan_id']
-    )
+    # Retry the scan and queue for processing
+    retry_result = service.retry_and_queue_scan(scan_id, timeout=data.timeout)
 
     # Set Location header for the new scan
     response.headers["Location"] = f"/api/v1/scans/{retry_result['new_scan_id']}"

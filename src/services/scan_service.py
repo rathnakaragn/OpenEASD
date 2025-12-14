@@ -6,8 +6,7 @@ is delegated to ScanWorkflowOrchestrator.
 """
 
 import logging
-from typing import List, Dict, Any, Optional, Union
-from datetime import datetime
+from typing import List, Dict, Any, Optional, Union, TYPE_CHECKING
 
 from src.data.database.sqlmodel_manager import SQLModelManager
 from src.utils.validation import validate_domain
@@ -15,6 +14,9 @@ from src.utils.timezone import get_ist_now, format_datetime_iso
 from src.utils.domain_helpers import extract_primary_domain
 from src.services.exceptions import ScanNotFound, InvalidScanStatus
 from src.services.scan_workflow_orchestrator import ScanWorkflowOrchestrator
+
+if TYPE_CHECKING:
+    from src.messaging.job_queue import JobQueue
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +27,7 @@ class ScanService:
     def __init__(
         self,
         db_manager: SQLModelManager,
+        job_queue: Optional["JobQueue"] = None,
         enable_analysis: bool = True
     ):
         """
@@ -32,9 +35,11 @@ class ScanService:
 
         Args:
             db_manager: Database manager instance
+            job_queue: Optional job queue for async operations
             enable_analysis: Enable analysis layer integration (default: True)
         """
         self.db = db_manager
+        self._job_queue = job_queue
 
         # Workflow orchestrator handles scan execution
         self._orchestrator = ScanWorkflowOrchestrator(
@@ -357,6 +362,146 @@ class ScanService:
             'status': 'pending',
             'timeout': timeout
         }
+
+    # =========================================================================
+    # Async Scan Operations (with Job Queue)
+    # =========================================================================
+
+    def create_and_queue_scan(
+        self,
+        domain: str,
+        timeout: Optional[int] = None
+    ) -> Dict[str, Any]:
+        """
+        Create a scan and queue it for async execution.
+
+        Args:
+            domain: Domain to scan
+            timeout: Optional timeout in seconds
+
+        Returns:
+            Dictionary containing scan info
+
+        Raises:
+            RuntimeError: If job queue not configured
+        """
+        if not self._job_queue:
+            raise RuntimeError("Job queue not configured for async operations")
+
+        # Create scan record
+        scan = self.create_scan(domains=[domain])
+
+        # Push to job queue
+        self._job_queue.push_job(
+            job_type="scan",
+            payload={
+                "scan_id": scan['scan_id'],
+                "domain": domain,
+                "timeout": timeout
+            },
+            scan_id=scan['scan_id']
+        )
+
+        logger.info(f"Created and queued scan {scan['scan_id']} for domain: {domain}")
+
+        return scan
+
+    def queue_batch_scans(
+        self,
+        domains: List[Dict[str, Any]],
+        timeout: Optional[int] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        Create and queue multiple scans for async execution.
+
+        Args:
+            domains: List of domain objects with 'domain' key
+            timeout: Optional timeout in seconds for each scan
+
+        Returns:
+            List of scan info dictionaries
+
+        Raises:
+            RuntimeError: If job queue not configured
+        """
+        if not self._job_queue:
+            raise RuntimeError("Job queue not configured for async operations")
+
+        scans = []
+        for domain_obj in domains:
+            domain_name = (
+                domain_obj.domain if hasattr(domain_obj, 'domain')
+                else domain_obj.get('domain')
+            )
+
+            # Create scan record
+            scan = self.create_scan(domains=[domain_name])
+
+            # Push to job queue
+            self._job_queue.push_job(
+                job_type="scan",
+                payload={
+                    "scan_id": scan['scan_id'],
+                    "domain": domain_name,
+                    "timeout": timeout
+                },
+                scan_id=scan['scan_id']
+            )
+
+            scans.append({
+                'scan_id': scan['scan_id'],
+                'domain': domain_name,
+                'scan_type': scan.get('scan_type', 'full_scan'),
+                'tool_name': scan.get('tool_name'),
+                'status': 'pending'
+            })
+
+        logger.info(f"Created and queued {len(scans)} batch scans")
+
+        return scans
+
+    def retry_and_queue_scan(
+        self,
+        scan_id: str,
+        timeout: Optional[int] = None
+    ) -> Dict[str, Any]:
+        """
+        Retry a failed scan and queue for async execution.
+
+        Args:
+            scan_id: ID of the failed scan to retry
+            timeout: Optional timeout override
+
+        Returns:
+            Dictionary with retry info including new scan ID
+
+        Raises:
+            ScanNotFound: If scan not found
+            InvalidScanStatus: If scan not failed
+            RuntimeError: If job queue not configured
+        """
+        if not self._job_queue:
+            raise RuntimeError("Job queue not configured for async operations")
+
+        # Retry creates new scan record
+        retry_result = self.retry_scan(scan_id, timeout=timeout)
+
+        # Queue the new scan
+        self._job_queue.push_job(
+            job_type="scan",
+            payload={
+                "scan_id": retry_result['new_scan_id'],
+                "domain": retry_result['domain'],
+                "timeout": timeout or 300
+            },
+            scan_id=retry_result['new_scan_id']
+        )
+
+        logger.info(
+            f"Retried and queued scan {scan_id} as {retry_result['new_scan_id']}"
+        )
+
+        return retry_result
 
     # =========================================================================
     # Workflow Execution (Delegated to Orchestrator)
