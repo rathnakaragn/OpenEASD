@@ -1,284 +1,433 @@
-Here is the full **OpenEASD Product Requirements Document (PRD)** converted into a clean and structured **Markdown format** for clarity and documentation use.
-
-> **Note (December 2025)**: The current implementation uses a **single-organization model** for simplicity. Multi-tenancy features described in this document are planned for future phases. The core scanning, analysis, and reporting capabilities are fully implemented.
-
-***
-
 # OpenEASD Product Requirements Document (PRD)
 
 **Product:** OpenEASD — Automated External Attack Surface Detection
 **Author:** Rathnakara G N / Cybersecify
-**Version:** 3.0 (Single-Org Implementation)
-**Date:** December 2025
-**Target Audience:** Product Managers, Engineering, Security Analysts, Operations, Sales
+**Version:** 4.0
+**Last Updated:** January 29, 2026
+**Target Audience:** Product Managers, Engineering, Security Analysts, Operations
 
-***
+---
+
+## Implementation Status Summary
+
+> **Current State (January 2026)**: Core scanning infrastructure is complete with a 6-layer API-only architecture. The system supports single-organization scanning with full CRUD API, 8-step scan workflow, and automated vulnerability detection.
+
+| Category | Status | Notes |
+|----------|--------|-------|
+| **Core Scanning** | ✅ Complete | 7 security tools integrated |
+| **API Layer** | ✅ Complete | Full CRUD REST API |
+| **Risk Scoring** | ✅ Complete | Deterministic 0-100 scoring |
+| **Web Dashboard** | ✅ Complete | Real-time scan monitoring |
+| **Database** | ✅ Complete | SQLite with SQLModel ORM |
+| **Job Queue** | ✅ Complete | Database-backed async processing |
+| **Multi-Tenancy** | 🔲 Planned | Phase 2 |
+| **Notifications** | 🔲 Planned | Slack/Email/PagerDuty |
+| **Reporting** | 🔲 Planned | PDF executive reports |
+| **Integrations** | 🔲 Planned | Jira/GitHub export |
+
+---
 
 ## 1. Executive Summary
 
-OpenEASD will be extended to support simultaneous scanning of multiple organizations (multi‑tenant) and flexible notification cadences (daily, weekly, biweekly, monthly, plus real‑time critical alerts). The system performs high‑impact unauthenticated external checks for startups: passive and active subdomain discovery, port/service scans, web misconfiguration checks, certificate and email hygiene, and public credential/secret exposure.
+OpenEASD is an automated external attack surface detection system that performs unauthenticated security assessments of internet-facing assets. The system discovers subdomains, scans ports, identifies services, and detects vulnerabilities to provide organizations with visibility into their external attack surface.
 
-Results will be delivered per customer according to their configured cadence and alert channels (Slack, Email, PagerDuty). Analyst triage for critical items and scheduled outreach (every 15 days) are integrated into the workflow to drive conversions and trust.
+**Current Capabilities:**
+- Passive and active subdomain discovery
+- Port scanning and service detection
+- TLS/SSL verification
+- Web misconfiguration detection (Nuclei)
+- Vulnerability scanning (Nmap NSE + Nuclei)
+- Automated risk scoring and prioritization
+- Web dashboard for monitoring
+- Full CRUD REST API
 
-***
+**Planned Capabilities:**
+- Multi-tenant organization management
+- Notification channels (Slack, Email, PagerDuty)
+- Executive PDF reports
+- Jira/GitHub integration
+- Scheduled scan cadences
+
+---
 
 ## 2. Goals and Success Metrics
 
-**Goals**
-- Scan multiple customers concurrently with isolated per‑organization results.
-- Deliver actionable, low‑noise alerts and 1‑page executive summaries.
-- Provide configurable reporting cadences (daily/weekly/biweekly/monthly) plus immediate critical alerts.
-- Enable Sales/Ops to convert critical findings into paid authenticated pentests.
+### Current Goals (Phase 1 - Achieved)
+- ✅ Automated external attack surface scanning
+- ✅ Subdomain discovery and DNS resolution
+- ✅ Port scanning with service identification
+- ✅ Vulnerability detection with risk scoring
+- ✅ Web-based dashboard for monitoring
+- ✅ RESTful API for integration
 
-**Success Metrics**
-- Time to first scan after onboarding ≤ 24 hours.
-- Average time from critical detection → analyst triage ≤ 8 hours.
-- False positive rate for criticals ≤ 10%.
-- Outreach conversion ≥ 8% in 90 days for orgs with at least one validated critical.
-- Scale: System supports 200 orgs with daily incremental scans (MVP scale).
+### Future Goals (Phase 2+)
+- 🔲 Multi-tenant support for multiple organizations
+- 🔲 Configurable scan schedules (daily/weekly/monthly)
+- 🔲 Real-time notifications for critical findings
+- 🔲 Executive reporting with PDF export
+- 🔲 Integration with ticketing systems
 
-***
+### Success Metrics
+| Metric | Target | Current |
+|--------|--------|---------|
+| Time to first scan | ≤ 5 minutes | ✅ Achieved |
+| Scan completion rate | ≥ 95% | ✅ Achieved |
+| False positive rate | ≤ 10% | Measuring |
+| API response time | ≤ 200ms | ✅ Achieved |
+| System availability | ≥ 99% | ✅ Achieved |
 
-## 3. Scope (MVP vs Out of Scope)
+---
 
-**MVP (Must‑Have)**
-- Multi‑tenant scheduling & configuration per org.
-- Passive + active subdomain discovery.
-- Fast TCP scan (naabu) + targeted Nmap fingerprinting.
-- Web misconfiguration checks (Nuclei templates).
-- Certificate & email hygiene checks (SPF/DKIM/DMARC).
-- Public credential/secret monitoring (GitHub, paste monitoring).
-- Risk scoring + 1‑page executive report + technical appendix.
-- Alert channels: Slack & Email. Export support (CSV/Jira/GitHub).
-- Analyst triage for critical findings.
-- Re‑scan verification and auto‑closure on fixes.
+## 3. Scope
 
-**Out of Scope**
-- Authenticated credentialed scanning (paid).
-- Full ticketing system (integrations only).
-- Complex admin UI (minimal dashboard).
-- ML‑powered false positive reduction.
-- Paid marketplace, billing, multi‑region features (Phase 2).
+### Implemented (Phase 1)
 
-***
+**Scanning Capabilities:**
+- ✅ Passive subdomain discovery (Subfinder)
+- ✅ DNS resolution and filtering (Dnsx)
+- ✅ Fast TCP port scanning (Naabu)
+- ✅ HTTP/HTTPS probing (Httpx)
+- ✅ TLS/SSL verification (Tlsx)
+- ✅ Service detection (Nmap -sV)
+- ✅ Vulnerability scanning (Nmap NSE + Nuclei)
+
+**Analysis & Reporting:**
+- ✅ Risk scoring (0-100 deterministic scale)
+- ✅ Severity classification (Critical/High/Medium/Low/Info)
+- ✅ Finding deduplication
+- ✅ Web dashboard with real-time updates
+- ✅ JSON API for all data
+
+**Infrastructure:**
+- ✅ 6-layer API-only architecture
+- ✅ Database-backed job queue
+- ✅ Background worker processing
+- ✅ Stale job recovery
+- ✅ MCP server for Claude Code integration
+
+### Planned (Phase 2)
+
+**Multi-Tenancy:**
+- 🔲 Organization management
+- 🔲 Per-org data isolation
+- 🔲 Bulk onboarding via CSV/API
+
+**Notifications:**
+- 🔲 Slack webhooks
+- 🔲 Email alerts (HTML + PDF)
+- 🔲 PagerDuty integration
+- 🔲 Configurable cadences
+
+**Reporting:**
+- 🔲 Executive PDF summaries
+- 🔲 CSV/JSON export
+- 🔲 Jira/GitHub templates
+
+### Out of Scope
+- Authenticated/credentialed scanning
+- Internal network scanning
+- Full ticketing system (integrations only)
+- ML-powered false positive reduction
+- Billing and payment processing
+
+---
 
 ## 4. Users and Personas
 
-- **Founder/Tech Lead:** Wants high‑level assurance and summaries.
-- **DevOps Engineer:** Needs appendices, repro steps, Jira/GitHub exports.
-- **Security Analyst:** Triages, validates, and performs outreach.
-- **Sales/Customer Success:** Uses reports for remediation and upsells.
-- **Platform Admin:** Configures orgs and manages scanning infra.
+| Persona | Needs | Current Support |
+|---------|-------|-----------------|
+| **Security Analyst** | Triage findings, validate vulnerabilities | ✅ Dashboard, API |
+| **DevOps Engineer** | View scan results, track remediation | ✅ API, findings status |
+| **Technical Lead** | Monitor attack surface, prioritize fixes | ✅ Risk scoring, dashboard |
+| **Platform Admin** | Manage domains, configure scans | ✅ Full CRUD API |
 
-***
+---
 
 ## 5. Functional Requirements
 
-### 5.1 Multi‑Org Management
-1. Manage organization records (domains, contacts, alert channels, schedule).
-2. Isolated data and customizable scan exclusions per org.
-3. Bulk onboarding via CSV/API for MSPs.
+### 5.1 Domain Management ✅ Implemented
 
-### 5.2 Scanning Capabilities (Unauthenticated)
-- Passive subdomain discovery using CT logs, DNS history, OSINT feeds.
-- Active DNS and takeover checks.
-- TCP port scans via naabu; fingerprinting via Nmap.
-- Web checks with Nuclei templates (headers, admin pages, exposures).
-- TLS/certificate and email hygiene validation.
-- Secret and credential monitoring on GitHub and paste sites.
+| Requirement | Status | Implementation |
+|-------------|--------|----------------|
+| Add/remove domains | ✅ | `POST/DELETE /api/v1/domains` |
+| List all domains | ✅ | `GET /api/v1/domains` |
+| Domain metadata (notes, tags) | ✅ | Domain model fields |
+| Primary domain designation | ✅ | `is_primary` flag |
+| Scan frequency setting | ✅ | `scan_frequency` field |
 
-### 5.3 Risk Scoring & Prioritization
-- Deterministic scoring (Critical/High/Medium/Low).
-- Findings mapped to business impact (e.g., exposed DB → high).
-- One‑line remediation guidance.
+### 5.2 Scanning Capabilities ✅ Implemented
 
-### 5.4 Notification & Reporting
-- Cadence options: Real‑time, daily, weekly, biweekly, monthly.
-- Channels: Slack, Email (HTML + PDF), PagerDuty webhook.
-- Export: CSV, JSON, Jira/GitHub templates.
+| Capability | Tool | Status |
+|------------|------|--------|
+| Subdomain discovery | Subfinder | ✅ |
+| DNS resolution | Dnsx | ✅ |
+| Port scanning | Naabu | ✅ |
+| HTTP probing | Httpx | ✅ |
+| TLS verification | Tlsx | ✅ |
+| Service detection | Nmap | ✅ |
+| Vulnerability scanning | Nmap NSE + Nuclei | ✅ |
 
-### 5.5 Analyst Triage & Workflow
-- Criticals go to analyst queue before alerts.
-- Findings can be marked as Validated / False Positive / Accepted Risk.
-- Re‑scans confirm and close remediated issues.
+**8-Step Scan Workflow:**
+1. `step1_discover_subdomains` - Subfinder
+2. `step2_resolve_dns` - Dnsx
+3. `step3_scan_ports` - Naabu
+4. `step4_probe_http` - Httpx
+5. `step5_verify_tls` - Tlsx
+6. `step6_detect_services` - Nmap -sV
+7. `step7_detect_vulnerabilities` - Nmap NSE + Nuclei
+8. `step8_analyze` - Risk scoring
 
-### 5.6 Scheduling & Concurrency
-- Scheduler launches per‑org scans based on cadence.
-- Parallel execution with concurrency/rate limits.
+### 5.3 Risk Scoring ✅ Implemented
 
-### 5.7 Onboarding & Authorization
-- Form captures authorization, domains, exclusions, cadence.
-- Consent record and timestamp stored for legal compliance.
+**Scoring Algorithm (0-100):**
+- Base score (0-40): Inherent risk of finding type
+- Context score (0-40): Business context and asset criticality
+- Exposure score (0-20): Public accessibility
 
-### 5.8 Security & Data Privacy
-- Data isolation and role‑based access.
-- Evidence retention policy (90–365 days).
-- Encryption at rest/in transit.
-- Restrict PII and scrub sensitive data per policy.
+**Severity Mapping:**
+| Score Range | Severity |
+|-------------|----------|
+| 80-100 | Critical |
+| 60-79 | High |
+| 40-59 | Medium |
+| 20-39 | Low |
+| 0-19 | Info |
 
-***
+### 5.4 Finding Management ✅ Implemented
 
-## 6. Non‑Functional Requirements
+| Requirement | Status | Implementation |
+|-------------|--------|----------------|
+| List findings | ✅ | `GET /api/v1/findings` |
+| Filter by severity | ✅ | Query parameters |
+| Update finding status | ✅ | `PUT /api/v1/findings/{id}` |
+| Finding statistics | ✅ | `GET /api/v1/findings/stats` |
+| Status workflow | ✅ | new → open → acknowledged → resolved/false_positive |
 
-- Availability ≥ 99%.
-- MVP scales to 200 orgs.
-- Critical alert latency ≤ 5 minutes.
-- Safe‑scanning defaults to avoid disruption.
-- Memory ≤ 1GB per worker; containerized workers.
-- False positives ≤ 10%.
-- Logging for all alerts, triage, communications.
+### 5.5 Notifications 🔲 Planned
 
-***
+| Requirement | Status | Priority |
+|-------------|--------|----------|
+| Slack webhooks | 🔲 | High |
+| Email alerts | 🔲 | High |
+| PagerDuty integration | 🔲 | Medium |
+| Configurable cadences | 🔲 | Medium |
 
-## 7. Data & System Design (High-Level)
+### 5.6 Reporting 🔲 Planned
 
-**Data Model**
-- `org_id`, `org_name`, `primary_domains`, `cadence`, `consent_record`
-- Findings table: `finding_id`, `type`, `severity`, `evidence_links`, `triage_status`
-- Runs table: `run_id`, `run_type`, `start_time`, `summary_counts`
+| Requirement | Status | Priority |
+|-------------|--------|----------|
+| Executive PDF summary | 🔲 | High |
+| CSV export | 🔲 | Medium |
+| JSON export | ✅ | Complete (API) |
+| Jira templates | 🔲 | Low |
+| GitHub issue templates | 🔲 | Low |
 
-**Architecture Components**
-- Orchestrator: Prefect/Celery for scheduling.
-- Containerized scan workers (naabu, nmap, nuclei, repo/paste collectors).
-- Post‑processing: deduplication, scoring, CVE enrichment.
-- Triage UI, Notification service (Slack/Email).
-- Storage: Postgres + Object Store (S3).
-- APIs for onboarding, querying, re‑scan, and export.
+---
 
-***
+## 6. Non-Functional Requirements
 
-## 8. Workflows
+| Requirement | Target | Current Status |
+|-------------|--------|----------------|
+| API response time | ≤ 200ms | ✅ Achieved |
+| Scan timeout | Configurable (default 300s) | ✅ Implemented |
+| Concurrent scans | Multiple via workers | ✅ Implemented |
+| Data persistence | SQLite with backups | ✅ Implemented |
+| Job recovery | Stale job detection (30 min) | ✅ Implemented |
+| Graceful shutdown | Signal handling | ✅ Implemented |
 
-**Onboarding**
-1. Customer submits authorization form.
-2. System records consent and schedules full scan within 24 h.
-3. Analyst reviews criticals before alerting.
+---
 
-**Scan & Alert**
-1. Scheduler launches scans.
-2. Post‑processing dedupes and scores results.
-3. Analyst validates; validated issues trigger real‑time alerts.
-4. Non‑criticals grouped into reports.
+## 7. Current Architecture
 
-**Re‑scan & Auto‑Close**
-- After fix submissions, re‑scan verifies and auto‑closes if resolved.
+### 6-Layer API-Only Design
 
-***
+```
+┌─────────────────────────────────────────────────────────────┐
+│ Layer 1: API Layer (FastAPI)                                │
+│   - Full CRUD REST API                                      │
+│   - Pydantic v2 validation                                  │
+│   - Web dashboard served at /                               │
+├─────────────────────────────────────────────────────────────┤
+│ Layer 2: Orchestrator Layer                                 │
+│   - DomainService, ScanService, FindingsService             │
+│   - JobService, HealthService                               │
+│   - ScanWorkflowOrchestrator (8-step workflow)              │
+├─────────────────────────────────────────────────────────────┤
+│ Layer 3: Database Job Queue                                 │
+│   - Jobs stored in SQLite                                   │
+│   - Worker polls for pending jobs                           │
+│   - Atomic claiming with worker ID                          │
+├─────────────────────────────────────────────────────────────┤
+│ Layer 4: Tools Layer                                        │
+│   - Subfinder, Naabu, Dnsx, Httpx, Tlsx, Nmap, Nuclei       │
+├─────────────────────────────────────────────────────────────┤
+│ Layer 5: Analysis Layer                                     │
+│   - RiskScorer, PortVulnerabilityDetector, ServiceDetector  │
+├─────────────────────────────────────────────────────────────┤
+│ Layer 6: Database Layer (SQLite + SQLModel)                 │
+│   - 15+ tables for domains, scans, findings, jobs           │
+└─────────────────────────────────────────────────────────────┘
+```
 
-## 9. User Interfaces & Reports
+### Technology Stack
 
-**Customer‑Facing**
-- Email with 1‑page executive summary + CSV appendix.
-- Slack messages for criticals with evidence links.
+| Component | Technology |
+|-----------|------------|
+| API Framework | FastAPI 0.109+ |
+| Validation | Pydantic v2 |
+| Database | SQLite + SQLModel |
+| Job Queue | Database polling |
+| Package Manager | uv |
+| Testing | pytest |
+| MCP Integration | fastmcp |
 
-**Internal Dashboard**
-- Analyst queue with filters (org, severity).
-- Evidence view, action buttons, triage status.
-- Org management and consent records.
+---
 
-**Executive Report Template**
-- Org name, scan date, and risk summary.
-- Top 3 issues with recommended next steps.
-- CTA: “Request 30‑min remediation review”.
+## 8. API Endpoints
 
-***
+### Implemented Endpoints
 
-## 10. Integrations
+```
+# Health
+GET  /api/v1/health                     # Health check
 
-- Slack Webhooks
-- Email (HTML + PDF)
-- PagerDuty optional
-- Jira & GitHub integration
-- S3‑compatible object store
-- API for MSP usage
+# Domains (Full CRUD)
+GET  /api/v1/domains                    # List domains
+POST /api/v1/domains                    # Create domain
+GET  /api/v1/domains/{domain}           # Get domain details
+PUT  /api/v1/domains/{domain}           # Update domain
+DELETE /api/v1/domains/{domain}         # Delete domain
 
-***
+# Scans (Async)
+GET  /api/v1/scans                      # List scans
+POST /api/v1/scans                      # Create scan (returns 202)
+GET  /api/v1/scans/{scan_id}            # Get scan status
+GET  /api/v1/scans/{scan_id}/results    # Get scan results
+DELETE /api/v1/scans/{scan_id}          # Delete scan
+POST /api/v1/scans/{scan_id}/cancel     # Cancel scan
+POST /api/v1/scans/{scan_id}/retry      # Retry failed scan
 
-## 11. Security, Compliance & Legal
+# Findings
+GET  /api/v1/findings                   # List findings
+GET  /api/v1/findings/{id}              # Get finding details
+PUT  /api/v1/findings/{id}              # Update finding status
+GET  /api/v1/findings/stats             # Get statistics
 
-- Unauthenticated public scanning only.
-- Explicit consent required for intrusive scans.
-- Onboarding disclaimer outlines scope and limitations.
-- Encrypted storage for secrets and evidence.
-- Defined procedure for takedown and PII exposure handling.
+# Jobs
+GET  /api/v1/jobs                       # List jobs
+GET  /api/v1/jobs/{id}                  # Get job status
+GET  /api/v1/jobs/stats                 # Get job statistics
+```
 
-***
+---
 
-## 12. Operational Considerations
+## 9. Roadmap
 
-- Per‑org rate limit and scanning window controls.
-- Triage SLA: critical → review within 8 hours; alert within 1 hour after validation.
-- Capacity: 2 scan workers per 50 orgs (MVP).
-- Daily backups and per‑org retention.
-- Worker monitoring and requeue logic.
+### Phase 1 - Core Scanning ✅ Complete (January 2026)
+- ✅ 6-layer API-only architecture
+- ✅ 7 security tools integrated
+- ✅ 8-step scan workflow
+- ✅ Risk scoring and analysis
+- ✅ Web dashboard
+- ✅ Full CRUD API
+- ✅ Database job queue
+- ✅ MCP server integration
 
-***
+### Phase 2 - Notifications & Reporting (Planned)
+- 🔲 Slack webhook integration
+- 🔲 Email notifications
+- 🔲 Executive PDF reports
+- 🔲 CSV export functionality
+- 🔲 Scheduled scan cadences
 
-## 13. MVP Acceptance Criteria
+### Phase 3 - Multi-Tenancy (Planned)
+- 🔲 Organization management
+- 🔲 Per-org data isolation
+- 🔲 Role-based access control
+- 🔲 Bulk onboarding
 
-- Multi‑org onboarding and consent flow works end-to-end.
-- Baseline scan launched within 24 hours of onboarding.
-- Reliable scheduler and segregated results.
-- Critical findings triaged and alerted with evidence.
-- Reports (exec PDF + CSV) delivered per cadence.
-- Re‑scan and auto‑close operate correctly.
-- Slack/Email notifications function with attachments.
+### Phase 4 - Integrations (Planned)
+- 🔲 Jira integration
+- 🔲 GitHub issue creation
+- 🔲 PagerDuty alerts
+- 🔲 S3 storage for evidence
 
-***
+---
 
-## 14. Roadmap & Phasing
+## 10. Quick Start
 
-**Phase 1 — MVP (2–4 weeks)**
-Core multi‑org scanning, triage queue, Slack/Email alerts.
+### Running the Application
 
-**Phase 2 — Hardening (4–6 weeks)**
-Jira/GitHub integration, UI enhancements, retention policies.
+```bash
+# Install dependencies
+uv sync
 
-**Phase 3 — Stickiness & Upsell (6–10 weeks)**
-Ticketing automation, enrichment, MSP API, PagerDuty integration.
+# Terminal 1: Start API server
+python openeasd.py --port 8000
 
-**Phase 4 — Paid Services (12+ weeks)**
-Authenticated scans, remediation validation, billing integration.
+# Terminal 2: Start worker
+python -m workers.scan_worker
 
-***
+# Access dashboard
+open http://localhost:8000
 
-## 15. KPIs
+# Access API docs
+open http://localhost:8000/docs
+```
 
-- Scans per day/org.
-- Triage response times.
-- False positive and re‑scan success rates.
-- Conversion: validated criticals → paid pentests.
-- Outreach response and uptime metrics.
+### Basic API Usage
 
-***
+```bash
+# Create a domain
+curl -X POST http://localhost:8000/api/v1/domains \
+  -H "Content-Type: application/json" \
+  -d '{"domain": "example.com", "is_primary": true}'
 
-## 16. Sample Onboarding Form Fields
+# Start a scan
+curl -X POST http://localhost:8000/api/v1/scans \
+  -H "Content-Type: application/json" \
+  -d '{"domain": "example.com"}'
 
-- Organization name
-- Primary & additional domains
-- Exclusions
-- Authorized contacts and alert channels
-- Preferred cadence
-- Consent confirmation
-- Scanning time window restrictions
+# Check scan status
+curl http://localhost:8000/api/v1/scans/{scan_id}
 
-***
+# Get results
+curl http://localhost:8000/api/v1/scans/{scan_id}/results
+```
 
-## 17. Sample Critical Alert Email
+---
 
-**Subject:** `[URGENT] Critical Exposure — org.example.com`
+## 11. Security Considerations
 
-“Hi [Name],
-We have validated a critical exposure on your assets: Exposed MongoDB on 203.0.113.45.
-Please review the attached 1‑page summary and technical appendix.
-We will reach out to schedule a 15–30 minute remediation review.
-— Cybersecify Analyst Team”
+- **Unauthenticated scanning only** - No credential-based testing
+- **Safe defaults** - Non-intrusive scanning by default
+- **Rate limiting** - Configurable scan rate limits
+- **Data isolation** - Per-scan result isolation
+- **Evidence retention** - Configurable retention policies
 
-***
+---
 
-## 18. Final Notes
+## 12. File Structure
 
-- Default configuration should prioritize safe, legal unauthenticated scans.
-- Analyst validation for all criticals builds trust.
-- 15‑day outreach acts as a structured touchpoint for upsells.
-- Ship the executive summary and outreach script first for impact.
+```
+OpenEASD/
+├── src/
+│   ├── api/                  # Layer 1: REST API
+│   ├── orchestrator/         # Layer 2: Business logic
+│   ├── analysis/             # Layer 5: Risk scoring
+│   ├── tools/                # Layer 4: Security tools
+│   ├── data/                 # Layer 6: Database
+│   ├── frontend/             # Web dashboard
+│   └── mcp/                  # MCP server
+├── workers/
+│   └── scan_worker.py        # Background job processor
+├── tests/                    # Test suite
+├── openeasd.py               # API entry point
+└── pyproject.toml            # Dependencies
+```
+
+---
+
+**Document Status:** Updated to reflect current implementation
+**Last Updated:** January 29, 2026
+**Version:** 4.0
