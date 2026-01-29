@@ -1909,6 +1909,60 @@ class SQLModelManager(DatabaseManager):
             # rowcount == 0 means job doesn't exist or was already claimed
             return result.rowcount == 1
 
+    def claim_next_job(self, worker_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Atomically get and claim the next pending job.
+
+        This combines get_pending_jobs + claim_job into a single atomic operation
+        to prevent race conditions between multiple workers.
+
+        Args:
+            worker_id: Worker ID claiming the job
+
+        Returns:
+            Job dictionary if a job was claimed, None if no jobs available
+        """
+        from sqlalchemy import update
+
+        with Session(self.engine) as session:
+            # Step 1: Find the next pending job (ordered by priority, then created_at)
+            query = select(Job).where(
+                Job.status == 'pending'
+            ).order_by(Job.priority, Job.created_at).limit(1)
+
+            job = session.exec(query).first()
+            if not job:
+                return None
+
+            # Step 2: Atomically claim it
+            now = get_ist_now()
+            stmt = (
+                update(Job)
+                .where(
+                    and_(
+                        Job.id == job.id,
+                        Job.status == 'pending'  # Only claim if still pending
+                    )
+                )
+                .values(
+                    status='processing',
+                    worker_id=worker_id,
+                    started_at=now
+                )
+            )
+
+            result = session.execute(stmt)
+            session.commit()
+
+            # If we claimed it, return the job data
+            if result.rowcount == 1:
+                # Refresh to get updated values
+                session.refresh(job)
+                return self._job_to_dict(job)
+
+            # Another worker claimed it, try again
+            return None
+
     def complete_job(
         self,
         job_id: str,

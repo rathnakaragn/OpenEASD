@@ -17,6 +17,7 @@ dependencies = [
     # Messaging Layer (ZeroMQ)
     "pyzmq>=25.0.0",
     "email-validator>=2.3.0",
+    "fastmcp>=2.14.2",
 ]
 
 [project.optional-dependencies]

@@ -2,7 +2,7 @@
 Scan management endpoints (full access).
 
 This module provides full API endpoints for scan management.
-Scans are executed asynchronously via ZeroMQ job queue.
+Scans are executed asynchronously via database job queue.
 
 Exception handling is centralized in main.py via @app.exception_handler.
 """
@@ -25,7 +25,6 @@ from src.orchestrator.findings_service import FindingsService
 from src.orchestrator.domain_service import DomainService
 from src.api.dependencies import (
     get_scan_service,
-    get_scan_service_with_queue,
     get_domain_service,
     get_findings_service,
 )
@@ -75,7 +74,7 @@ async def list_scans(
 async def create_scan(
     data: ScanCreate,
     response: Response,
-    service: ScanService = Depends(get_scan_service_with_queue)
+    service: ScanService = Depends(get_scan_service)
 ):
     """
     Create a new scan (async).
@@ -113,7 +112,7 @@ async def create_scan(
 )
 async def create_batch_scan(
     data: BatchScanCreate,
-    service: ScanService = Depends(get_scan_service_with_queue),
+    service: ScanService = Depends(get_scan_service),
     domain_service: DomainService = Depends(get_domain_service)
 ):
     """
@@ -235,7 +234,7 @@ async def retry_scan(
     scan_id: str,
     data: ScanRetryRequest,
     response: Response,
-    service: ScanService = Depends(get_scan_service_with_queue)
+    service: ScanService = Depends(get_scan_service)
 ):
     """
     Retry a failed scan.

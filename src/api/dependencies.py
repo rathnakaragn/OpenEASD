@@ -13,7 +13,6 @@ from src.orchestrator.scan_service import ScanService
 from src.orchestrator.findings_service import FindingsService
 from src.orchestrator.job_service import JobService
 from src.orchestrator.health_service import HealthCheckService
-from src.messaging.job_queue import JobQueue, get_job_queue as _get_job_queue
 
 
 # Singleton database manager instance with thread-safe initialization
@@ -106,19 +105,6 @@ def get_findings_service(db: SQLModelManager = Depends(get_db_manager)) -> Findi
     return FindingsService(db)
 
 
-def get_job_queue(db: SQLModelManager = Depends(get_db_manager)) -> JobQueue:
-    """
-    Dependency to get job queue instance with database persistence.
-
-    Args:
-        db: Database manager (injected by FastAPI)
-
-    Returns:
-        JobQueue instance with db_manager for job persistence
-    """
-    return _get_job_queue(db_manager=db)
-
-
 def get_job_service(db: SQLModelManager = Depends(get_db_manager)) -> JobService:
     """
     Dependency to get job service instance.
@@ -143,22 +129,3 @@ def get_health_service(db: SQLModelManager = Depends(get_db_manager)) -> HealthC
         HealthCheckService instance
     """
     return HealthCheckService(db)
-
-
-def get_scan_service_with_queue(
-    db: SQLModelManager = Depends(get_db_manager),
-    job_queue: JobQueue = Depends(get_job_queue)
-) -> ScanService:
-    """
-    Dependency to get scan service instance with job queue.
-
-    Use this for routes that need to queue async scans.
-
-    Args:
-        db: Database manager (injected by FastAPI)
-        job_queue: Job queue (injected by FastAPI)
-
-    Returns:
-        ScanService instance with job queue configured
-    """
-    return ScanService(db, job_queue=job_queue)

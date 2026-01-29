@@ -6,7 +6,8 @@ is delegated to ScanWorkflowOrchestrator.
 """
 
 import logging
-from typing import List, Dict, Any, Optional, Union, TYPE_CHECKING
+import uuid
+from typing import List, Dict, Any, Optional, Union
 
 from src.data.database.sqlmodel_manager import SQLModelManager
 from src.utils.validation import validate_domain
@@ -14,9 +15,6 @@ from src.utils.timezone import get_ist_now, format_datetime_iso
 from src.utils.domain_helpers import extract_primary_domain
 from src.orchestrator.exceptions import ScanNotFound, InvalidScanStatus
 from src.orchestrator.scan_workflow_orchestrator import ScanWorkflowOrchestrator
-
-if TYPE_CHECKING:
-    from src.messaging.job_queue import JobQueue
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +25,6 @@ class ScanService:
     def __init__(
         self,
         db_manager: SQLModelManager,
-        job_queue: Optional["JobQueue"] = None,
         enable_analysis: bool = True
     ):
         """
@@ -35,11 +32,9 @@ class ScanService:
 
         Args:
             db_manager: Database manager instance
-            job_queue: Optional job queue for async operations
             enable_analysis: Enable analysis layer integration (default: True)
         """
         self.db = db_manager
-        self._job_queue = job_queue
 
         # Workflow orchestrator handles scan execution
         self._orchestrator = ScanWorkflowOrchestrator(
@@ -370,7 +365,7 @@ class ScanService:
         }
 
     # =========================================================================
-    # Async Scan Operations (with Job Queue)
+    # Async Scan Operations (Database Job Queue)
     # =========================================================================
 
     def create_and_queue_scan(
@@ -387,18 +382,14 @@ class ScanService:
 
         Returns:
             Dictionary containing scan info
-
-        Raises:
-            RuntimeError: If job queue not configured
         """
-        if not self._job_queue:
-            raise RuntimeError("Job queue not configured for async operations")
-
         # Create scan record
         scan = self.create_scan(domains=[domain])
 
-        # Push to job queue
-        self._job_queue.push_job(
+        # Create job in database (worker will poll and pick it up)
+        job_id = str(uuid.uuid4())
+        self.db.create_job(
+            job_id=job_id,
             job_type="scan",
             payload={
                 "scan_id": scan['scan_id'],
@@ -426,13 +417,7 @@ class ScanService:
 
         Returns:
             List of scan info dictionaries
-
-        Raises:
-            RuntimeError: If job queue not configured
         """
-        if not self._job_queue:
-            raise RuntimeError("Job queue not configured for async operations")
-
         scans = []
         for domain_obj in domains:
             domain_name = (
@@ -443,8 +428,10 @@ class ScanService:
             # Create scan record
             scan = self.create_scan(domains=[domain_name])
 
-            # Push to job queue
-            self._job_queue.push_job(
+            # Create job in database
+            job_id = str(uuid.uuid4())
+            self.db.create_job(
+                job_id=job_id,
                 job_type="scan",
                 payload={
                     "scan_id": scan['scan_id'],
@@ -484,16 +471,14 @@ class ScanService:
         Raises:
             ScanNotFound: If scan not found
             InvalidScanStatus: If scan not failed
-            RuntimeError: If job queue not configured
         """
-        if not self._job_queue:
-            raise RuntimeError("Job queue not configured for async operations")
-
         # Retry creates new scan record
         retry_result = self.retry_scan(scan_id, timeout=timeout)
 
-        # Queue the new scan
-        self._job_queue.push_job(
+        # Create job in database
+        job_id = str(uuid.uuid4())
+        self.db.create_job(
+            job_id=job_id,
             job_type="scan",
             payload={
                 "scan_id": retry_result['new_scan_id'],

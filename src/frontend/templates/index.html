@@ -4,89 +4,196 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>OpenEASD - Attack Surface Detection</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#3b82f6',
+                        'primary-hover': '#2563eb',
+                        critical: '#dc2626',
+                        high: '#f97316',
+                        medium: '#eab308',
+                        low: '#22c55e',
+                        info: '#6366f1',
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- App JS (must load before Alpine) -->
+    <script src="/static/js/app.js"></script>
+    <!-- Alpine.js CDN -->
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3/dist/cdn.min.js"></script>
     <link rel="stylesheet" href="/static/css/style.css">
 </head>
-<body>
-    <div class="container">
+<body class="bg-slate-900 text-slate-100 min-h-screen">
+    <div x-data="app()" x-init="init()" class="max-w-7xl mx-auto px-4 py-5">
         <!-- Header -->
-        <header class="header">
-            <h1>OpenEASD</h1>
-            <p class="subtitle">Open Source External Attack Surface Detection</p>
+        <header class="text-center py-8 mb-5">
+            <h1 class="text-4xl font-bold text-blue-500 mb-1">OpenEASD</h1>
+            <p class="text-slate-400 text-lg">Open Source External Attack Surface Detection</p>
         </header>
 
         <!-- Navigation Tabs -->
-        <nav class="tabs">
-            <button class="tab active" data-tab="domains">Domains</button>
-            <button class="tab" data-tab="scans">Scans</button>
-            <button class="tab" data-tab="findings">Findings</button>
-            <button class="tab" data-tab="jobs">Jobs</button>
+        <nav class="flex gap-2 mb-5 border-b-2 border-slate-700 pb-2">
+            <button
+                @click="switchTab('domains')"
+                :class="activeTab === 'domains' ? 'text-blue-500 bg-slate-800 font-semibold' : 'text-slate-400 hover:text-slate-100 hover:bg-slate-800'"
+                class="px-6 py-3 rounded-t-lg transition-all">
+                Domains
+            </button>
+            <button
+                @click="switchTab('scans')"
+                :class="activeTab === 'scans' ? 'text-blue-500 bg-slate-800 font-semibold' : 'text-slate-400 hover:text-slate-100 hover:bg-slate-800'"
+                class="px-6 py-3 rounded-t-lg transition-all">
+                Scans
+            </button>
+            <button
+                @click="switchTab('findings')"
+                :class="activeTab === 'findings' ? 'text-blue-500 bg-slate-800 font-semibold' : 'text-slate-400 hover:text-slate-100 hover:bg-slate-800'"
+                class="px-6 py-3 rounded-t-lg transition-all">
+                Findings
+            </button>
         </nav>
 
-        <!-- Domains Tab -->
-        <section id="domains-tab" class="tab-content active">
-            <div class="section-header">
-                <h2>Domain Management</h2>
-                <button class="btn btn-primary" onclick="showAddDomainModal()">+ Add Domain</button>
+        <!-- Domains Tab (no x-cloak so it shows by default) -->
+        <section x-show="activeTab === 'domains'">
+            <div class="flex justify-between items-center mb-5">
+                <h2 class="text-2xl font-semibold">Domain Management</h2>
+                <button @click="showAddDomainModal()" class="bg-blue-500 hover:bg-blue-600 text-white px-5 py-2.5 rounded-lg font-medium transition-all">
+                    + Add Domain
+                </button>
             </div>
 
-            <div class="card">
-                <table class="data-table" id="domains-table">
+            <div class="bg-slate-800 rounded-xl p-5 shadow-lg border border-slate-700">
+                <table class="w-full">
                     <thead>
-                        <tr>
-                            <th>Domain</th>
-                            <th>Primary</th>
-                            <th>Scans</th>
-                            <th>Last Scan</th>
-                            <th>Actions</th>
+                        <tr class="border-b border-slate-700">
+                            <th class="text-left py-3.5 px-4 text-slate-400 text-sm uppercase tracking-wider font-semibold">Domain</th>
+                            <th class="text-left py-3.5 px-4 text-slate-400 text-sm uppercase tracking-wider font-semibold">Primary</th>
+                            <th class="text-left py-3.5 px-4 text-slate-400 text-sm uppercase tracking-wider font-semibold">Scans</th>
+                            <th class="text-left py-3.5 px-4 text-slate-400 text-sm uppercase tracking-wider font-semibold">Last Scan</th>
+                            <th class="text-left py-3.5 px-4 text-slate-400 text-sm uppercase tracking-wider font-semibold">Actions</th>
                         </tr>
                     </thead>
-                    <tbody id="domains-body">
-                        <tr>
-                            <td colspan="5" class="loading">Loading domains...</td>
-                        </tr>
+                    <tbody>
+                        <template x-if="domainsLoading">
+                            <tr>
+                                <td colspan="5" class="text-center text-slate-400 py-10">Loading domains...</td>
+                            </tr>
+                        </template>
+                        <template x-if="!domainsLoading && domains.length === 0">
+                            <tr>
+                                <td colspan="5" class="text-center py-16">
+                                    <h3 class="text-xl text-slate-400 mb-2">No domains yet</h3>
+                                    <p class="text-slate-500">Add your first domain to start scanning</p>
+                                </td>
+                            </tr>
+                        </template>
+                        <template x-for="domain in domains" :key="domain.domain">
+                            <tr class="border-b border-slate-700 hover:bg-blue-500/10 transition-colors">
+                                <td class="py-3.5 px-4">
+                                    <span x-text="domain.domain"></span>
+                                    <span x-show="domain.is_primary" class="bg-blue-500 text-white text-xs px-2 py-0.5 rounded ml-2">PRIMARY</span>
+                                </td>
+                                <td class="py-3.5 px-4" x-text="domain.is_primary ? 'Yes' : 'No'"></td>
+                                <td class="py-3.5 px-4" x-text="domain.scan_count || 0"></td>
+                                <td class="py-3.5 px-4" x-text="domain.last_scanned_at ? formatDate(domain.last_scanned_at) : 'Never'"></td>
+                                <td class="py-3.5 px-4">
+                                    <div class="flex gap-2">
+                                        <button @click="scanDomain(domain.domain)" class="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1.5 rounded text-sm font-medium transition-all">Scan</button>
+                                        <button @click="editDomain(domain.domain)" class="bg-slate-600 hover:bg-slate-500 text-white px-3 py-1.5 rounded text-sm font-medium transition-all">Edit</button>
+                                        <button @click="deleteDomain(domain.domain)" class="bg-red-500 hover:bg-red-600 text-white px-3 py-1.5 rounded text-sm font-medium transition-all">Delete</button>
+                                    </div>
+                                </td>
+                            </tr>
+                        </template>
                     </tbody>
                 </table>
             </div>
         </section>
 
         <!-- Scans Tab -->
-        <section id="scans-tab" class="tab-content">
-            <div class="section-header">
-                <h2>Scan Sessions</h2>
-                <div class="action-buttons">
-                    <button class="btn btn-secondary" onclick="startBatchScan(true)">Scan Primary Domains</button>
-                    <button class="btn btn-secondary" onclick="startBatchScan(false)">Scan All Domains</button>
-                    <button class="btn btn-primary" onclick="showNewScanModal()">+ New Scan</button>
+        <section x-show="activeTab === 'scans'" x-cloak>
+            <div class="flex justify-between items-center mb-5">
+                <h2 class="text-2xl font-semibold">Scan Sessions</h2>
+                <div class="flex gap-2">
+                    <button @click="startBatchScan(true)" class="bg-slate-600 hover:bg-slate-500 text-white px-4 py-2.5 rounded-lg font-medium transition-all">Scan Primary Domains</button>
+                    <button @click="startBatchScan(false)" class="bg-slate-600 hover:bg-slate-500 text-white px-4 py-2.5 rounded-lg font-medium transition-all">Scan All Domains</button>
+                    <button @click="showNewScanModal()" class="bg-blue-500 hover:bg-blue-600 text-white px-5 py-2.5 rounded-lg font-medium transition-all">+ New Scan</button>
                 </div>
             </div>
 
-            <div class="card">
-                <table class="data-table" id="scans-table">
+            <div class="bg-slate-800 rounded-xl p-5 shadow-lg border border-slate-700">
+                <table class="w-full">
                     <thead>
-                        <tr>
-                            <th>Scan ID</th>
-                            <th>Domain</th>
-                            <th>Status</th>
-                            <th>Started</th>
-                            <th>Findings</th>
-                            <th>Actions</th>
+                        <tr class="border-b border-slate-700">
+                            <th class="text-left py-3.5 px-4 text-slate-400 text-sm uppercase tracking-wider font-semibold">Scan ID</th>
+                            <th class="text-left py-3.5 px-4 text-slate-400 text-sm uppercase tracking-wider font-semibold">Domain</th>
+                            <th class="text-left py-3.5 px-4 text-slate-400 text-sm uppercase tracking-wider font-semibold">Status</th>
+                            <th class="text-left py-3.5 px-4 text-slate-400 text-sm uppercase tracking-wider font-semibold">Started</th>
+                            <th class="text-left py-3.5 px-4 text-slate-400 text-sm uppercase tracking-wider font-semibold">Findings</th>
+                            <th class="text-left py-3.5 px-4 text-slate-400 text-sm uppercase tracking-wider font-semibold">Actions</th>
                         </tr>
                     </thead>
-                    <tbody id="scans-body">
-                        <tr>
-                            <td colspan="6" class="loading">Loading scans...</td>
-                        </tr>
+                    <tbody>
+                        <template x-if="scansLoading">
+                            <tr>
+                                <td colspan="6" class="text-center text-slate-400 py-10">Loading scans...</td>
+                            </tr>
+                        </template>
+                        <template x-if="!scansLoading && scans.length === 0">
+                            <tr>
+                                <td colspan="6" class="text-center py-16">
+                                    <h3 class="text-xl text-slate-400 mb-2">No scans yet</h3>
+                                    <p class="text-slate-500">Start a scan from the Domains tab</p>
+                                </td>
+                            </tr>
+                        </template>
+                        <template x-for="scan in scans" :key="scan.scan_id">
+                            <tr class="border-b border-slate-700 hover:bg-blue-500/10 transition-colors">
+                                <td class="py-3.5 px-4">
+                                    <code class="bg-slate-900 px-1.5 py-0.5 rounded text-sm" x-text="scan.scan_id.substring(0, 8) + '...'"></code>
+                                </td>
+                                <td class="py-3.5 px-4" x-text="scan.domain || 'N/A'"></td>
+                                <td class="py-3.5 px-4">
+                                    <span :class="getBadgeClass(scan.status)" class="inline-block px-2.5 py-1 rounded-full text-xs font-medium" x-text="scan.status"></span>
+                                </td>
+                                <td class="py-3.5 px-4" x-text="scan.start_time ? formatDate(scan.start_time) : 'Pending'"></td>
+                                <td class="py-3.5 px-4" x-text="scan.findings_count || 0"></td>
+                                <td class="py-3.5 px-4">
+                                    <div class="flex gap-2">
+                                        <template x-if="scan.status === 'completed'">
+                                            <button @click="viewScanResults(scan.scan_id)" class="bg-slate-600 hover:bg-slate-500 text-white px-3 py-1.5 rounded text-sm font-medium transition-all">View Results</button>
+                                        </template>
+                                        <template x-if="scan.status === 'running' || scan.status === 'pending'">
+                                            <button @click="cancelScan(scan.scan_id)" class="bg-red-500 hover:bg-red-600 text-white px-3 py-1.5 rounded text-sm font-medium transition-all">Cancel</button>
+                                        </template>
+                                        <template x-if="scan.status === 'failed'">
+                                            <button @click="retryScan(scan.scan_id)" class="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1.5 rounded text-sm font-medium transition-all">Retry</button>
+                                        </template>
+                                        <template x-if="scan.status === 'completed' || scan.status === 'failed' || scan.status === 'cancelled'">
+                                            <button @click="deleteScan(scan.scan_id)" class="bg-red-500 hover:bg-red-600 text-white px-3 py-1.5 rounded text-sm font-medium transition-all">Delete</button>
+                                        </template>
+                                    </div>
+                                </td>
+                            </tr>
+                        </template>
                     </tbody>
                 </table>
             </div>
         </section>
 
         <!-- Findings Tab -->
-        <section id="findings-tab" class="tab-content">
-            <div class="section-header">
-                <h2>Security Findings</h2>
-                <div class="filters">
-                    <select id="severity-filter" onchange="loadFindings()">
+        <section x-show="activeTab === 'findings'" x-cloak>
+            <div class="flex justify-between items-center mb-5">
+                <h2 class="text-2xl font-semibold">Security Findings</h2>
+                <div>
+                    <select x-model="severityFilter" @change="loadFindings()" class="bg-slate-800 border border-slate-700 text-slate-100 px-4 py-2 rounded-lg">
                         <option value="">All Severities</option>
                         <option value="critical">Critical</option>
                         <option value="high">High</option>
@@ -98,225 +205,377 @@
             </div>
 
             <!-- Stats Cards -->
-            <div class="stats-grid" id="findings-stats">
-                <div class="stat-card critical">
-                    <span class="stat-value" id="stat-critical">0</span>
-                    <span class="stat-label">Critical</span>
+            <div class="grid grid-cols-5 gap-4 mb-5">
+                <div class="bg-slate-800 rounded-xl p-5 text-center border border-slate-700 border-l-4 border-l-red-600">
+                    <span class="block text-3xl font-bold text-red-600" x-text="findingsStats.critical || 0"></span>
+                    <span class="text-slate-400">Critical</span>
                 </div>
-                <div class="stat-card high">
-                    <span class="stat-value" id="stat-high">0</span>
-                    <span class="stat-label">High</span>
+                <div class="bg-slate-800 rounded-xl p-5 text-center border border-slate-700 border-l-4 border-l-orange-500">
+                    <span class="block text-3xl font-bold text-orange-500" x-text="findingsStats.high || 0"></span>
+                    <span class="text-slate-400">High</span>
                 </div>
-                <div class="stat-card medium">
-                    <span class="stat-value" id="stat-medium">0</span>
-                    <span class="stat-label">Medium</span>
+                <div class="bg-slate-800 rounded-xl p-5 text-center border border-slate-700 border-l-4 border-l-yellow-500">
+                    <span class="block text-3xl font-bold text-yellow-500" x-text="findingsStats.medium || 0"></span>
+                    <span class="text-slate-400">Medium</span>
                 </div>
-                <div class="stat-card low">
-                    <span class="stat-value" id="stat-low">0</span>
-                    <span class="stat-label">Low</span>
+                <div class="bg-slate-800 rounded-xl p-5 text-center border border-slate-700 border-l-4 border-l-green-500">
+                    <span class="block text-3xl font-bold text-green-500" x-text="findingsStats.low || 0"></span>
+                    <span class="text-slate-400">Low</span>
                 </div>
-                <div class="stat-card info">
-                    <span class="stat-value" id="stat-info">0</span>
-                    <span class="stat-label">Info</span>
+                <div class="bg-slate-800 rounded-xl p-5 text-center border border-slate-700 border-l-4 border-l-indigo-500">
+                    <span class="block text-3xl font-bold text-indigo-500" x-text="findingsStats.info || 0"></span>
+                    <span class="text-slate-400">Info</span>
                 </div>
             </div>
 
-            <div class="card">
-                <table class="data-table" id="findings-table">
+            <div class="bg-slate-800 rounded-xl p-5 shadow-lg border border-slate-700">
+                <table class="w-full">
                     <thead>
-                        <tr>
-                            <th>Severity</th>
-                            <th>Type</th>
-                            <th>Asset</th>
-                            <th>Risk Score</th>
-                            <th>Status</th>
-                            <th>Actions</th>
+                        <tr class="border-b border-slate-700">
+                            <th class="text-left py-3.5 px-4 text-slate-400 text-sm uppercase tracking-wider font-semibold">Severity</th>
+                            <th class="text-left py-3.5 px-4 text-slate-400 text-sm uppercase tracking-wider font-semibold">Type</th>
+                            <th class="text-left py-3.5 px-4 text-slate-400 text-sm uppercase tracking-wider font-semibold">Asset</th>
+                            <th class="text-left py-3.5 px-4 text-slate-400 text-sm uppercase tracking-wider font-semibold">Risk Score</th>
+                            <th class="text-left py-3.5 px-4 text-slate-400 text-sm uppercase tracking-wider font-semibold">Status</th>
+                            <th class="text-left py-3.5 px-4 text-slate-400 text-sm uppercase tracking-wider font-semibold">Actions</th>
                         </tr>
                     </thead>
-                    <tbody id="findings-body">
-                        <tr>
-                            <td colspan="6" class="loading">Loading findings...</td>
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
-        </section>
-
-        <!-- Jobs Tab -->
-        <section id="jobs-tab" class="tab-content">
-            <div class="section-header">
-                <h2>Job Queue Management</h2>
-                <div class="filters">
-                    <select id="job-status-filter" onchange="loadJobs()">
-                        <option value="">All Statuses</option>
-                        <option value="pending">Pending</option>
-                        <option value="queued">Queued</option>
-                        <option value="processing">Processing</option>
-                        <option value="completed">Completed</option>
-                        <option value="failed">Failed</option>
-                        <option value="cancelled">Cancelled</option>
-                    </select>
-                </div>
-            </div>
-
-            <!-- Job Stats Cards -->
-            <div class="stats-grid stats-grid-6" id="job-stats">
-                <div class="stat-card pending">
-                    <span class="stat-value" id="stat-job-pending">0</span>
-                    <span class="stat-label">Pending</span>
-                </div>
-                <div class="stat-card queued">
-                    <span class="stat-value" id="stat-job-queued">0</span>
-                    <span class="stat-label">Queued</span>
-                </div>
-                <div class="stat-card processing">
-                    <span class="stat-value" id="stat-job-processing">0</span>
-                    <span class="stat-label">Processing</span>
-                </div>
-                <div class="stat-card completed">
-                    <span class="stat-value" id="stat-job-completed">0</span>
-                    <span class="stat-label">Completed</span>
-                </div>
-                <div class="stat-card failed">
-                    <span class="stat-value" id="stat-job-failed">0</span>
-                    <span class="stat-label">Failed</span>
-                </div>
-                <div class="stat-card cancelled">
-                    <span class="stat-value" id="stat-job-cancelled">0</span>
-                    <span class="stat-label">Cancelled</span>
-                </div>
-            </div>
-
-            <div class="card">
-                <table class="data-table" id="jobs-table">
-                    <thead>
-                        <tr>
-                            <th>Job ID</th>
-                            <th>Type</th>
-                            <th>Domain</th>
-                            <th>Status</th>
-                            <th>Worker</th>
-                            <th>Last Updated</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody id="jobs-body">
-                        <tr>
-                            <td colspan="7" class="loading">Loading jobs...</td>
-                        </tr>
+                    <tbody>
+                        <template x-if="findingsLoading">
+                            <tr>
+                                <td colspan="6" class="text-center text-slate-400 py-10">Loading findings...</td>
+                            </tr>
+                        </template>
+                        <template x-if="!findingsLoading && findings.length === 0">
+                            <tr>
+                                <td colspan="6" class="text-center py-16">
+                                    <h3 class="text-xl text-slate-400 mb-2">No findings yet</h3>
+                                    <p class="text-slate-500">Run a scan to discover security findings</p>
+                                </td>
+                            </tr>
+                        </template>
+                        <template x-for="finding in findings" :key="finding.id">
+                            <tr class="border-b border-slate-700 hover:bg-blue-500/10 transition-colors">
+                                <td class="py-3.5 px-4">
+                                    <span :class="getSeverityBadgeClass(finding.severity)" class="inline-block px-2.5 py-1 rounded-full text-xs font-medium" x-text="finding.severity"></span>
+                                </td>
+                                <td class="py-3.5 px-4" x-text="finding.finding_type || 'Unknown'"></td>
+                                <td class="py-3.5 px-4">
+                                    <code class="bg-slate-900 px-1.5 py-0.5 rounded text-sm" x-text="finding.affected_asset || 'N/A'"></code>
+                                </td>
+                                <td class="py-3.5 px-4" x-text="finding.risk_score || 'N/A'"></td>
+                                <td class="py-3.5 px-4">
+                                    <span :class="getStatusBadgeClass(finding.status || 'new')" class="inline-block px-2.5 py-1 rounded-full text-xs font-medium" x-text="finding.status || 'new'"></span>
+                                </td>
+                                <td class="py-3.5 px-4">
+                                    <div class="flex gap-2">
+                                        <button @click="viewFindingDetails(finding.id)" class="bg-slate-600 hover:bg-slate-500 text-white px-3 py-1.5 rounded text-sm font-medium transition-all">Details</button>
+                                        <button @click="updateFindingStatus(finding.id)" class="border border-slate-600 hover:bg-slate-700 text-slate-400 hover:text-white px-2 py-1.5 rounded text-sm transition-all" title="Update Status">
+                                            &#8634;
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                        </template>
                     </tbody>
                 </table>
             </div>
         </section>
 
         <!-- Add Domain Modal -->
-        <div id="add-domain-modal" class="modal">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h3 id="add-domain-modal-title">Add New Domain</h3>
-                    <button class="close-btn" onclick="closeModal('add-domain-modal')">&times;</button>
+        <div x-show="modals.addDomain" x-cloak @click.self="modals.addDomain = false" @keydown.escape.window="modals.addDomain = false" class="fixed inset-0 bg-black/70 z-50 flex items-center justify-center">
+            <div class="bg-slate-800 rounded-2xl w-full max-w-lg border border-slate-700 max-h-[90vh] overflow-y-auto">
+                <div class="flex justify-between items-center p-5 border-b border-slate-700">
+                    <h3 class="text-xl font-semibold" x-text="domainForm.mode === 'edit' ? 'Edit Domain' : 'Add New Domain'"></h3>
+                    <button @click="modals.addDomain = false" class="text-slate-400 hover:text-white text-2xl leading-none">&times;</button>
                 </div>
-                <form id="add-domain-form" onsubmit="addDomain(event)">
-                    <div class="form-group">
-                        <label for="domain-name">Domain Name</label>
-                        <input type="text" id="domain-name" placeholder="example.com" required>
+                <form @submit.prevent="saveDomain()" class="p-5">
+                    <div class="mb-5">
+                        <label class="block mb-2 font-medium text-slate-400">Domain Name</label>
+                        <input type="text" x-model="domainForm.domain" :disabled="domainForm.mode === 'edit'" placeholder="example.com" required
+                            class="w-full p-3 bg-slate-900 border border-slate-700 rounded-lg text-slate-100 focus:border-blue-500 focus:outline-none disabled:opacity-50">
                     </div>
-                    <div class="form-group">
-                        <label class="checkbox-label">
-                            <input type="checkbox" id="is-primary">
+                    <div class="mb-5">
+                        <label class="flex items-center gap-2.5 cursor-pointer text-slate-400">
+                            <input type="checkbox" x-model="domainForm.is_primary" class="w-4 h-4">
                             Mark as Primary Domain
                         </label>
                     </div>
-                    <div class="form-group">
-                        <label for="contact-email">Contact Email (optional)</label>
-                        <input type="email" id="contact-email" placeholder="admin@example.com">
+                    <div class="mb-5">
+                        <label class="block mb-2 font-medium text-slate-400">Contact Email (optional)</label>
+                        <input type="email" x-model="domainForm.contact_email" placeholder="admin@example.com"
+                            class="w-full p-3 bg-slate-900 border border-slate-700 rounded-lg text-slate-100 focus:border-blue-500 focus:outline-none">
                     </div>
-                    <div class="form-group">
-                        <label for="scan-frequency">Scan Frequency</label>
-                        <select id="scan-frequency">
+                    <div class="mb-5">
+                        <label class="block mb-2 font-medium text-slate-400">Scan Frequency</label>
+                        <select x-model="domainForm.scan_frequency" class="w-full p-3 bg-slate-900 border border-slate-700 rounded-lg text-slate-100 focus:border-blue-500 focus:outline-none">
                             <option value="hourly">Hourly</option>
                             <option value="daily">Daily</option>
-                            <option value="weekly" selected>Weekly</option>
+                            <option value="weekly">Weekly</option>
                             <option value="monthly">Monthly</option>
                         </select>
                     </div>
-                    <div class="form-actions">
-                        <button type="button" class="btn btn-secondary" onclick="closeModal('add-domain-modal')">Cancel</button>
-                        <button type="submit" class="btn btn-primary">Save Domain</button>
+                    <div class="flex gap-2.5 justify-end pt-2.5 border-t border-slate-700">
+                        <button type="button" @click="modals.addDomain = false" class="bg-slate-600 hover:bg-slate-500 text-white px-5 py-2.5 rounded-lg font-medium transition-all">Cancel</button>
+                        <button type="submit" class="bg-blue-500 hover:bg-blue-600 text-white px-5 py-2.5 rounded-lg font-medium transition-all">Save Domain</button>
                     </div>
                 </form>
             </div>
         </div>
 
         <!-- New Scan Modal -->
-        <div id="new-scan-modal" class="modal">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h3>Start New Scan</h3>
-                    <button class="close-btn" onclick="closeModal('new-scan-modal')">&times;</button>
+        <div x-show="modals.newScan" x-cloak @click.self="modals.newScan = false" @keydown.escape.window="modals.newScan = false" class="fixed inset-0 bg-black/70 z-50 flex items-center justify-center">
+            <div class="bg-slate-800 rounded-2xl w-full max-w-lg border border-slate-700 max-h-[90vh] overflow-y-auto">
+                <div class="flex justify-between items-center p-5 border-b border-slate-700">
+                    <h3 class="text-xl font-semibold">Start New Scan</h3>
+                    <button @click="modals.newScan = false" class="text-slate-400 hover:text-white text-2xl leading-none">&times;</button>
                 </div>
-                <form id="new-scan-form" onsubmit="startScan(event)">
-                    <div class="form-group">
-                        <label for="scan-domain">Select Domain</label>
-                        <select id="scan-domain" required>
+                <form @submit.prevent="startScan()" class="p-5">
+                    <div class="mb-5">
+                        <label class="block mb-2 font-medium text-slate-400">Select Domain</label>
+                        <select x-model="scanForm.domain" required class="w-full p-3 bg-slate-900 border border-slate-700 rounded-lg text-slate-100 focus:border-blue-500 focus:outline-none">
                             <option value="">-- Select a domain --</option>
+                            <template x-for="d in domains" :key="d.domain">
+                                <option :value="d.domain" x-text="d.domain + (d.is_primary ? ' (Primary)' : '')"></option>
+                            </template>
                         </select>
                     </div>
-                    <div class="form-group">
-                        <label for="scan-timeout">Timeout (seconds)</label>
-                        <input type="number" id="scan-timeout" value="300" min="60" max="3600">
+                    <div class="mb-5">
+                        <label class="block mb-2 font-medium text-slate-400">Timeout (seconds)</label>
+                        <input type="number" x-model.number="scanForm.timeout" min="60" max="3600"
+                            class="w-full p-3 bg-slate-900 border border-slate-700 rounded-lg text-slate-100 focus:border-blue-500 focus:outline-none">
                     </div>
-                    <div class="form-actions">
-                        <button type="button" class="btn btn-secondary" onclick="closeModal('new-scan-modal')">Cancel</button>
-                        <button type="submit" class="btn btn-primary">Start Scan</button>
+                    <div class="flex gap-2.5 justify-end pt-2.5 border-t border-slate-700">
+                        <button type="button" @click="modals.newScan = false" class="bg-slate-600 hover:bg-slate-500 text-white px-5 py-2.5 rounded-lg font-medium transition-all">Cancel</button>
+                        <button type="submit" class="bg-blue-500 hover:bg-blue-600 text-white px-5 py-2.5 rounded-lg font-medium transition-all">Start Scan</button>
                     </div>
                 </form>
             </div>
         </div>
 
         <!-- Scan Results Modal -->
-        <div id="scan-results-modal" class="modal">
-            <div class="modal-content modal-large">
-                <div class="modal-header">
-                    <h3>Scan Results</h3>
-                    <button class="close-btn" onclick="closeModal('scan-results-modal')">&times;</button>
+        <div x-show="modals.scanResults" x-cloak @click.self="modals.scanResults = false" @keydown.escape.window="modals.scanResults = false" class="fixed inset-0 bg-black/70 z-50 flex items-center justify-center">
+            <div class="bg-slate-800 rounded-2xl w-full max-w-3xl border border-slate-700 max-h-[90vh] overflow-y-auto">
+                <div class="flex justify-between items-center p-5 border-b border-slate-700">
+                    <h3 class="text-xl font-semibold">Scan Results</h3>
+                    <button @click="modals.scanResults = false" class="text-slate-400 hover:text-white text-2xl leading-none">&times;</button>
                 </div>
-                <div id="scan-results-content">
-                    <div class="loading">Loading results...</div>
+                <div class="p-5">
+                    <template x-if="scanResultsLoading">
+                        <div class="text-center text-slate-400 py-10">Loading results...</div>
+                    </template>
+                    <template x-if="!scanResultsLoading && scanResults">
+                        <div>
+                            <div class="mb-5">
+                                <h4 class="text-slate-400 font-semibold mb-2.5">Scan Information</h4>
+                                <div class="grid grid-cols-2 gap-4 bg-slate-900 rounded-lg p-4">
+                                    <div><span class="text-slate-400">Domain:</span> <span x-text="scanResults.scan?.domain || 'N/A'"></span></div>
+                                    <div><span class="text-slate-400">Status:</span> <span :class="getBadgeClass(scanResults.scan?.status)" class="inline-block px-2.5 py-1 rounded-full text-xs font-medium" x-text="scanResults.scan?.status"></span></div>
+                                    <div><span class="text-slate-400">Started:</span> <span x-text="scanResults.scan?.start_time ? formatDate(scanResults.scan.start_time) : 'N/A'"></span></div>
+                                    <div><span class="text-slate-400">Completed:</span> <span x-text="scanResults.scan?.end_time ? formatDate(scanResults.scan.end_time) : 'N/A'"></span></div>
+                                    <div><span class="text-slate-400">Findings:</span> <span x-text="scanResults.scan?.findings_count || 0"></span></div>
+                                </div>
+                            </div>
+                            <div class="mb-5">
+                                <h4 class="text-slate-400 font-semibold mb-2.5">Subdomains Found (<span x-text="scanResults.subdomains?.length || 0"></span>)</h4>
+                                <div class="bg-slate-900 rounded-lg p-4 max-h-48 overflow-y-auto">
+                                    <template x-if="scanResults.subdomains && scanResults.subdomains.length > 0">
+                                        <template x-for="s in scanResults.subdomains" :key="s.subdomain">
+                                            <div class="py-2 border-b border-slate-700 last:border-0 font-mono text-sm">
+                                                <span x-text="s.subdomain"></span>
+                                                <span class="text-slate-500" x-text="'(' + (s.ip_address || 'N/A') + ')'"></span>
+                                            </div>
+                                        </template>
+                                    </template>
+                                    <template x-if="!scanResults.subdomains || scanResults.subdomains.length === 0">
+                                        <div class="text-slate-500">No subdomains found</div>
+                                    </template>
+                                </div>
+                            </div>
+                            <div class="mb-5">
+                                <h4 class="text-slate-400 font-semibold mb-2.5">Open Ports Found (<span x-text="scanResults.ports?.length || 0"></span>)</h4>
+                                <div class="bg-slate-900 rounded-lg p-4 max-h-48 overflow-y-auto">
+                                    <template x-if="scanResults.ports && scanResults.ports.length > 0">
+                                        <template x-for="p in scanResults.ports" :key="p.subdomain + ':' + p.port">
+                                            <div class="py-2 border-b border-slate-700 last:border-0 font-mono text-sm">
+                                                <span x-text="p.subdomain + ':' + p.port"></span>
+                                                <span class="text-slate-500" x-text="'(' + p.protocol + ')'"></span>
+                                            </div>
+                                        </template>
+                                    </template>
+                                    <template x-if="!scanResults.ports || scanResults.ports.length === 0">
+                                        <div class="text-slate-500">No open ports found</div>
+                                    </template>
+                                </div>
+                            </div>
+                        </div>
+                    </template>
                 </div>
             </div>
         </div>
 
         <!-- Finding Details Modal -->
-        <div id="finding-details-modal" class="modal">
-            <div class="modal-content modal-large">
-                <div class="modal-header">
-                    <h3>Finding Details</h3>
-                    <button class="close-btn" onclick="closeModal('finding-details-modal')">&times;</button>
+        <div x-show="modals.findingDetails" x-cloak @click.self="modals.findingDetails = false" @keydown.escape.window="modals.findingDetails = false" class="fixed inset-0 bg-black/70 z-50 flex items-center justify-center">
+            <div class="bg-slate-800 rounded-2xl w-full max-w-3xl border border-slate-700 max-h-[90vh] overflow-y-auto">
+                <div class="flex justify-between items-center p-5 border-b border-slate-700">
+                    <h3 class="text-xl font-semibold">Finding Details</h3>
+                    <button @click="modals.findingDetails = false" class="text-slate-400 hover:text-white text-2xl leading-none">&times;</button>
                 </div>
-                <div id="finding-details-content">
-                    <div class="loading">Loading details...</div>
+                <div class="p-5">
+                    <template x-if="findingDetailsLoading">
+                        <div class="text-center text-slate-400 py-10">Loading details...</div>
+                    </template>
+                    <template x-if="!findingDetailsLoading && findingDetails">
+                        <div>
+                            <div class="space-y-4">
+                                <div class="flex border-b border-slate-700 pb-4">
+                                    <span class="w-36 font-semibold text-slate-400">ID:</span>
+                                    <code class="bg-slate-900 px-1.5 py-0.5 rounded text-sm" x-text="findingDetails.id"></code>
+                                </div>
+                                <div class="flex border-b border-slate-700 pb-4">
+                                    <span class="w-36 font-semibold text-slate-400">Severity:</span>
+                                    <span :class="getSeverityBadgeClass(findingDetails.severity)" class="inline-block px-2.5 py-1 rounded-full text-xs font-medium" x-text="findingDetails.severity"></span>
+                                </div>
+                                <div class="flex border-b border-slate-700 pb-4">
+                                    <span class="w-36 font-semibold text-slate-400">Type:</span>
+                                    <span x-text="findingDetails.finding_type || 'Unknown'"></span>
+                                </div>
+                                <div class="flex border-b border-slate-700 pb-4">
+                                    <span class="w-36 font-semibold text-slate-400">Title:</span>
+                                    <span x-text="findingDetails.title || findingDetails.finding_type || 'Unknown'"></span>
+                                </div>
+                                <div class="flex border-b border-slate-700 pb-4">
+                                    <span class="w-36 font-semibold text-slate-400">Asset:</span>
+                                    <code class="bg-slate-900 px-1.5 py-0.5 rounded text-sm" x-text="findingDetails.affected_asset || 'N/A'"></code>
+                                </div>
+                                <template x-if="findingDetails.port">
+                                    <div class="flex border-b border-slate-700 pb-4">
+                                        <span class="w-36 font-semibold text-slate-400">Port:</span>
+                                        <span x-text="findingDetails.port + '/' + (findingDetails.protocol || 'tcp')"></span>
+                                    </div>
+                                </template>
+                                <template x-if="findingDetails.service_name">
+                                    <div class="flex border-b border-slate-700 pb-4">
+                                        <span class="w-36 font-semibold text-slate-400">Service:</span>
+                                        <span x-text="findingDetails.service_name"></span>
+                                    </div>
+                                </template>
+                                <div class="flex border-b border-slate-700 pb-4">
+                                    <span class="w-36 font-semibold text-slate-400">Risk Score:</span>
+                                    <span><strong x-text="findingDetails.risk_score || 'N/A'"></strong>/100</span>
+                                </div>
+                                <div class="flex border-b border-slate-700 pb-4">
+                                    <span class="w-36 font-semibold text-slate-400">Confidence:</span>
+                                    <span x-text="findingDetails.confidence_level || 'medium'"></span>
+                                </div>
+                                <div class="flex border-b border-slate-700 pb-4">
+                                    <span class="w-36 font-semibold text-slate-400">Status:</span>
+                                    <span :class="getStatusBadgeClass(findingDetails.status || 'new')" class="inline-block px-2.5 py-1 rounded-full text-xs font-medium" x-text="findingDetails.status || 'new'"></span>
+                                </div>
+                                <template x-if="findingDetails.cwe_id">
+                                    <div class="flex border-b border-slate-700 pb-4">
+                                        <span class="w-36 font-semibold text-slate-400">CWE:</span>
+                                        <a :href="'https://cwe.mitre.org/data/definitions/' + findingDetails.cwe_id.replace('CWE-', '') + '.html'" target="_blank" class="text-blue-400 hover:underline" x-text="findingDetails.cwe_id"></a>
+                                    </div>
+                                </template>
+                                <div class="flex border-b border-slate-700 pb-4">
+                                    <span class="w-36 font-semibold text-slate-400">Description:</span>
+                                    <span x-text="findingDetails.description || 'No description available'"></span>
+                                </div>
+                                <template x-if="findingDetails.evidence">
+                                    <div class="border-b border-slate-700 pb-4">
+                                        <span class="block font-semibold text-slate-400 mb-2.5">Evidence:</span>
+                                        <pre class="bg-slate-900 rounded-lg p-4 font-mono text-sm overflow-x-auto whitespace-pre-wrap break-words" x-text="JSON.stringify(findingDetails.evidence, null, 2)"></pre>
+                                    </div>
+                                </template>
+                                <template x-if="findingDetails.score_breakdown">
+                                    <div class="border-b border-slate-700 pb-4">
+                                        <span class="block font-semibold text-slate-400 mb-2.5">Score Breakdown:</span>
+                                        <pre class="bg-slate-900 rounded-lg p-4 font-mono text-sm overflow-x-auto whitespace-pre-wrap break-words" x-text="JSON.stringify(findingDetails.score_breakdown, null, 2)"></pre>
+                                    </div>
+                                </template>
+                                <template x-if="findingDetails.remediation">
+                                    <div class="flex border-b border-slate-700 pb-4">
+                                        <span class="w-36 font-semibold text-slate-400">Remediation:</span>
+                                        <span x-text="findingDetails.remediation"></span>
+                                    </div>
+                                </template>
+                                <div class="flex border-b border-slate-700 pb-4">
+                                    <span class="w-36 font-semibold text-slate-400">First Seen:</span>
+                                    <span x-text="findingDetails.first_seen ? formatDate(findingDetails.first_seen) : 'Unknown'"></span>
+                                </div>
+                                <div class="flex border-b border-slate-700 pb-4">
+                                    <span class="w-36 font-semibold text-slate-400">Last Seen:</span>
+                                    <span x-text="findingDetails.last_seen ? formatDate(findingDetails.last_seen) : 'Unknown'"></span>
+                                </div>
+                                <template x-if="findingDetails.occurrence_count > 1">
+                                    <div class="flex border-b border-slate-700 pb-4">
+                                        <span class="w-36 font-semibold text-slate-400">Occurrences:</span>
+                                        <span x-text="findingDetails.occurrence_count"></span>
+                                    </div>
+                                </template>
+                                <template x-if="findingDetails.resolution_notes">
+                                    <div class="flex border-b border-slate-700 pb-4">
+                                        <span class="w-36 font-semibold text-slate-400">Resolution Notes:</span>
+                                        <span x-text="findingDetails.resolution_notes"></span>
+                                    </div>
+                                </template>
+                            </div>
+                            <div class="flex gap-2.5 justify-end mt-5 pt-5 border-t border-slate-700">
+                                <button @click="modals.findingDetails = false" class="bg-slate-600 hover:bg-slate-500 text-white px-5 py-2.5 rounded-lg font-medium transition-all">Close</button>
+                                <button @click="updateFindingStatus(findingDetails.id)" class="bg-blue-500 hover:bg-blue-600 text-white px-5 py-2.5 rounded-lg font-medium transition-all">Update Status</button>
+                            </div>
+                        </div>
+                    </template>
                 </div>
             </div>
         </div>
 
         <!-- Status Update Modal -->
-        <div id="status-update-modal" class="modal">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h3>Update Finding Status</h3>
-                    <button class="close-btn" onclick="closeModal('status-update-modal')">&times;</button>
+        <div x-show="modals.statusUpdate" x-cloak @click.self="modals.statusUpdate = false" @keydown.escape.window="modals.statusUpdate = false" class="fixed inset-0 bg-black/70 z-50 flex items-center justify-center">
+            <div class="bg-slate-800 rounded-2xl w-full max-w-lg border border-slate-700 max-h-[90vh] overflow-y-auto">
+                <div class="flex justify-between items-center p-5 border-b border-slate-700">
+                    <h3 class="text-xl font-semibold">Update Finding Status</h3>
+                    <button @click="modals.statusUpdate = false" class="text-slate-400 hover:text-white text-2xl leading-none">&times;</button>
                 </div>
-                <div id="status-update-content">
-                    <div class="loading">Loading...</div>
-                </div>
+                <form @submit.prevent="submitStatusUpdate()" class="p-5">
+                    <div class="mb-5">
+                        <label class="block mb-2 font-medium text-slate-400">New Status</label>
+                        <select x-model="statusUpdateForm.status" required class="w-full p-3 bg-slate-900 border border-slate-700 rounded-lg text-slate-100 focus:border-blue-500 focus:outline-none">
+                            <option value="new">New</option>
+                            <option value="open">Open</option>
+                            <option value="acknowledged">Acknowledged</option>
+                            <option value="resolved">Resolved</option>
+                            <option value="reopened">Reopened</option>
+                            <option value="false_positive">False Positive</option>
+                        </select>
+                    </div>
+                    <div class="mb-5">
+                        <label class="block mb-2 font-medium text-slate-400">Notes (optional)</label>
+                        <textarea x-model="statusUpdateForm.notes" rows="3" class="w-full p-3 bg-slate-900 border border-slate-700 rounded-lg text-slate-100 focus:border-blue-500 focus:outline-none resize-none"></textarea>
+                    </div>
+                    <div class="flex gap-2.5 justify-end pt-2.5 border-t border-slate-700">
+                        <button type="button" @click="modals.statusUpdate = false" class="bg-slate-600 hover:bg-slate-500 text-white px-5 py-2.5 rounded-lg font-medium transition-all">Cancel</button>
+                        <button type="submit" class="bg-blue-500 hover:bg-blue-600 text-white px-5 py-2.5 rounded-lg font-medium transition-all">Update</button>
+                    </div>
+                </form>
             </div>
         </div>
 
         <!-- Toast Notifications -->
-        <div id="toast-container"></div>
+        <div class="fixed bottom-5 right-5 z-[100] space-y-2.5">
+            <template x-for="(toast, index) in toasts" :key="index">
+                <div :class="{
+                    'border-l-green-500': toast.type === 'success',
+                    'border-l-red-500': toast.type === 'error',
+                    'border-l-amber-500': toast.type === 'warning',
+                    'border-l-indigo-500': toast.type === 'info'
+                }" class="bg-slate-800 border border-slate-700 border-l-4 rounded-lg py-4 px-5 shadow-lg flex items-center gap-3 min-w-[300px] animate-slide-in">
+                    <span x-text="toast.message" class="flex-1"></span>
+                    <button @click="removeToast(index)" class="text-slate-400 hover:text-white text-xl leading-none">&times;</button>
+                </div>
+            </template>
+        </div>
     </div>
-
-    <script src="/static/js/app.js"></script>
 </body>
 </html>
