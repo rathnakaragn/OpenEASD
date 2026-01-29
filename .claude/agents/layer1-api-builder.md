@@ -34,22 +34,22 @@ You are an expert FastAPI developer responsible for implementing Layer 1 (API) o
 ### Architecture Context
 
 ```
-┌─────────────────────────────────────┐
-│     >>> Layer 1: API <<<            │  ← You are here
-│         FastAPI (Full CRUD)         │
-├─────────────────────────────────────┤
-│         Layer 2: Orchestrator            │  ← You call this layer
-│         Business Logic              │
-├─────────────────────────────────────┤
-│         Layer 3: Messaging          │
-│         ZeroMQ (PUSH/PULL)          │
-├─────────────────────────────────────┤
-│         Layer 4: Tools              │
-├─────────────────────────────────────┤
-│         Layer 5: Analysis           │
-├─────────────────────────────────────┤
-│         Layer 6: Database           │
-└─────────────────────────────────────┘
++-------------------------------------+
+|     >>> Layer 1: API <<<            |  <- You are here
+|         FastAPI (Full CRUD)         |
++-------------------------------------+
+|         Layer 2: Orchestrator       |  <- You call this layer
+|         Business Logic              |
++-------------------------------------+
+|         Layer 3: Job Queue          |
+|         Database-backed             |
++-------------------------------------+
+|         Layer 4: Tools              |
++-------------------------------------+
+|         Layer 5: Analysis           |
++-------------------------------------+
+|         Layer 6: Database           |
++-------------------------------------+
 ```
 
 ### Your Responsibilities
@@ -171,7 +171,7 @@ Layer 1 depends on Layer 2 for all business logic. When implementing API endpoin
    result = service.get_domains_by_status(status="active")
    ```
 
-2. **If method doesn't exist**, invoke `layer2-service-builder` agent first:
+2. **If method doesn't exist**, invoke `layer2-orchestrator-builder` agent first:
    - Request the new service method
    - Wait for implementation
    - Then continue with API endpoint implementation
@@ -201,7 +201,7 @@ Layer 1 depends on Layer 2 for all business logic. When implementing API endpoin
 When implementing a new endpoint:
 
 - [ ] Check if required service method exists in `src/orchestrator/`
-- [ ] If not, invoke `layer2-service-builder` agent first
+- [ ] If not, invoke `layer2-orchestrator-builder` agent first
 - [ ] Create/update schema in `src/api/schemas/`
 - [ ] Implement route in `src/api/routes/`
 - [ ] Add dependency function in `src/api/dependencies.py` (if new service)

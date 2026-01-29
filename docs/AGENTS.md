@@ -1,230 +1,222 @@
 # Claude Agents for OpenEASD
 
-This document describes the 9 specialized Claude agents configured for OpenEASD development, their responsibilities, optimal use cases, and how to choose the right agent for your task.
+This document describes the specialized Claude agents configured for OpenEASD development, their responsibilities, optimal use cases, and how to choose the right agent for your task.
 
 ## Overview
 
-OpenEASD uses a tiered agent system with Claude models optimized for different types of tasks:
+OpenEASD uses a collection of specialized agents for different development tasks:
 
-| Tier | Model | Count | Purpose |
-|------|-------|-------|---------|
-| **Tier 1** | 🔴 Opus | 4 | Complex reasoning, architectural decisions |
-| **Tier 2** | 🟢 Sonnet | 4 | Balanced performance, layer implementation |
-| **Tier 3** | 🟡 Haiku | 1 | Fast validation, QA checks |
+| Agent | Purpose |
+|-------|---------|
+| **product-architect** | High-level product architecture decisions |
+| **api-designer** | API endpoint design and REST patterns |
+| **layer1-api-builder** | API layer implementation |
+| **layer2-orchestrator-builder** | Orchestrator/service layer implementation |
+| **layer4-tools-builder** | Security tool integration |
+| **layer5-analysis-builder** | Analysis and detection implementation |
+| **layer6-database-builder** | Database schema and queries |
+| **frontend-agent** | Web dashboard development |
+| **qa-agent** | Testing and quality assurance |
+| **doc-agent** | Documentation maintenance |
+| **code-cleaner** | Code cleanup and refactoring |
 
-## Agent Tier 1: Opus (Complex Reasoning)
+## Agent Descriptions
 
-Use Opus agents for tasks requiring deep architectural reasoning and sophisticated analysis.
+### 1. product-architect
+**Location**: `.claude/agents/product-architect.md`
 
-### 1. design-reviewer
-**Location**: `.claude/agents/design-reviewer.md`
-
-**Responsibility**: Validate architectural decisions against the 6-layer OpenEASD model
+**Responsibility**: High-level product architecture and design decisions
 
 **Use When**:
-- Reviewing API endpoint placement and design
-- Validating service layer patterns
-- Assessing cross-layer interactions
-- Ensuring security model alignment
 - Making major architectural decisions
+- Evaluating new feature proposals
+- Designing system-wide changes
+- Reviewing technical approach
 
 **Example Usage**:
 ```
-"Review this new findings endpoint - does it fit our 6-layer architecture?"
+"Should we add real-time notifications? What's the best approach?"
 ```
-
-**Speed**: 10-20 seconds | **Cost**: High
 
 ---
 
-### 2. layer-architect ⬆️ UPGRADED TO OPUS
-**Location**: `.claude/agents/layer-architect.md`
+### 2. api-designer
+**Location**: `.claude/agents/api-designer.md`
 
-**Responsibility**: Design and implement features across any layer of the 6-layer architecture
+**Responsibility**: Design REST API endpoints and patterns
 
 **Use When**:
-- Adding new features spanning multiple layers
-- Refactoring layer interactions
-- Debugging complex cross-layer issues
-- Making significant layer-specific changes
-- Designing new layer components
+- Designing new API endpoints
+- Reviewing API consistency
+- Defining request/response schemas
+- Planning API versioning
 
 **Example Usage**:
 ```
-"I need to add a new detector for exposed APIs - how should I structure it?"
+"Design the API endpoints for batch scan operations"
 ```
-
-**Speed**: 10-20 seconds | **Cost**: High
 
 ---
 
-### 3. layer4-analysis-agent ⬆️ UPGRADED TO OPUS
-**Location**: `.claude/agents/layer4-analysis-agent.md`
+### 3. layer1-api-builder
+**Location**: `.claude/agents/layer1-api-builder.md`
 
-**Responsibility**: Develop vulnerability detection, risk scoring, and finding management
-
-**Use When**:
-- Designing new vulnerability detectors
-- Implementing risk scoring algorithms
-- Adding CVE mapping capabilities
-- Improving finding deduplication logic
-- Enhancing analysis features
-
-**Example Usage**:
-```
-"How should I implement SSL certificate vulnerability detection with proper risk scoring?"
-```
-
-**Speed**: 10-20 seconds | **Cost**: High
-
----
-
-### 4. layer6-database-architect ⬆️ UPGRADED TO OPUS
-**Location**: `.claude/agents/layer6-database-architect.md`
-
-**Responsibility**: Database schema design and query optimization
-
-**Use When**:
-- Designing new database tables or schemas
-- Optimizing slow queries
-- Implementing complex relationships
-- Handling timezone conversions (IST)
-- Managing data integrity constraints
-
-**Example Usage**:
-```
-"The scan results query is getting slow. How should I optimize it?"
-```
-
-**Speed**: 10-20 seconds | **Cost**: High
-
----
-
-## Agent Tier 2: Sonnet (Balanced Performance)
-
-Use Sonnet agents for layer-specific implementation with well-established patterns.
-
-### 5. api-layer-builder
-**Location**: `.claude/agents/api-layer-builder.md`
-
-**Responsibility**: Create and review API endpoints (read-only GET operations)
+**Responsibility**: Implement Layer 1 (API) components
 
 **Use When**:
 - Adding new API endpoints
-- Designing Pydantic schemas
-- Implementing request/response validation
-- Adding error handling to endpoints
-- Extending OpenAPI documentation
+- Implementing Pydantic schemas
+- Setting up route handlers
+- Configuring FastAPI middleware
 
 **Example Usage**:
 ```
-"Create a GET endpoint for scan statistics with pagination"
+"Implement the POST /api/v1/scans/batch endpoint"
 ```
-
-**Speed**: 5-10 seconds | **Cost**: Medium
 
 ---
 
-### 6. layer3-cli-architect
-**Location**: `.claude/agents/layer3-cli-architect.md`
+### 4. layer2-orchestrator-builder
+**Location**: `.claude/agents/layer2-orchestrator-builder.md`
 
-**Responsibility**: Design and implement CLI commands
+**Responsibility**: Implement Layer 2 (Orchestrator) services
 
 **Use When**:
-- Creating new CLI commands
-- Designing command structure
-- Implementing user interactions
-- Formatting output (table/json/csv)
-- Adding help text and documentation
+- Creating service methods
+- Implementing business logic
+- Coordinating between layers
+- Building workflow orchestration
 
 **Example Usage**:
 ```
-"Design a new batch domain management command with --filter options"
+"Add a method to retry multiple failed scans at once"
 ```
-
-**Speed**: 5-10 seconds | **Cost**: Medium
 
 ---
 
-### 7. layer5-tools-executor
-**Location**: `.claude/agents/layer5-tools-executor.md`
+### 5. layer4-tools-builder
+**Location**: `.claude/agents/layer4-tools-builder.md`
 
-**Responsibility**: Implement security tool integration and execution
+**Responsibility**: Implement Layer 4 (Tools) integrations
 
 **Use When**:
 - Adding new security tool support
 - Implementing subprocess execution
 - Parsing tool JSON output
-- Managing timeouts
-- Handling tool errors
+- Handling tool errors and timeouts
 
 **Example Usage**:
 ```
-"Add httpx tool integration for HTTP probing"
+"Integrate a new tool for SSL certificate analysis"
 ```
-
-**Speed**: 5-10 seconds | **Cost**: Medium
 
 ---
 
-### 8. service-layer-architect
-**Location**: `.claude/agents/service-layer-architect.md`
+### 6. layer5-analysis-builder
+**Location**: `.claude/agents/layer5-analysis-builder.md`
 
-**Responsibility**: Design business logic and service methods
+**Responsibility**: Implement Layer 5 (Analysis) components
 
 **Use When**:
-- Creating new service methods
-- Implementing CRUD operations
-- Designing service orchestration
-- Refactoring duplicated logic
-- Improving testability
+- Creating new vulnerability detectors
+- Implementing risk scoring algorithms
+- Adding CVE mapping capabilities
+- Building finding deduplication logic
 
 **Example Usage**:
 ```
-"Design a method to group findings by vulnerability type and severity"
+"Create a detector for exposed database ports"
 ```
-
-**Speed**: 5-10 seconds | **Cost**: Medium
 
 ---
 
-## Agent Tier 3: Haiku (Fast Validation)
+### 7. layer6-database-builder
+**Location**: `.claude/agents/layer6-database-builder.md`
 
-Use Haiku for rapid, pattern-based validation suitable for pre-commit hooks and CI/CD.
-
-### 9. qa-reviewer ✨ NEW
-**Location**: `.claude/agents/qa-reviewer.md`
-
-**Responsibility**: Validate code quality, test coverage, and pattern compliance
+**Responsibility**: Implement Layer 6 (Database) components
 
 **Use When**:
-- Checking code follows OpenEASD patterns
-- Validating test coverage (85%+ threshold)
-- Verifying error handling
-- Confirming documentation presence
-- Running pre-commit validation
-- Quick code review checks
+- Designing database schemas
+- Creating SQLModel models
+- Optimizing queries
+- Managing migrations
 
 **Example Usage**:
 ```
-"Check if this service method follows OpenEASD patterns"
+"Add a table to track scan scheduling"
 ```
 
-**Features**:
-- ✅ Code style validation (naming, line length, imports)
-- ✅ Test coverage verification (85%+ minimum)
-- ✅ Pattern compliance checking (all 6 layers)
-- ✅ Documentation verification (docstrings, type hints)
-- ✅ Error handling validation
-- ✅ Layer boundary compliance
+---
 
-**Speed**: 2-5 seconds | **Cost**: Very Low (~$0.01 per check)
+### 8. frontend-agent
+**Location**: `.claude/agents/frontend-agent.md`
 
-**Perfect For**:
-- Pre-commit hooks
-- CI/CD pipeline validation
-- Rapid feedback loops
-- Per-file validation
+**Responsibility**: Web dashboard development
+
+**Use When**:
+- Building dashboard UI components
+- Implementing JavaScript functionality
+- Styling with CSS
+- Creating HTML templates
+
+**Example Usage**:
+```
+"Add a chart showing findings by severity"
+```
+
+---
+
+### 9. qa-agent
+**Location**: `.claude/agents/qa-agent.md`
+
+**Responsibility**: Testing and quality assurance
+
+**Use When**:
+- Writing unit tests
+- Creating integration tests
+- Reviewing test coverage
+- Validating code quality
+
+**Example Usage**:
+```
+"Write tests for the new batch scan endpoint"
+```
+
+---
+
+### 10. doc-agent
+**Location**: `.claude/agents/doc-agent.md`
+
+**Responsibility**: Documentation maintenance
+
+**Use When**:
+- Updating CLAUDE.md after changes
+- Keeping README.md current
+- Documenting new features
+- Maintaining architecture docs
+
+**Example Usage**:
+```
+"Update documentation after adding the MCP server"
+```
+
+---
+
+### 11. code-cleaner
+**Location**: `.claude/agents/code-cleaner.md`
+
+**Responsibility**: Code cleanup and refactoring
+
+**Use When**:
+- Removing dead code
+- Refactoring for clarity
+- Consolidating duplicated logic
+- Improving code organization
+
+**Example Usage**:
+```
+"Clean up unused imports in the orchestrator layer"
+```
 
 ---
 
@@ -235,99 +227,106 @@ Use Haiku for rapid, pattern-based validation suitable for pre-commit hooks and 
 ```
 "I need help with..."
 
-├─→ "...validating code quality/patterns"
-│   → qa-reviewer (🟡 Haiku) - 2-5 seconds
++-> "...product/architecture decisions"
+|   -> product-architect
 
-├─→ "...creating an API endpoint"
-│   → api-layer-builder (🟢 Sonnet) - 5-10s
++-> "...designing an API"
+|   -> api-designer
 
-├─→ "...creating a CLI command"
-│   → layer3-cli-architect (🟢 Sonnet) - 5-10s
++-> "...implementing an API endpoint"
+|   -> layer1-api-builder
 
-├─→ "...adding business logic/service"
-│   → service-layer-architect (🟢 Sonnet) - 5-10s
++-> "...business logic/services"
+|   -> layer2-orchestrator-builder
 
-├─→ "...implementing a security tool"
-│   → layer5-tools-executor (🟢 Sonnet) - 5-10s
++-> "...security tool integration"
+|   -> layer4-tools-builder
 
-├─→ "...vulnerability detection/risk scoring"
-│   → layer4-analysis-agent (🔴 Opus) - 10-20s
++-> "...vulnerability detection/scoring"
+|   -> layer5-analysis-builder
 
-├─→ "...database schema/query optimization"
-│   → layer6-database-architect (🔴 Opus) - 10-20s
++-> "...database schema/queries"
+|   -> layer6-database-builder
 
-├─→ "...cross-layer design/refactoring"
-│   → layer-architect (🔴 Opus) - 10-20s
++-> "...web dashboard"
+|   -> frontend-agent
 
-└─→ "...architectural/design validation"
-    → design-reviewer (🔴 Opus) - 10-20s
++-> "...tests/quality"
+|   -> qa-agent
+
++-> "...documentation"
+|   -> doc-agent
+
++-> "...code cleanup"
+    -> code-cleaner
 ```
 
 ### Quick Reference Matrix
 
-| Need | Agent | Model | Speed |
-|------|-------|-------|-------|
-| **Code Quality Check** | qa-reviewer | 🟡 Haiku | ⚡ 2-5s |
-| **API Endpoint** | api-layer-builder | 🟢 Sonnet | ⚡⚡ 5-10s |
-| **CLI Command** | layer3-cli-architect | 🟢 Sonnet | ⚡⚡ 5-10s |
-| **Service Method** | service-layer-architect | 🟢 Sonnet | ⚡⚡ 5-10s |
-| **Tool Integration** | layer5-tools-executor | 🟢 Sonnet | ⚡⚡ 5-10s |
-| **Detector/Scoring** | layer4-analysis-agent | 🔴 Opus | ⚡⚡⚡ 10-20s |
-| **Database/Query** | layer6-database-architect | 🔴 Opus | ⚡⚡⚡ 10-20s |
-| **Layer Design** | layer-architect | 🔴 Opus | ⚡⚡⚡ 10-20s |
-| **Architecture** | design-reviewer | 🔴 Opus | ⚡⚡⚡ 10-20s |
+| Need | Agent |
+|------|-------|
+| Architecture decisions | product-architect |
+| API design | api-designer |
+| API implementation | layer1-api-builder |
+| Service/business logic | layer2-orchestrator-builder |
+| Tool integration | layer4-tools-builder |
+| Detectors/scoring | layer5-analysis-builder |
+| Database/models | layer6-database-builder |
+| Web UI | frontend-agent |
+| Tests | qa-agent |
+| Documentation | doc-agent |
+| Refactoring | code-cleaner |
 
 ---
 
 ## Example Workflows
 
 ### Workflow 1: Adding a New API Endpoint
-1. **design-reviewer** (Opus) - Validate endpoint design and layer placement
-2. **api-layer-builder** (Sonnet) - Implement the endpoint
-3. **qa-reviewer** (Haiku) - Validate code quality and test coverage
+1. **api-designer** - Design endpoint (method, path, schemas)
+2. **layer1-api-builder** - Implement the endpoint
+3. **layer2-orchestrator-builder** - Implement service method
+4. **qa-agent** - Write tests
+5. **doc-agent** - Update documentation
 
-### Workflow 2: Optimizing Database Performance
-1. **layer6-database-architect** (Opus) - Analyze and optimize queries
-2. **qa-reviewer** (Haiku) - Verify changes don't break patterns
+### Workflow 2: Adding a New Security Tool
+1. **product-architect** - Evaluate tool fit
+2. **layer4-tools-builder** - Implement tool runner
+3. **layer2-orchestrator-builder** - Add to workflow
+4. **qa-agent** - Write tests
+5. **doc-agent** - Document the tool
 
-### Workflow 3: Implementing New Vulnerability Detection
-1. **layer4-analysis-agent** (Opus) - Design detector and scoring
-2. **layer6-database-architect** (Opus) - Schema updates if needed
-3. **qa-reviewer** (Haiku) - Validate code quality and coverage
+### Workflow 3: Adding a New Vulnerability Detector
+1. **layer5-analysis-builder** - Implement detector
+2. **layer6-database-builder** - Schema if needed
+3. **qa-agent** - Write tests
+4. **doc-agent** - Update docs
 
-### Workflow 4: Adding a New CLI Command
-1. **layer3-cli-architect** (Sonnet) - Design command structure
-2. **service-layer-architect** (Sonnet) - Implement service methods if needed
-3. **qa-reviewer** (Haiku) - Final validation
-
-### Workflow 5: Pre-Commit Validation (Fast Path)
-→ **qa-reviewer** (Haiku) - Quick pattern and coverage checks
-  If issues found: Use appropriate specialist agent
+### Workflow 4: Building Dashboard Feature
+1. **frontend-agent** - Implement UI
+2. **layer1-api-builder** - Add API endpoints if needed
+3. **qa-agent** - Test the feature
 
 ---
 
 ## Configuration Details
 
 ### File Locations
-All agent configurations stored in: `.claude/agents/`
+All agent configurations are stored in: `.claude/agents/`
 
 ```
 .claude/agents/
-├── api-layer-builder.md           (🟢 Sonnet, 10 KB)
-├── design-reviewer.md             (🔴 Opus, 10 KB)
-├── layer-architect.md             (🔴 Opus, 12 KB) ⬆️
-├── layer3-cli-architect.md        (🟢 Sonnet, 8 KB)
-├── layer4-analysis-agent.md       (🔴 Opus, 12 KB) ⬆️
-├── layer5-tools-executor.md       (🟢 Sonnet, 13 KB)
-├── layer6-database-architect.md   (🔴 Opus, 9 KB) ⬆️
-├── service-layer-architect.md     (🟢 Sonnet, 15 KB)
-└── qa-reviewer.md                 (🟡 Haiku, 15 KB) ✨
+├── api-designer.md
+├── code-cleaner.md
+├── doc-agent.md
+├── frontend-agent.md
+├── layer1-api-builder.md
+├── layer2-orchestrator-builder.md
+├── layer4-tools-builder.md
+├── layer5-analysis-builder.md
+├── layer6-database-builder.md
+├── product-architect.md
+└── qa-agent.md
 ```
-
-### Model Distribution
-- **Opus**: 4 agents (complex reasoning, architecture, algorithms, optimization)
-- **Sonnet**: 4 agents (layer implementation with balanced performance)
-- **Haiku**: 1 agent (fast validation suitable for pre-commit and CI/CD)
 
 ---
 
@@ -335,251 +334,66 @@ All agent configurations stored in: `.claude/agents/`
 
 Each layer of the 6-layer architecture has dedicated agent support:
 
-| Layer | Primary Agent | Secondary Agent(s) |
-|-------|---------------|-------------------|
-| **Layer 1: API** | api-layer-builder (Sonnet) | design-reviewer (Opus) |
-| **Layer 2: Orchestrator** | service-layer-architect (Sonnet) | layer-architect (Opus) |
-| **Layer 3: CLI** | layer3-cli-architect (Sonnet) | layer-architect (Opus) |
-| **Layer 4: Analysis** | layer4-analysis-agent (Opus) | layer-architect (Opus) |
-| **Layer 5: Tools** | layer5-tools-executor (Sonnet) | layer-architect (Opus) |
-| **Layer 6: Database** | layer6-database-architect (Opus) | layer-architect (Opus) |
-| **Cross-Layer** | layer-architect (Opus) | design-reviewer (Opus) |
-| **Quality Assurance** | qa-reviewer (Haiku) | All other agents (escalation) |
-
----
-
-## Cost-Performance Profile
-
-### Speed Comparison
-```
-Haiku:    ⚡⚡⚡ 2-5 seconds   (Fastest)
-Sonnet:   ⚡⚡  5-10 seconds
-Opus:     ⚡   10-20 seconds  (Slowest but most capable)
-```
-
-### Cost Comparison (Relative)
-```
-Haiku:    $ ~$0.01 per check  (Cheapest)
-Sonnet:   $$ ~$0.05 per check
-Opus:     $$$ ~$0.20 per check (Most expensive)
-```
-
-### Use Cases by Model
-- **Haiku**: QA validation, pre-commit checks, rapid feedback (100+ checks/day)
-- **Sonnet**: Layer implementation, code generation, balanced tasks (20-50 per day)
-- **Opus**: Complex reasoning, architecture, algorithms (5-10 per day)
-
----
-
-## Best Practices
-
-### 1. Start with Quick Checks
-Use qa-reviewer first for fast feedback, then escalate to specialists:
-```
-User: "Review my new service method"
-→ qa-reviewer (2-5s) validates patterns, coverage, documentation
-→ If architectural: service-layer-architect (Sonnet) or layer-architect (Opus)
-```
-
-### 2. Choose by Complexity
-- **Simple/straightforward**: Use Sonnet agents
-- **Complex/algorithmic**: Use Opus agents
-- **QA/validation**: Always use qa-reviewer
-
-### 3. Leverage Workflows
-Use multi-agent workflows for major features:
-```
-Feature: "Add new API endpoint for findings statistics"
-1. design-reviewer validates architecture (Opus)
-2. api-layer-builder implements (Sonnet)
-3. qa-reviewer validates code quality (Haiku)
-```
-
-### 4. Pre-Commit Integration
-Use qa-reviewer in git hooks:
-```bash
-# Validate code before commit
-claude-code qa-reviewer --files <changed-files>
-# FAIL blocks commit, WARN is informational
-```
-
-### 5. CI/CD Pipeline
-Run qa-reviewer in pull request checks:
-```yaml
-- name: Code Quality Check
-  run: claude-code qa-reviewer --files ${{ github.event.pull_request.files }}
-```
-
----
-
-## Agent Capabilities by Layer
-
-### API Layer (Layer 1)
-- **Primary**: api-layer-builder (Sonnet)
-  - Endpoint design and implementation
-  - Pydantic schema validation
-  - Error handling
-
-- **Secondary**: design-reviewer (Opus)
-  - Architectural validation
-  - Security model alignment
-
-### Service Layer (Layer 2)
-- **Primary**: service-layer-architect (Sonnet)
-  - Service method design
-  - Business logic implementation
-  - CRUD operations
-
-- **Secondary**: layer-architect (Opus)
-  - Cross-service patterns
-  - Orchestration design
-
-### CLI Layer (Layer 3)
-- **Primary**: layer3-cli-architect (Sonnet)
-  - Command design
-  - User interaction
-  - Output formatting
-
-- **Secondary**: layer-architect (Opus)
-  - Complex command workflows
-
-### Analysis Layer (Layer 4)
-- **Primary**: layer4-analysis-agent (Opus)
-  - Detector design
-  - Risk scoring algorithms
-  - Finding management
-
-- **Secondary**: layer-architect (Opus)
-  - Integration with other layers
-
-### Tools Layer (Layer 5)
-- **Primary**: layer5-tools-executor (Sonnet)
-  - Tool integration
-  - Subprocess execution
-  - JSON parsing
-
-- **Secondary**: layer-architect (Opus)
-  - Tool orchestration
-
-### Database Layer (Layer 6)
-- **Primary**: layer6-database-architect (Opus)
-  - Schema design
-  - Query optimization
-  - Relationship modeling
-
-- **Secondary**: layer-architect (Opus)
-  - Cross-layer data flow
-
----
-
-## QA Agent Special Use Cases
-
-The qa-reviewer agent provides specialized validation for all layers:
-
-### Tier 1 Checks (Fast)
-✓ Code style (naming, line length, imports)
-✓ Test coverage verification (85%+ threshold)
-✓ Pattern compliance
-✓ Documentation presence
-✓ Import organization
-✓ Type hints presence
-
-### Tier 2 Checks (Moderate)
-✓ Pydantic schema validation
-✓ Click command patterns
-✓ API endpoint structure
-✓ Database model relationships
-✓ Service layer patterns
-✓ Test file structure
-
-### Tier 3 Checks (Escalate)
-⚠ Performance optimization
-⚠ Architectural impact
-⚠ Cross-layer dependencies
-⚠ Complex security issues
-
----
-
-## FAQ
-
-### Q: When should I use Haiku vs Sonnet vs Opus?
-**A**: Use Haiku for QA/validation (fast feedback), Sonnet for layer implementation (balanced), Opus for complex reasoning (architecture/algorithms).
-
-### Q: Can I use multiple agents for one task?
-**A**: Yes! Use multi-agent workflows for major features. Start with design-reviewer (architecture), then implement with layer-specific agent (Sonnet), then validate with qa-reviewer (Haiku).
-
-### Q: How much does each agent cost?
-**A**: Haiku (~$0.01), Sonnet (~$0.05), Opus (~$0.20) per typical check. Haiku is ideal for frequent checks.
-
-### Q: What if the agent suggests using another agent?
-**A**: This is intentional! Agents escalate to specialists. Follow the recommendation and use the suggested agent.
-
-### Q: Can I use qa-reviewer for architectural decisions?
-**A**: No, qa-reviewer is for pattern validation only. Use design-reviewer or layer-architect for architectural decisions.
-
-### Q: How do I integrate agents into CI/CD?
-**A**: Use qa-reviewer in pull request checks. Add escalation paths to Sonnet/Opus agents for complex issues.
-
----
-
-## Recent Updates
-
-### December 3, 2025
-- ✅ **Analysis Layer Enhancement**: All finding generation now handled by Analysis Layer
-  - ServiceVulnerabilityDetector receives `nmap_service_results` directly
-  - Single source of truth for all security findings
-  - Removed legacy alert generation from ScanService
-- ✅ **Configuration-Driven Service Classifications**: Severity mappings loaded from `analysis_config.yaml`
-  - `critical_services`, `high_risk_services`, `medium_risk_services`, `low_risk_services`
-  - Easy customization without code changes
-- ✅ **Code Quality Improvements**:
-  - Eliminated 200+ lines of dead code
-  - Removed `_generate_service_alert()` and `_enrich_alert_with_vulns()` methods
-  - Consolidated host extraction into `_extract_host_from_port_info()` helper
-  - Replaced print statements with proper logging
-- ✅ **Test Suite**: 312 tests passing (6 dead tests removed)
-- ✅ **Documentation**: Updated QA_ACTION_ITEMS.md with completion status
-
-### December 2, 2025
-- ✅ Created qa-reviewer agent (Haiku model)
-- ✅ Upgraded layer-architect to Opus
-- ✅ Upgraded layer4-analysis-agent to Opus
-- ✅ Upgraded layer6-database-architect to Opus
-- ✅ Final configuration: 4 Opus + 4 Sonnet + 1 Haiku
-- ✅ All agents aligned with 6-layer architecture
-- ✅ Removed all 7-layer/Messaging Layer references
+| Layer | Primary Agent | Purpose |
+|-------|---------------|---------|
+| **Layer 1: API** | layer1-api-builder | FastAPI endpoints |
+| **Layer 2: Orchestrator** | layer2-orchestrator-builder | Business logic |
+| **Layer 3: Job Queue** | layer6-database-builder | Job model, polling |
+| **Layer 4: Tools** | layer4-tools-builder | Security tools |
+| **Layer 5: Analysis** | layer5-analysis-builder | Detectors, scoring |
+| **Layer 6: Database** | layer6-database-builder | Schema, queries |
+| **Frontend** | frontend-agent | Web dashboard |
+| **Cross-cutting** | product-architect | Architecture |
+| **Quality** | qa-agent | Testing |
+| **Documentation** | doc-agent | Docs |
 
 ---
 
 ## Current Architecture State
 
-### Layer Responsibilities (Updated)
+### Layer Responsibilities
 
-| Layer | Key Files | Recent Changes |
-|-------|-----------|----------------|
-| **Layer 1: API** | `src/api/` | Read-only GET endpoints |
-| **Layer 2: Orchestrator** | `src/orchestrator/scan_service.py` | Config-based severity mappings, removed legacy alert generation |
-| **Layer 4: Analysis** | `src/analysis/` | Handles ALL finding generation (PortDetector + ServiceDetector) |
-| **Layer 5: Tools** | `src/tools/` | Nmap results passed to Analysis Layer |
-| **Layer 6: Database** | `src/data/` | SQLModel with findings storage |
+| Layer | Key Files | Description |
+|-------|-----------|-------------|
+| **Layer 1: API** | `src/api/` | Full CRUD REST endpoints |
+| **Layer 2: Orchestrator** | `src/orchestrator/` | Business logic services |
+| **Layer 3: Job Queue** | `src/data/models/job.py` | Database-backed job queue |
+| **Layer 4: Tools** | `src/tools/` | Security tool execution |
+| **Layer 5: Analysis** | `src/analysis/` | Vulnerability detection |
+| **Layer 6: Database** | `src/data/` | SQLModel + SQLite |
+| **Frontend** | `src/frontend/` | Web dashboard |
+| **MCP** | `src/mcp/` | Claude Code integration |
 
-### Data Flow (Current)
+### Data Flow
 ```
-Scan Execution → Tools Layer → Service Layer → Analysis Layer → Findings
-                     ↓              ↓              ↓
-               naabu/httpx    orchestration   detectors → database
-               nmap/tlsx     passes data     generate findings
+API -> Orchestrator -> Database (Job)
+                            |
+                      Worker polls
+                            |
+                      Tools -> Analysis -> Database (Findings)
 ```
-
-### Key Integration Points
-- **ScanService** passes `nmap_service_results` to AnalysisService via `scan_data`
-- **ServiceVulnerabilityDetector** analyzes nmap results for exposed services
-- **PortVulnerabilityDetector** analyzes port scan results for vulnerabilities
-- **RiskScorer** applies deterministic scoring (0-100) to all findings
 
 ---
 
-**Last Updated**: December 3, 2025
-**Status**: All agents configured and optimized
-**Total Agents**: 9 (4 Opus + 4 Sonnet + 1 Haiku)
-**Test Coverage**: 312 tests passing
+## FAQ
+
+### Q: Which agent should I use for a cross-layer feature?
+**A**: Start with product-architect to design the approach, then use layer-specific agents for implementation.
+
+### Q: Can I use multiple agents for one task?
+**A**: Yes! Complex features often require multiple agents in sequence.
+
+### Q: What if I'm not sure which agent to use?
+**A**: Start with product-architect for guidance on the best approach.
+
+### Q: Where is the CLI agent?
+**A**: OpenEASD is API-only - there is no CLI layer or CLI agent.
+
+### Q: Where is the messaging/ZeroMQ agent?
+**A**: The messaging layer was replaced with a database job queue. Use layer6-database-builder for job queue changes.
+
+---
+
+**Last Updated**: January 29, 2026
+**Total Agents**: 11
+**Architecture**: 6-Layer API-Only with Database Job Queue

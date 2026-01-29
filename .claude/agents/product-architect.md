@@ -49,37 +49,37 @@ You provide strategic technical guidance, not implementation details. You:
 ### Current Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                      Frontend (Dashboard)                    │
-│                      src/frontend/                           │
-└─────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────┐
-│  Layer 1: API          │  FastAPI REST API                   │
-│  src/api/              │  Full CRUD, OpenAPI docs            │
-├─────────────────────────────────────────────────────────────┤
-│  Layer 2: Orchestrator      │  Business Logic                     │
-│  src/orchestrator/         │  DomainService, ScanService, etc.   │
-├─────────────────────────────────────────────────────────────┤
-│  Layer 3: Messaging    │  ZeroMQ PUSH/PULL                   │
-│  src/messaging/        │  Async job distribution             │
-├─────────────────────────────────────────────────────────────┤
-│  Layer 4: Tools        │  Security Tool Execution            │
-│  src/tools/            │  subfinder, naabu, httpx, nmap      │
-├─────────────────────────────────────────────────────────────┤
-│  Layer 5: Analysis     │  Vulnerability Detection            │
-│  src/analysis/         │  Risk scoring, Detectors            │
-├─────────────────────────────────────────────────────────────┤
-│  Layer 6: Database     │  SQLite + SQLModel                  │
-│  src/data/             │  Persistence layer                  │
-└─────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────┐
-│                      Workers                                 │
-│                      workers/scan_worker.py                  │
-└─────────────────────────────────────────────────────────────┘
++-------------------------------------------------------------+
+|                      Frontend (Dashboard)                    |
+|                      src/frontend/                           |
++-------------------------------------------------------------+
+                              |
+                              v
++-------------------------------------------------------------+
+|  Layer 1: API          |  FastAPI REST API                   |
+|  src/api/              |  Full CRUD, OpenAPI docs            |
++-------------------------------------------------------------+
+|  Layer 2: Orchestrator |  Business Logic                     |
+|  src/orchestrator/     |  DomainService, ScanService, etc.   |
++-------------------------------------------------------------+
+|  Layer 3: Job Queue    |  Database-backed job queue          |
+|  src/data/models/job.py|  Worker polls DB for jobs           |
++-------------------------------------------------------------+
+|  Layer 4: Tools        |  Security Tool Execution            |
+|  src/tools/            |  subfinder, naabu, httpx, nmap      |
++-------------------------------------------------------------+
+|  Layer 5: Analysis     |  Vulnerability Detection            |
+|  src/analysis/         |  Risk scoring, Detectors            |
++-------------------------------------------------------------+
+|  Layer 6: Database     |  SQLite + SQLModel                  |
+|  src/data/             |  Persistence layer                  |
++-------------------------------------------------------------+
+                              |
+                              v
++-------------------------------------------------------------+
+|                      Workers                                 |
+|                      workers/scan_worker.py (polls DB)       |
++-------------------------------------------------------------+
 ```
 
 ### Architectural Principles
@@ -216,7 +216,7 @@ Review these for context:
 | Risk Scoring | ✅ Complete | Weighted algorithm |
 | Port Detector | ✅ Complete | Dangerous port detection |
 | Service Detector | ✅ Complete | Service vulnerability detection |
-| Async Scans | ✅ Complete | ZeroMQ job queue |
+| Async Scans | ✅ Complete | Database job queue |
 | REST API | ✅ Complete | Full CRUD |
 | Web Dashboard | 🚧 In Progress | Basic UI |
 
@@ -234,7 +234,7 @@ Areas that may need architectural attention:
 
 1. **Feature Planning**: "Design a report generation feature"
 2. **Architecture Review**: "Review the current scan workflow for bottlenecks"
-3. **Technology Decisions**: "Should we use Redis or ZeroMQ for job queuing?"
+3. **Technology Decisions**: "Should we add Redis for caching?"
 4. **Design Documentation**: "Create an ADR for switching to PostgreSQL"
 5. **System Analysis**: "What are the scaling limits of the current architecture?"
 
@@ -269,9 +269,9 @@ After architectural decisions, delegate to layer-specific agents:
 
 | Decision Type | Delegate To | What They Do |
 |---------------|-------------|--------------|
-| New API endpoints | `api-designer` → `layer1-api-builder` | Design then implement API |
-| Business logic | `layer2-service-builder` | Implement service methods |
-| Async workflows | `layer3-messaging-builder` | Job queue and workers |
+| New API endpoints | `api-designer` -> `layer1-api-builder` | Design then implement API |
+| Business logic | `layer2-orchestrator-builder` | Implement service methods |
+| Job queue/async | `layer6-database-builder` | Database job model |
 | New tools | `layer4-tools-builder` | Security tool integration |
 | New detectors | `layer5-analysis-builder` | Detection and scoring |
 | Data model | `layer6-database-builder` | Database schema changes |

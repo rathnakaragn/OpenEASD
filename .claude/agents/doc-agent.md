@@ -355,11 +355,10 @@ After these agents make changes, doc-agent should update docs:
 | `product-architect` | DESIGN.md, CLAUDE.md (architecture) |
 | `api-designer` | CLAUDE.md (API section) |
 | `layer1-api-builder` | CLAUDE.md (endpoints), README.md |
-| `layer2-service-builder` | DESIGN.md (services) |
-| `layer3-messaging-builder` | DESIGN.md (messaging) |
+| `layer2-orchestrator-builder` | DESIGN.md (services) |
 | `layer4-tools-builder` | CLAUDE.md (tools), README.md |
 | `layer5-analysis-builder` | CLAUDE.md (detectors), config docs |
-| `layer6-database-builder` | DESIGN.md (data model) |
+| `layer6-database-builder` | DESIGN.md (data model, job queue) |
 | `frontend-agent` | README.md (UI features), CLAUDE.md |
 | `qa-agent` | TEST_COVERAGE_REPORT.md |
 

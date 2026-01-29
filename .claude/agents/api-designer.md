@@ -144,8 +144,8 @@ GET /api/v1/findings?offset=0&limit=20
 
 ### Architecture
 - Frontend dashboard (vanilla JS) → REST API
-- 6-layer design: API → Service → Messaging → Tools → Analysis → Database
-- Async scans via ZeroMQ job queue
+- 6-layer design: API -> Orchestrator -> Job Queue -> Tools -> Analysis -> Database
+- Async scans via database job queue (worker polls DB)
 - SQLite + SQLModel for persistence
 
 ### Frontend Consumer
@@ -206,5 +206,5 @@ class ReportResponse(BaseModel):
 
 ### 5. Implementation Notes
 - Service layer: Add `ReportService.generate()` method
-- Async processing: Queue report generation via ZeroMQ
+- Async processing: Queue report generation via database job queue
 - Storage: Save reports to filesystem with DB reference

@@ -350,16 +350,10 @@ OpenEASD/
 4. Add to `src/api/main.py` routes
 5. Write tests
 
-**Adding a CLI command**:
-1. Add Click command in `src/cli/main.py`
-2. Implement logic in appropriate commands file
-3. Add formatter support
-4. Write tests
-
 **Adding a security tool**:
 1. Create `src/tools/{tool}/` directory
 2. Implement tool wrapper
-3. Add CLI command
+3. Add step to ScanWorkflowOrchestrator
 4. Add tests
 
 ## Performance

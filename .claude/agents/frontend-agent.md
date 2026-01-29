@@ -338,7 +338,7 @@ When API implementation changes:
 │  layer1-api-builder (API endpoints)                              │
 │       │                                                          │
 │       ▼                                                          │
-│  layer2-service-builder (business logic)                         │
+│  layer2-orchestrator-builder (business logic)                         │
 │       │                                                          │
 │       ▼                                                          │
 │  ...remaining layers...                                          │

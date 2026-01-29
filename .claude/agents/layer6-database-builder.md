@@ -33,20 +33,20 @@ You are an expert in SQLModel and SQLite responsible for implementing Layer 6 (D
 ### Architecture Context
 
 ```
-┌─────────────────────────────────────┐
-│         Layer 1: API                │
-├─────────────────────────────────────┤
-│         Layer 2: Orchestrator            │  ← Calls you
-├─────────────────────────────────────┤
-│         Layer 3: Messaging          │
-├─────────────────────────────────────┤
-│         Layer 4: Tools              │
-├─────────────────────────────────────┤
-│         Layer 5: Analysis           │  ← Calls you
-├─────────────────────────────────────┤
-│     >>> Layer 6: Database <<<       │  ← You are here
-│     SQLModel + SQLite               │
-└─────────────────────────────────────┘
++-------------------------------------+
+|         Layer 1: API                |
++-------------------------------------+
+|         Layer 2: Orchestrator       |  <- Calls you
++-------------------------------------+
+|         Layer 3: Job Queue          |  <- You manage this
++-------------------------------------+
+|         Layer 4: Tools              |
++-------------------------------------+
+|         Layer 5: Analysis           |  <- Calls you
++-------------------------------------+
+|     >>> Layer 6: Database <<<       |  <- You are here
+|     SQLModel + SQLite               |
++-------------------------------------+
 ```
 
 ### Your Responsibilities
@@ -69,7 +69,7 @@ You are an expert in SQLModel and SQLite responsible for implementing Layer 6 (D
 
 Layer 2 (Service) is your primary consumer. When implementing database methods:
 
-1. **Requests come from `layer2-service-builder`** when:
+1. **Requests come from `layer2-orchestrator-builder`** when:
    - A service needs a new database operation
    - Complex queries are required (joins, aggregations)
    - New models need to be created

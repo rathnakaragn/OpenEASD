@@ -564,8 +564,7 @@ Invoke `qa-agent` after these agents make changes:
 | Layer Agent | Test Location | Test Type |
 |-------------|---------------|-----------|
 | `layer1-api-builder` | `tests/api/routes/` | Integration (TestClient) |
-| `layer2-service-builder` | `tests/services/` | Unit (mocked DB) |
-| `layer3-messaging-builder` | `tests/messaging/` | Unit (mocked ZeroMQ) |
+| `layer2-orchestrator-builder` | `tests/orchestrator/` | Unit (mocked DB) |
 | `layer4-tools-builder` | `tests/tools/` | Unit (mocked subprocess) |
 | `layer5-analysis-builder` | `tests/analysis/` | Unit (sample data) |
 | `layer6-database-builder` | `tests/data/` | Integration (test DB) |

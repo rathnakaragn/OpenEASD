@@ -5,13 +5,15 @@
 ## Features
 
 - **REST API**: Full CRUD API for domain and scan management
-- **Async Scanning**: Non-blocking scan execution via ZeroMQ job queue
+- **Async Scanning**: Non-blocking scan execution via database job queue
+- **Web Dashboard**: Browser-based interface for managing scans
 - **Attack Surface Discovery**: Uses Subfinder to discover subdomains
 - **Port Scanning**: Uses Naabu for fast port discovery
 - **DNS Resolution**: Uses Dnsx for DNS validation
 - **Web Probing**: Uses Httpx to gather HTTP service information
 - **Vulnerability Detection**: Analysis engine with risk scoring (0-100)
 - **Service Detection**: Nmap for service identification and CVE detection
+- **MCP Integration**: Claude Code integration via Model Context Protocol
 
 ## Architecture
 
@@ -19,10 +21,10 @@ OpenEASD uses a 6-layer API-only architecture:
 
 ```
 Layer 1: API Layer       - FastAPI REST endpoints (Full CRUD)
-Layer 2: Orchestrator Layer   - Business logic
-Layer 3: Messaging Layer - ZeroMQ job queue for async processing
-Layer 4: Analysis Layer  - Vulnerability detection and risk scoring
-Layer 5: Tools Layer     - Security tool execution (Subfinder, Naabu, etc.)
+Layer 2: Orchestrator    - Business logic services
+Layer 3: Job Queue       - Database-backed job queue (worker polls DB)
+Layer 4: Tools Layer     - Security tool execution (Subfinder, Naabu, etc.)
+Layer 5: Analysis Layer  - Vulnerability detection and risk scoring
 Layer 6: Database Layer  - SQLite with SQLModel ORM
 ```
 
@@ -36,7 +38,9 @@ Layer 6: Database Layer  - SQLite with SQLModel ORM
   - naabu
   - dnsx
   - httpx
-  - nmap (optional, for service detection)
+  - tlsx
+  - nmap (for service detection)
+  - nuclei (for vulnerability scanning)
 
 ### Installation
 
@@ -53,32 +57,20 @@ uv sync
 
 ### Running the Application
 
-**Option 1: Single Command (Recommended for Development)**
-
-```bash
-# Start both API server and worker with one command
-python run_dev.py
-
-# With custom port
-python run_dev.py --port 8080
-
-# With multiple workers for higher throughput
-python run_dev.py --workers 3
-```
-
-Press `Ctrl+C` to stop all processes.
-
-**Option 2: Separate Processes (Production)**
+**Start API Server and Worker:**
 
 ```bash
 # Terminal 1: Start API server
 python openeasd.py --port 8000
 
-# Terminal 2: Start worker
+# Terminal 2: Start worker (processes scan jobs)
 python -m workers.scan_worker
 ```
 
 The API will be available at `http://localhost:8000`
+The web dashboard will be available at `http://localhost:8000/`
+
+Press `Ctrl+C` to stop processes.
 
 ### API Documentation
 
@@ -135,6 +127,15 @@ curl http://localhost:8000/api/v1/scans/abc123/results
 
 # List all scans
 curl http://localhost:8000/api/v1/scans
+
+# Cancel a running scan
+curl -X POST http://localhost:8000/api/v1/scans/abc123/cancel
+
+# Retry a failed scan
+curl -X POST http://localhost:8000/api/v1/scans/abc123/retry
+
+# Delete a scan
+curl -X DELETE http://localhost:8000/api/v1/scans/abc123
 ```
 
 ### Findings
@@ -147,14 +148,27 @@ curl http://localhost:8000/api/v1/findings
 curl http://localhost:8000/api/v1/findings/{finding_id}
 
 # Get statistics
-curl http://localhost:8000/api/v1/findings/statistics/summary
+curl http://localhost:8000/api/v1/findings/stats
+```
+
+### Job Queue
+
+```bash
+# List jobs
+curl http://localhost:8000/api/v1/jobs
+
+# Get job status
+curl http://localhost:8000/api/v1/jobs/{job_id}
+
+# Get job statistics
+curl http://localhost:8000/api/v1/jobs/stats
 ```
 
 ## Async Scan Flow
 
-1. **POST /api/v1/scans** - Creates scan record, pushes job to queue, returns 202 Accepted
-2. **Worker** - Pulls job, executes tools (Subfinder, Dnsx, Naabu, Httpx), saves results
-3. **Poll GET /api/v1/scans/{id}** - Check status (pending → running → completed)
+1. **POST /api/v1/scans** - Creates scan record, creates job in database, returns 202 Accepted
+2. **Worker** - Polls database for jobs, claims job, executes tools (Subfinder, Dnsx, Naabu, Httpx, etc.)
+3. **Poll GET /api/v1/scans/{id}** - Check status (pending -> running -> completed)
 4. **GET /api/v1/scans/{id}/results** - Retrieve full scan results
 
 ## Running Multiple Workers
@@ -172,7 +186,7 @@ python -m workers.scan_worker
 python -m workers.scan_worker
 ```
 
-ZeroMQ automatically distributes jobs across workers.
+Jobs are distributed across workers via database polling with atomic job claiming.
 
 ## Project Structure
 
@@ -180,16 +194,25 @@ ZeroMQ automatically distributes jobs across workers.
 OpenEASD/
 ├── src/
 │   ├── api/          # REST API (FastAPI)
-│   ├── services/     # Business logic
-│   ├── messaging/    # ZeroMQ job queue
+│   ├── orchestrator/ # Business logic services
 │   ├── analysis/     # Vulnerability detection
 │   ├── tools/        # Security tool wrappers
-│   └── data/         # Database (SQLModel)
+│   ├── data/         # Database (SQLModel) + Job model
+│   ├── frontend/     # Web dashboard
+│   ├── mcp/          # MCP server for Claude Code
+│   └── utils/        # Utilities
 ├── workers/          # Background job processors
 ├── tests/            # Test suite
-├── run_dev.py        # Development runner (API + workers)
 ├── openeasd.py       # API server entry point
 └── pyproject.toml    # Dependencies
+```
+
+## MCP Server
+
+OpenEASD includes an MCP (Model Context Protocol) server for Claude Code integration:
+
+```bash
+python -m src.mcp
 ```
 
 ## Testing
@@ -205,8 +228,9 @@ uv run pytest tests/ --cov=src --cov-report=term-missing
 ## Documentation
 
 - [DESIGN.md](DESIGN.md) - Architecture overview
-- [CLAUDE.md](CLAUDE.md) - Development guide
+- [CLAUDE.md](CLAUDE.md) - AI assistant guide
 - [docs/LAYER_ARCHITECTURE.md](docs/LAYER_ARCHITECTURE.md) - Detailed layer documentation
+- [docs/AGENTS.md](docs/AGENTS.md) - Claude agent documentation
 
 ## License
 

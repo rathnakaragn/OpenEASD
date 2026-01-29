@@ -5,30 +5,31 @@
 ## Quick Reference
 
 ### Current Implementation Status
-- **Architecture**: 6-layer API-only design with ZeroMQ messaging
+- **Architecture**: 6-layer API-only design with database job queue
 - **Model**: Single-organization architecture
-- **Tech Stack**: FastAPI (Full Access), ZeroMQ, Python 3.11+, SQLite
+- **Tech Stack**: FastAPI (Full Access), Python 3.11+, SQLite
 - **Security Tools**: Subfinder, Naabu, Dnsx, Httpx, Tlsx, Nmap, Nuclei
 - **Analysis**: Automated vulnerability detection with risk scoring
-- **Interface**: API-only (no CLI)
-- **Job Persistence**: Database-backed job queue (survives crashes)
+- **Interface**: API-only with web dashboard (no CLI)
+- **Job Processing**: Database-backed job queue (worker polls database)
+- **MCP Server**: Claude Code integration via Model Context Protocol
 
 ### 6-Layer Architecture
 
 ```
-┌─────────────────────────────────────┐
-│         Layer 1: API                │  FastAPI (Full CRUD)
-├─────────────────────────────────────┤
-│         Layer 2: Orchestrator            │  Business Logic
-├─────────────────────────────────────┤
-│         Layer 3: Messaging          │  ZeroMQ (PUSH/PULL)
-├─────────────────────────────────────┤
-│         Layer 4: Tools              │  Subfinder, Naabu, etc.
-├─────────────────────────────────────┤
-│         Layer 5: Analysis           │  Risk Scoring, Detectors
-├─────────────────────────────────────┤
-│         Layer 6: Database           │  SQLModel + SQLite
-└─────────────────────────────────────┘
++-----------------------------------------+
+|         Layer 1: API                    |  FastAPI (Full CRUD)
++-----------------------------------------+
+|         Layer 2: Orchestrator           |  Business Logic
++-----------------------------------------+
+|         Layer 3: Database Job Queue     |  Worker polls DB
++-----------------------------------------+
+|         Layer 4: Tools                  |  Subfinder, Naabu, etc.
++-----------------------------------------+
+|         Layer 5: Analysis               |  Risk Scoring, Detectors
++-----------------------------------------+
+|         Layer 6: Database               |  SQLModel + SQLite
++-----------------------------------------+
 ```
 
 ### Layer Responsibilities
@@ -37,17 +38,18 @@
 - Full CRUD REST API (GET, POST, PUT, DELETE)
 - FastAPI with Pydantic v2 schemas
 - OpenAPI documentation at `/docs`
+- Web dashboard served from `/`
 
 **Layer 2: Orchestrator** (`src/orchestrator/`)
 - Business logic orchestration
-- DomainService, ScanService, FindingsService
+- DomainService, ScanService, FindingsService, JobService
 - ScanWorkflowOrchestrator (8-step workflow)
 
-**Layer 3: Messaging** (`src/messaging/`)
-- ZeroMQ job queue (PUSH/PULL pattern)
-- Database-persisted jobs (Job model)
+**Layer 3: Database Job Queue** (`src/data/models/job.py`)
+- Jobs stored in SQLite database
+- Worker polls database for pending jobs
 - Stale job recovery (30-min timeout)
-- Worker coordination with ID tracking
+- No external messaging dependencies
 
 **Layer 4: Tools** (`src/tools/`)
 - External security tool execution
@@ -81,12 +83,20 @@ Scans (Async)
   POST   /api/v1/scans                # Create scan (returns 202)
   GET    /api/v1/scans/{id}           # Get scan status (poll here)
   GET    /api/v1/scans/{id}/results   # Get scan results
+  DELETE /api/v1/scans/{id}           # Delete scan
+  POST   /api/v1/scans/{id}/cancel    # Cancel scan
+  POST   /api/v1/scans/{id}/retry     # Retry failed scan
 
 Findings
   GET    /api/v1/findings             # List findings
   GET    /api/v1/findings/{id}        # Get finding
   PUT    /api/v1/findings/{id}        # Update finding status
   GET    /api/v1/findings/stats       # Statistics
+
+Jobs
+  GET    /api/v1/jobs                 # List jobs
+  GET    /api/v1/jobs/{id}            # Get job status
+  GET    /api/v1/jobs/stats           # Job statistics
 ```
 
 ## Project Structure
@@ -101,18 +111,17 @@ openeasd/
 │   │   │   ├── domains.py
 │   │   │   ├── scans.py
 │   │   │   ├── findings.py
+│   │   │   ├── jobs.py
 │   │   │   └── health.py
 │   │   └── schemas/            # Pydantic models
 │   │
 │   ├── orchestrator/           # Layer 2: Orchestrator
 │   │   ├── domain_service.py
-│   │   ├── scan_service.py       # CRUD operations
+│   │   ├── scan_service.py     # CRUD operations
 │   │   ├── scan_workflow_orchestrator.py  # 8-step workflow
-│   │   └── findings_service.py
-│   │
-│   ├── messaging/              # Layer 3: Messaging
-│   │   ├── config.py           # ZeroMQ config
-│   │   └── job_queue.py        # PUSH/PULL queue
+│   │   ├── findings_service.py
+│   │   ├── job_service.py
+│   │   └── health_service.py
 │   │
 │   ├── tools/                  # Layer 4: Tools
 │   │   ├── subfinder/
@@ -131,14 +140,29 @@ openeasd/
 │   │       ├── port_detector.py
 │   │       └── service_detector.py
 │   │
-│   └── data/                   # Layer 6: Database
-│       ├── database/
-│       │   └── sqlmodel_manager.py
-│       └── models/
-│           └── job.py          # Job persistence model
+│   ├── data/                   # Layer 6: Database
+│   │   ├── database/
+│   │   │   └── sqlmodel_manager.py
+│   │   └── models/
+│   │       └── job.py          # Job persistence model
+│   │
+│   ├── frontend/               # Web Dashboard
+│   │   ├── static/
+│   │   │   ├── css/
+│   │   │   └── js/
+│   │   └── templates/
+│   │       └── index.html
+│   │
+│   ├── mcp/                    # MCP Server
+│   │   ├── __init__.py
+│   │   ├── __main__.py
+│   │   └── server.py           # Claude Code integration
+│   │
+│   ├── core/                   # Core utilities
+│   └── utils/                  # Helper utilities
 │
 ├── workers/
-│   └── scan_worker.py          # Background job processor
+│   └── scan_worker.py          # Background job processor (DB polling)
 │
 ├── openeasd.py                 # API server entry point
 └── pyproject.toml
@@ -159,6 +183,9 @@ python openeasd.py --reload
 
 # API docs available at
 http://localhost:8000/docs
+
+# Web dashboard available at
+http://localhost:8000/
 ```
 
 ### Start Worker (separate terminal)
@@ -187,32 +214,30 @@ curl http://localhost:8000/api/v1/scans/{scan_id}
 
 ## Data Flow
 
-### Async Scan Flow (with Job Persistence)
+### Async Scan Flow (Database Job Queue)
 
 ```
 Client                    API                  Database            Worker
-  │                        │                      │                   │
-  │──POST /scans─────────▶│                      │                   │
-  │                        │──Create scan record─▶│                   │
-  │                        │──Create job (pending)▶│                   │
-  │                        │──PUSH to ZeroMQ─────▶│                   │
-  │                        │──Mark job queued────▶│                   │
-  │◀──202 {scan_id}───────│                      │                   │
-  │                        │                      │                   │
-  │                        │                      │◀──PULL job───────│
-  │                        │                      │◀──Claim job──────│
-  │                        │                      │                   │
-  │──GET /scans/{id}─────▶│                      │       8-step workflow
-  │◀──{status: running}───│                      │                   │
-  │                        │                      │                   │
-  │                        │                      │◀──Complete job───│
-  │──GET /scans/{id}─────▶│                      │                   │
-  │◀──{status: completed}─│                      │                   │
+  |                        |                      |                   |
+  |--POST /scans---------->|                      |                   |
+  |                        |--Create scan record->|                   |
+  |                        |--Create job (pending)|                   |
+  |<--202 {scan_id}--------|                      |                   |
+  |                        |                      |                   |
+  |                        |                      |<--Poll for jobs---|
+  |                        |                      |<--Claim job-------|
+  |                        |                      |                   |
+  |--GET /scans/{id}------>|                      |       8-step workflow
+  |<--{status: running}----|                      |                   |
+  |                        |                      |                   |
+  |                        |                      |<--Complete job----|
+  |--GET /scans/{id}------>|                      |                   |
+  |<--{status: completed}--|                      |                   |
 ```
 
 ### Job Lifecycle States
 ```
-pending -> queued -> processing -> completed/failed/cancelled
+pending -> processing -> completed/failed/cancelled
 ```
 
 ### 8-Step Scan Workflow
@@ -235,7 +260,7 @@ pending -> queued -> processing -> completed/failed/cancelled
 | API | FastAPI 0.109+ |
 | Validation | Pydantic v2 |
 | Database | SQLite + SQLModel |
-| Messaging | ZeroMQ (pyzmq) |
+| Job Queue | Database polling |
 | Package Manager | uv |
 | Testing | pytest |
 
@@ -247,8 +272,8 @@ dependencies = [
     "uvicorn[standard]>=0.27.0",
     "pydantic>=2.5.0",
     "sqlmodel>=0.0.14",
-    "pyzmq>=25.0.0",
     "pyyaml==6.0.1",
+    "fastmcp>=2.14.2",
 ]
 ```
 
@@ -257,8 +282,8 @@ dependencies = [
 ### Guidelines
 - API is full-access (GET, POST, PUT, DELETE)
 - No CLI layer - all operations via API
-- Scans are async - use job queue
-- Worker processes jobs from ZeroMQ
+- Scans are async - use database job queue
+- Worker polls database for jobs (no ZeroMQ)
 - Polling for scan status (no WebSocket)
 
 ### Adding Features
@@ -278,6 +303,20 @@ dependencies = [
 1. Extend `BaseDetector` in `src/analysis/detectors/`
 2. Register in `AnalysisService._load_detectors()`
 
+## MCP Server
+
+OpenEASD includes an MCP (Model Context Protocol) server for Claude Code integration.
+
+### Running MCP Server
+```bash
+python -m src.mcp
+```
+
+### Features
+- Domain management via Claude Code
+- Scan initiation and status checking
+- Finding retrieval and analysis
+
 ## Test Suite
 
 ```bash
@@ -288,11 +327,9 @@ uv run pytest tests/ -v
 uv run pytest tests/ --cov=src
 ```
 
-**Current Status**: 312 tests passing (6 dead tests removed Dec 3, 2025)
-
 ---
 
-**Last Updated**: December 4, 2025
-**Architecture Version**: 6-Layer API-Only with ZeroMQ + Job Persistence
-**Interface**: API only (no CLI)
-**Key Components**: ScanWorkflowOrchestrator, Job model, Worker with stale recovery
+**Last Updated**: January 29, 2026
+**Architecture Version**: 6-Layer API-Only with Database Job Queue
+**Interface**: API + Web Dashboard (no CLI)
+**Key Components**: ScanWorkflowOrchestrator, Job model, Worker with database polling

@@ -33,22 +33,22 @@ You are an expert Python developer responsible for implementing Layer 2 (Service
 ### Architecture Context
 
 ```
-┌─────────────────────────────────────┐
-│         Layer 1: API                │  ← Calls you
-│         FastAPI (Full CRUD)         │
-├─────────────────────────────────────┤
-│     >>> Layer 2: Orchestrator <<<        │  ← You are here
-│         Business Logic              │
-├─────────────────────────────────────┤
-│         Layer 3: Messaging          │  ← You can call
-│         ZeroMQ (PUSH/PULL)          │
-├─────────────────────────────────────┤
-│         Layer 4: Tools              │  ← You can call
-├─────────────────────────────────────┤
-│         Layer 5: Analysis           │  ← You can call
-├─────────────────────────────────────┤
-│         Layer 6: Database           │  ← You can call
-└─────────────────────────────────────┘
++-------------------------------------+
+|         Layer 1: API                |  <- Calls you
+|         FastAPI (Full CRUD)         |
++-------------------------------------+
+|     >>> Layer 2: Orchestrator <<<   |  <- You are here
+|         Business Logic              |
++-------------------------------------+
+|         Layer 3: Job Queue          |  <- You can call
+|         Database-backed             |
++-------------------------------------+
+|         Layer 4: Tools              |  <- You can call
++-------------------------------------+
+|         Layer 5: Analysis           |  <- You can call
++-------------------------------------+
+|         Layer 6: Database           |  <- You can call
++-------------------------------------+
 ```
 
 ### Your Responsibilities
